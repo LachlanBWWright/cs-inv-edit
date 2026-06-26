@@ -1,0 +1,39 @@
+syntax = "proto2";
+
+package cs2item;
+
+option go_package = "cs-inv-edit/backend/internal/proto/generated;cs2pb";
+
+message CMsgApplySticker {
+  optional uint64 sticker_item_id = 1;
+  optional uint64 item_item_id = 2;
+  optional uint32 sticker_slot = 3;
+  optional uint32 baseitem_defidx = 4;
+  optional float sticker_wear = 5;
+  optional float sticker_rotation = 6;
+  optional float sticker_scale = 7;
+  optional float sticker_offset_x = 8;
+  optional float sticker_offset_y = 9;
+  optional float sticker_offset_z = 10;
+  optional float sticker_wear_target = 11;
+}
+
+message CMsgGCItemCustomizationNotification {
+  repeated uint64 item_id = 1;
+  optional uint32 request = 2;
+  repeated uint64 extra_data = 3;
+}
+
+message CMsgCasketItem {
+  optional uint64 casket_item_id = 1;
+  optional uint64 item_item_id = 2;
+}
+
+message CMsgSetItemPositions {
+  message ItemPosition {
+    optional uint32 legacy_item_id = 1;
+    optional uint32 position = 2;
+    optional uint64 item_id = 3;
+  }
+  repeated ItemPosition item_positions = 1;
+}

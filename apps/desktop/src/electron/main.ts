@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -13,8 +14,12 @@ function backendPath() {
 
 function startBackend() {
   if (backend) return;
+  const binaryPath = backendPath();
+  if (!existsSync(binaryPath)) {
+    throw new Error(`Missing backend binary at ${binaryPath}`);
+  }
 
-  backend = spawn(backendPath(), [], {
+  backend = spawn(binaryPath, [], {
     env: { ...process.env, CS2_BACKEND_ADDR: "127.0.0.1:7331" },
     stdio: "pipe",
   });
@@ -25,6 +30,19 @@ function startBackend() {
     console.log(`[backend] exited with ${code}`);
     backend = undefined;
   });
+}
+
+async function waitForBackend(attempts = 30): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(`${backendURL}/health`);
+      if (response.ok) return;
+    } catch {
+      // keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error("Backend did not become ready in time");
 }
 
 async function createWindow() {
@@ -46,25 +64,27 @@ async function createWindow() {
   }
 }
 
-ipcMain.handle("backend:get", async (_event, pathName: string) => {
-  const response = await fetch(`${backendURL}${pathName}`);
+async function requestJson(pathName: string, init?: RequestInit) {
+  const response = await fetch(`${backendURL}${pathName}`, init);
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
-});
+}
 
-ipcMain.handle("backend:post", async (_event, pathName: string, body?: unknown) => {
-  const response = await fetch(`${backendURL}${pathName}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
-});
+ipcMain.handle("backend:health", async () => requestJson("/health"));
+ipcMain.handle("backend:inventory", async () => requestJson("/inventory"));
+ipcMain.handle("backend:refreshInventory", async () => requestJson("/inventory/refresh", { method: "POST" }));
+ipcMain.handle("backend:submitOperation", async (_event, type: string, input?: unknown) => requestJson(`/operations/${encodeURIComponent(type)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
+ipcMain.handle("backend:operations", async () => requestJson("/operations"));
+ipcMain.handle("backend:events", async () => requestJson("/events"));
+ipcMain.handle("backend:settings", async () => requestJson("/settings"));
+ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) => requestJson("/steam/connect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
+ipcMain.handle("backend:submitSteamGuard", async (_event, input?: unknown) => requestJson("/steam/guard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
+ipcMain.handle("backend:disconnectSteam", async () => requestJson("/steam/disconnect", { method: "POST" }));
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   startBackend();
-  void createWindow();
+  await waitForBackend();
+  await createWindow();
 });
 
 app.on("window-all-closed", () => {
