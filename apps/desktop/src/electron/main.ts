@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendURL = "http://127.0.0.1:7331";
@@ -9,6 +10,12 @@ let backend: ChildProcessWithoutNullStreams | undefined;
 
 function backendPath() {
   return process.env.CS2_BACKEND_BIN ?? path.resolve(__dirname, "../../../../bin/cs2-backend");
+}
+
+function ensureBackendBinary() {
+  if (!fs.existsSync(backendPath())) {
+    throw new Error(`Backend binary missing at ${backendPath()}. Run npm run build:backend first.`);
+  }
 }
 
 function startBackend() {
@@ -25,6 +32,29 @@ function startBackend() {
     console.log(`[backend] exited with ${code}`);
     backend = undefined;
   });
+}
+
+async function waitForBackendReady(timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${backendURL}/health`);
+      if (response.ok) return;
+    } catch {
+      // retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("Timed out waiting for Go backend to become ready");
+}
+
+async function requestBackend(pathName: string, init: RequestInit = {}) {
+  const response = await fetch(`${backendURL}${pathName}`, init);
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw new Error(`${response.status} ${response.statusText}${bodyText ? `: ${bodyText}` : ""}`);
+  }
+  return response.json();
 }
 
 async function createWindow() {
@@ -46,25 +76,25 @@ async function createWindow() {
   }
 }
 
-ipcMain.handle("backend:get", async (_event, pathName: string) => {
-  const response = await fetch(`${backendURL}${pathName}`);
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
-});
-
-ipcMain.handle("backend:post", async (_event, pathName: string, body?: unknown) => {
-  const response = await fetch(`${backendURL}${pathName}`, {
-    method: "POST",
+ipcMain.handle("backend:request", async (_event, method: string, pathName: string, body?: unknown) => {
+  return requestBackend(pathName, {
+    method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {}),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
 });
 
-app.whenReady().then(() => {
-  startBackend();
-  void createWindow();
+app.whenReady().then(async () => {
+  try {
+    ensureBackendBinary();
+    startBackend();
+    await waitForBackendReady();
+  } catch (error) {
+    dialog.showErrorBox("Backend startup failed", error instanceof Error ? error.message : "Unknown error");
+    app.quit();
+    return;
+  }
+  await createWindow();
 });
 
 app.on("window-all-closed", () => {

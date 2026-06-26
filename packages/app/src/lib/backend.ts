@@ -1,7 +1,18 @@
-export type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
+export interface AppBackendClient {
+  health(): Promise<HealthStatus>;
+  inventory(): Promise<InventorySnapshot>;
+  refreshInventory(): Promise<InventorySnapshot>;
+  submitOperation(type: string, input?: unknown): Promise<OperationReceipt>;
+  events(): Promise<BackendEvent[]>;
+  getSettings(): Promise<FeatureSettings>;
+  updateSettings(settings: FeatureSettings): Promise<FeatureSettings>;
+  connectSteam(input?: unknown): Promise<ConnectionStatus>;
+  submitSteamGuard(input?: unknown): Promise<ConnectionStatus>;
+  disconnectSteam(): Promise<ConnectionStatus>;
+}
 
 export interface ConnectionStatus {
-  state: ConnectionState;
+  state: "disconnected" | "connecting" | "connected" | "error";
   detail?: string;
 }
 

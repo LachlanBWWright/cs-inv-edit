@@ -1,11 +1,13 @@
-import { createResource, For, Show } from "solid-js";
-import type { HealthStatus, InventorySnapshot, OperationReceipt } from "@cs-inv-edit/contracts";
-
-export interface AppBackendClient {
-  health(): Promise<HealthStatus>;
-  inventory(): Promise<InventorySnapshot>;
-  submitOperation(type: string, input?: unknown): Promise<OperationReceipt>;
-}
+import { createMemo, createSignal, onMount, Show } from "solid-js";
+import { AppShell } from "./components/AppShell";
+import { InventoryView } from "./components/InventoryView";
+import { StorageView } from "./components/StorageView";
+import { TradeUpView } from "./components/TradeUpView";
+import { StickersView } from "./components/StickersView";
+import { OperationsView } from "./components/OperationsView";
+import { SettingsView } from "./components/SettingsView";
+import type { AppBackendClient, BackendEvent, ConnectionStatus, FeatureSettings, HealthStatus, InventorySnapshot, OperationReceipt } from "./lib/backend";
+import { defaultFeatureSettings } from "./lib/backend";
 
 export interface AppProps {
   backend: AppBackendClient;
@@ -13,98 +15,154 @@ export interface AppProps {
 }
 
 export function App(props: AppProps) {
-  const [health] = createResource(() => props.backend.health());
-  const [inventory, { refetch }] = createResource(() => props.backend.inventory());
-  const [operation, { refetch: submitStorageStub }] = createResource(
-    () => false,
-    async () => props.backend.submitOperation("storage.moveToStorage")
-  );
+  const [activeView, setActiveView] = createSignal<"inventory" | "storage" | "tradeups" | "stickers" | "operations" | "settings">("inventory");
+  const [health, setHealth] = createSignal<HealthStatus | null>(null);
+  const [healthLoading, setHealthLoading] = createSignal(false);
+  const [inventory, setInventory] = createSignal<InventorySnapshot | null>(null);
+  const [inventoryLoading, setInventoryLoading] = createSignal(false);
+  const [inventoryError, setInventoryError] = createSignal<string | null>(null);
+  const [events, setEvents] = createSignal<BackendEvent[]>([]);
+  const [settings, setSettings] = createSignal<FeatureSettings>(defaultFeatureSettings);
+  const [connection, setConnection] = createSignal<ConnectionStatus | null>(null);
+  const [operationReceipts, setOperationReceipts] = createSignal<OperationReceipt[]>([]);
+  const [backendUrl, setBackendUrl] = createSignal("http://127.0.0.1:7331");
+
+  const loadHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const result = await props.backend.health();
+      setHealth(result);
+    } catch (error) {
+      setHealth(null);
+      setInventoryError(error instanceof Error ? error.message : "Health check failed");
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  const loadInventory = async (force = false) => {
+    setInventoryLoading(true);
+    try {
+      const result = force ? await props.backend.refreshInventory() : await props.backend.inventory();
+      setInventory(result);
+      setInventoryError(null);
+    } catch (error) {
+      setInventoryError(error instanceof Error ? error.message : "Inventory request failed");
+    } finally {
+      setInventoryLoading(false);
+    }
+  };
+
+  const loadEvents = async () => {
+    try {
+      const result = await props.backend.events();
+      setEvents(result);
+    } catch {
+      setEvents([]);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const result = await props.backend.getSettings();
+      setSettings(result);
+    } catch {
+      setSettings(defaultFeatureSettings);
+    }
+  };
+
+  const submitOperation = async (type: string, input?: unknown) => {
+    try {
+      const receipt = await props.backend.submitOperation(type, input);
+      setOperationReceipts((current) => [receipt, ...current].slice(0, 20));
+      await loadEvents();
+      return receipt;
+    } catch (error) {
+      const fallback: OperationReceipt = {
+        operationId: `op_error_${Date.now()}`,
+        type,
+        state: "failed",
+        createdAt: new Date().toISOString(),
+        message: error instanceof Error ? error.message : "submit failed",
+      };
+      setOperationReceipts((current) => [fallback, ...current].slice(0, 20));
+      return fallback;
+    }
+  };
+
+  const saveSettings = async () => {
+    try {
+      const result = await props.backend.updateSettings(settings());
+      setSettings(result);
+    } catch {
+      // noop: view remains local for now
+    }
+  };
+
+  const toggleSetting = (key: keyof FeatureSettings) => {
+    setSettings((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const connectSteam = async () => {
+    setConnection({ state: "connecting", detail: "Requesting mock Steam connection" });
+    try {
+      const result = await props.backend.connectSteam({ platform: props.platform });
+      setConnection(result);
+    } catch (error) {
+      setConnection({ state: "error", detail: error instanceof Error ? error.message : "Steam connection unavailable" });
+    }
+  };
+
+  const disconnectSteam = async () => {
+    try {
+      const result = await props.backend.disconnectSteam();
+      setConnection(result);
+    } catch (error) {
+      setConnection({ state: "error", detail: error instanceof Error ? error.message : "Disconnect failed" });
+    }
+  };
+
+  onMount(() => {
+    void loadHealth();
+    void loadInventory();
+    void loadEvents();
+    void loadSettings();
+  });
+
+  const inventoryItems = createMemo(() => inventory()?.items ?? []);
+  const changeView = (view: "inventory" | "storage" | "tradeups" | "stickers" | "operations" | "settings") => setActiveView(view);
+  const devMode = typeof window !== "undefined" && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
 
   return (
-    <main class="min-h-screen bg-slate-100 text-slate-950 lg:grid lg:grid-cols-[260px_1fr]">
-      <aside class="flex flex-col gap-7 bg-slate-900 p-6 text-white lg:min-h-screen">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide text-cyan-300">
-            {props.platform === "desktop" ? "Desktop app" : "Web wrapper"}
-          </p>
-          <h1 class="mt-2 text-2xl font-semibold leading-tight">CS Inventory Control</h1>
-        </div>
-
-        <nav class="grid grid-cols-2 gap-2 lg:grid-cols-1">
-          {["Inventory", "Storage", "Trade-ups", "Settings"].map((item) => (
-            <button class="rounded-md border border-slate-700 px-3 py-2 text-left text-sm text-slate-200 hover:border-cyan-300 hover:text-white">
-              {item}
-            </button>
-          ))}
-        </nav>
-
-        <div class="mt-auto flex items-center justify-between border-t border-slate-700 pt-4 text-sm">
-          <span class="text-slate-300">Backend</span>
-          <strong class="rounded-md bg-slate-800 px-2 py-1">
-            <Show when={health()} fallback="offline">
-              {(value) => value().status}
-            </Show>
-          </strong>
-        </div>
-      </aside>
-
-      <section class="p-5 sm:p-7">
-        <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 class="text-3xl font-semibold">Inventory</h2>
-            <p class="mt-2 max-w-2xl text-sm text-slate-600">
-              Shared Solid app surface backed by the local Go protocol service.
-            </p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:border-slate-500" onClick={() => refetch()}>
-              Refresh
-            </button>
-            <button class="rounded-md border border-cyan-700 bg-cyan-700 px-3 py-2 text-sm text-white hover:bg-cyan-800" onClick={() => submitStorageStub()}>
-              Queue storage stub
-            </button>
-          </div>
-        </header>
-
-        <Show when={operation()}>
-          {(receipt) => (
-            <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
-              Queued {receipt().type}: <span class="font-mono">{receipt().operationId}</span>
-            </div>
-          )}
-        </Show>
-
-        <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <For each={inventory()?.items ?? []}>
-            {(item) => (
-              <article class="min-h-28 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <div class="flex items-start justify-between gap-3">
-                  <strong class="text-base leading-snug">{item.name}</strong>
-                  <span class="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{item.kind}</span>
-                </div>
-                <dl class="mt-4 grid gap-1 text-sm text-slate-600">
-                  <div class="flex justify-between gap-3">
-                    <dt>ID</dt>
-                    <dd class="truncate font-mono">{item.id}</dd>
-                  </div>
-                  <Show when={item.paintWear !== undefined}>
-                    <div class="flex justify-between gap-3">
-                      <dt>Wear</dt>
-                      <dd>{item.paintWear}</dd>
-                    </div>
-                  </Show>
-                  <Show when={item.storageCount !== undefined}>
-                    <div class="flex justify-between gap-3">
-                      <dt>Stored</dt>
-                      <dd>{item.storageCount}</dd>
-                    </div>
-                  </Show>
-                </dl>
-              </article>
-            )}
-          </For>
-        </div>
-      </section>
-    </main>
+    <AppShell platform={props.platform} activeView={activeView()} health={health()} healthLoading={healthLoading()} onNavigate={changeView}>
+      <Show when={activeView() === "inventory"}>
+        <InventoryView inventory={inventory()} error={inventoryError()} loading={inventoryLoading()} onRefresh={() => void loadInventory(true)} />
+      </Show>
+      <Show when={activeView() === "storage"}>
+        <StorageView inventory={inventory()} settings={{ enableStorageMutations: settings().enableStorageMutations }} loading={inventoryLoading()} pending={null} onSubmit={submitOperation} onClear={() => setOperationReceipts([])} />
+      </Show>
+      <Show when={activeView() === "tradeups"}>
+        <TradeUpView inventory={inventoryItems()} settings={settings()} onSubmit={submitOperation} />
+      </Show>
+      <Show when={activeView() === "stickers"}>
+        <StickersView items={inventoryItems()} settings={settings()} dev={devMode} onSubmit={submitOperation} />
+      </Show>
+      <Show when={activeView() === "operations"}>
+        <OperationsView events={events()} receipts={operationReceipts()} loading={inventoryLoading()} onRefresh={() => void loadEvents()} />
+      </Show>
+      <Show when={activeView() === "settings"}>
+        <SettingsView
+          health={health()}
+          connection={connection()}
+          settings={settings()}
+          backendUrl={backendUrl()}
+          onChangeBackendUrl={(value) => setBackendUrl(value)}
+          onSaveSettings={() => void saveSettings()}
+          onToggleSetting={toggleSetting}
+          onConnectSteam={() => void connectSteam()}
+          onDisconnectSteam={() => void disconnectSteam()}
+        />
+      </Show>
+    </AppShell>
   );
 }

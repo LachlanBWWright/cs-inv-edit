@@ -4,21 +4,26 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"time"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
-type Receipt struct {
-	OperationID string `json:"operationId"`
-	Type        string `json:"type"`
-	State       string `json:"state"`
-	CreatedAt   string `json:"createdAt"`
-}
-
-func NewReceipt(opType string) Receipt {
-	return Receipt{
+func NewReceipt(opType string) domain.OperationReceipt {
+	return domain.OperationReceipt{
 		OperationID: "op_" + randomHex(8),
 		Type:        opType,
 		State:       "queued",
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func NewReceiptWithState(opType, state, message string) domain.OperationReceipt {
+	return domain.OperationReceipt{
+		OperationID: "op_" + randomHex(8),
+		Type:        opType,
+		State:       state,
+		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
+		Message:     message,
 	}
 }
 
