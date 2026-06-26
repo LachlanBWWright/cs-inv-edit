@@ -11,6 +11,15 @@ type Receipt struct {
 	Type        string `json:"type"`
 	State       string `json:"state"`
 	CreatedAt   string `json:"createdAt"`
+	Message     string `json:"message,omitempty"`
+}
+
+type Event struct {
+	OperationID string `json:"operationId"`
+	Type        string `json:"type"`
+	State       string `json:"state"`
+	Message     string `json:"message,omitempty"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 func NewReceipt(opType string) Receipt {
@@ -18,6 +27,16 @@ func NewReceipt(opType string) Receipt {
 		OperationID: "op_" + randomHex(8),
 		Type:        opType,
 		State:       "queued",
+		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func NewEvent(receipt Receipt, state string, message string) Event {
+	return Event{
+		OperationID: receipt.OperationID,
+		Type:        receipt.Type,
+		State:       state,
+		Message:     message,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
