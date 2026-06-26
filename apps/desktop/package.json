@@ -1,0 +1,26 @@
+{
+  "name": "@cs-inv-edit/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently -k \"vite --host 127.0.0.1 --port 5173\" \"wait-on http://127.0.0.1:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "build": "npm run build:electron && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json"
+  },
+  "dependencies": {
+    "@cs-inv-edit/app": "*",
+    "@cs-inv-edit/contracts": "*",
+    "@tailwindcss/vite": "^4.3.1",
+    "vite-plugin-solid": "^2.11.8",
+    "solid-js": "^1.9.10",
+    "tailwindcss": "^4.3.1",
+    "vite": "^7.2.7"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "wait-on": "^9.0.3"
+  }
+}

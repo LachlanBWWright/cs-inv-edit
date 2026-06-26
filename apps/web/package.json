@@ -1,0 +1,21 @@
+{
+  "name": "@cs-inv-edit/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4174"
+  },
+  "dependencies": {
+    "@cs-inv-edit/app": "*",
+    "@cs-inv-edit/contracts": "*",
+    "@tailwindcss/vite": "^4.3.1",
+    "vite-plugin-solid": "^2.11.8",
+    "solid-js": "^1.9.10",
+    "tailwindcss": "^4.3.1",
+    "vite": "^7.2.7"
+  },
+  "devDependencies": {}
+}

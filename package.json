@@ -1,0 +1,20 @@
+{
+  "name": "cs-inv-edit",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:desktop": "npm run build:backend && npm run dev -w @cs-inv-edit/desktop",
+    "dev:web": "npm run dev -w @cs-inv-edit/web",
+    "build": "npm run build -ws --if-present && npm run build:backend",
+    "build:backend": "go build -o bin/cs2-backend ./backend/cmd/cs2-backend",
+    "test:backend": "go test ./backend/...",
+    "check": "npm run build -ws --if-present && go test ./backend/..."
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
