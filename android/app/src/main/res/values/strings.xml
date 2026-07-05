@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CS Inventory Edit</string>
+    <string name="title_activity_main">CS Inventory Edit</string>
+    <string name="package_name">com.lachlanbwwright.csinvedit</string>
+    <string name="custom_url_scheme">com.lachlanbwwright.csinvedit</string>
+</resources>
