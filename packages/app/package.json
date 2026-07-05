@@ -1,0 +1,16 @@
+{
+  "name": "@cs-inv-edit/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@cs-inv-edit/contracts": "*",
+    "solid-js": "^1.9.10"
+  }
+}
