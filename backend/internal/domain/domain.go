@@ -34,6 +34,13 @@ type FeatureFlags struct {
 	EnableStickerExtract   bool `json:"enableStickerExtract"`
 	EnableStickerRemove    bool `json:"enableStickerRemove"`
 	EnableStickerApply     bool `json:"enableStickerApply"`
+	EnableNameTags         bool `json:"enableNameTags"`
+	EnableItemDeletion     bool `json:"enableItemDeletion"`
+	EnableStatTrakSwap     bool `json:"enableStatTrakSwap"`
+	EnableStrangeParts     bool `json:"enableStrangeParts"`
+	EnableItemUse          bool `json:"enableItemUse"`
+	EnableToolApplication  bool `json:"enableToolApplication"`
+	EnableGifting          bool `json:"enableGifting"`
 }
 
 type Settings struct {

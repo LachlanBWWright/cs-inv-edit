@@ -7,6 +7,7 @@ import (
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
+	"cs-inv-edit/backend/internal/transport"
 )
 
 type HealthStatus struct {
@@ -22,8 +23,10 @@ type Service struct {
 	operations    []operations.Receipt
 	inventory     domain.InventorySnapshot
 	settings      domain.Settings
-	connection    domain.ConnectionStatus
-	lastOperation operations.Receipt
+	connection      domain.ConnectionStatus
+	lastOperation   operations.Receipt
+	pendingUsername string
+	pendingPassword string
 }
 
 func NewService() *Service {
@@ -101,6 +104,27 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if value, ok := next["enableStickerApply"].(bool); ok {
 				flags.EnableStickerApply = value
 			}
+			if value, ok := next["enableNameTags"].(bool); ok {
+				flags.EnableNameTags = value
+			}
+			if value, ok := next["enableItemDeletion"].(bool); ok {
+				flags.EnableItemDeletion = value
+			}
+			if value, ok := next["enableStatTrakSwap"].(bool); ok {
+				flags.EnableStatTrakSwap = value
+			}
+			if value, ok := next["enableStrangeParts"].(bool); ok {
+				flags.EnableStrangeParts = value
+			}
+			if value, ok := next["enableItemUse"].(bool); ok {
+				flags.EnableItemUse = value
+			}
+			if value, ok := next["enableToolApplication"].(bool); ok {
+				flags.EnableToolApplication = value
+			}
+			if value, ok := next["enableGifting"].(bool); ok {
+				flags.EnableGifting = value
+			}
 			s.mu.Lock()
 			s.settings.FeatureFlags = flags
 			s.mu.Unlock()
@@ -113,12 +137,13 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 
 	state := "queued"
 	message := "queued"
+	recognizedMutation := false
 	s.mu.Lock()
 	if opType == "steam.connect" {
 		s.connection.State = "connected"
-		s.connection.Detail = "mock connection"
+		s.connection.Detail = "connected"
 		state = "completed"
-		message = "mock connection established"
+		message = "steam connected"
 	} else if opType == "steam.guard" {
 		s.connection.State = "connected"
 		s.connection.Detail = "guard accepted"
@@ -130,11 +155,13 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		state = "completed"
 		message = "steam disconnected"
 	} else if stringsHasPrefixAny(opType, "storage.") {
+		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableStorageMutations {
 			state = "blocked_by_feature_flag"
 			message = "storage mutations require feature flag"
 		}
 	} else if opType == "tradeups.execute" || opType == "tradeups.preview" {
+		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableTradeups {
 			state = "blocked_by_feature_flag"
 			message = "trade-ups disabled"
@@ -143,6 +170,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			message = "live validation required"
 		}
 	} else if stringsHasPrefixAny(opType, "stickers.") {
+		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableStickerApply && opType == "stickers.apply" {
 			state = "blocked_by_feature_flag"
 			message = "sticker apply disabled"
@@ -156,6 +184,73 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "sticker workflow requires live validation"
 		}
+	} else if opType == "nametags.apply" || opType == "nametags.remove" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableNameTags {
+			state = "blocked_by_feature_flag"
+			message = "name tag operations disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "name tag workflow requires live validation"
+		}
+	} else if opType == "items.delete" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableItemDeletion {
+			state = "blocked_by_feature_flag"
+			message = "item deletion disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "item deletion requires live validation"
+		}
+	} else if opType == "stattrak.swap" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableStatTrakSwap {
+			state = "blocked_by_feature_flag"
+			message = "stattrak swap disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "stattrak swap requires live validation"
+		}
+	} else if opType == "strange-parts.apply" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableStrangeParts {
+			state = "blocked_by_feature_flag"
+			message = "strange part application disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "strange part application requires live validation"
+		}
+	} else if opType == "items.use" || opType == "items.use-multiple" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableItemUse {
+			state = "blocked_by_feature_flag"
+			message = "item use operations disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "item use requires live validation"
+		}
+	} else if opType == "tools.apply" || opType == "tools.apply-base" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableToolApplication {
+			state = "blocked_by_feature_flag"
+			message = "tool application disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "tool application requires live validation"
+		}
+	} else if opType == "gifts.send" {
+		recognizedMutation = true
+		if !s.settings.FeatureFlags.EnableGifting {
+			state = "blocked_by_feature_flag"
+			message = "gifting disabled"
+		} else if s.settings.ValidationMode {
+			state = "requires_validation"
+			message = "gifting requires live validation"
+		}
+	}
+	if recognizedMutation && state == "queued" {
+		state = "awaiting_gc_confirmation"
+		message = "awaiting GC confirmation"
 	}
 	receipt.State = state
 	receipt.Message = message
@@ -198,28 +293,70 @@ func (s *Service) UpdateSettings(next domain.Settings) domain.Settings {
 }
 
 func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
-	_ = input
+	username, _ := input["username"].(string)
+	password, _ := input["password"].(string)
+
+	if username == "" || password == "" {
+		return domain.ConnectionStatus{State: "error", Detail: "Username and password required"}
+	}
+
+	steamClient := transport.NewSteamClient()
+	state, err := steamClient.ValidateCredentials(username, password, "")
+
 	s.mu.Lock()
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "mock connection"}
-	s.mu.Unlock()
-	receipt := s.newReceipt("steam.connect")
-	s.addEvent(receipt, "completed", "steam connected")
-	return s.ConnectionStatus()
+	defer s.mu.Unlock()
+
+	if err != nil {
+		if state == "awaiting_guard" {
+			s.connection = domain.ConnectionStatus{State: "awaiting_guard", Detail: err.Error()}
+			s.pendingUsername = username
+			s.pendingPassword = password
+			return s.connection
+		}
+		s.connection = domain.ConnectionStatus{State: "error", Detail: err.Error()}
+		return s.connection
+	}
+
+	s.connection = domain.ConnectionStatus{State: "connected", Detail: "connected"}
+	s.pendingUsername = ""
+	s.pendingPassword = ""
+	return s.connection
 }
 
 func (s *Service) SubmitSteamGuard(input map[string]any) domain.ConnectionStatus {
-	_ = input
+	code, _ := input["code"].(string)
+
 	s.mu.Lock()
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "guard accepted"}
+	username := s.pendingUsername
+	password := s.pendingPassword
 	s.mu.Unlock()
-	receipt := s.newReceipt("steam.guard")
-	s.addEvent(receipt, "completed", "steam guard accepted")
-	return s.ConnectionStatus()
+
+	if username == "" || password == "" {
+		return domain.ConnectionStatus{State: "error", Detail: "No pending login session"}
+	}
+
+	steamClient := transport.NewSteamClient()
+	_, err := steamClient.ValidateCredentials(username, password, code)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err != nil {
+		s.connection = domain.ConnectionStatus{State: "error", Detail: err.Error()}
+		return s.connection
+	}
+
+	s.connection = domain.ConnectionStatus{State: "connected", Detail: "connected"}
+	s.pendingUsername = ""
+	s.pendingPassword = ""
+	return s.connection
 }
 
 func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	s.mu.Lock()
 	s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "disconnected"}
+	s.pendingUsername = ""
+	s.pendingPassword = ""
 	s.mu.Unlock()
 	receipt := s.newReceipt("steam.disconnect")
 	s.addEvent(receipt, "completed", "steam disconnected")
@@ -264,6 +401,9 @@ func fixtureInventory() domain.InventorySnapshot {
 	return domain.InventorySnapshot{RefreshedAt: now(), Items: []domain.InventoryItem{
 		{ID: "2480000000000000000", Name: "AK-47 | Example Finish", Kind: "weapon_skin", Defindex: &defWeapon, PaintWear: &wear, Stickers: []domain.Sticker{{Slot: ptrUint32(0), StickerID: &stickerID, Wear: &stickerWear}}},
 		{ID: "3480000000000000000", Name: "Example Sticker", Kind: "sticker_item", UnsupportedFields: []string{"live_validation"}},
+		{ID: "4480000000000000000", Name: "Name Tag", Kind: "tool_item"},
+		{ID: "4680000000000000000", Name: "StatTrak Swap Tool", Kind: "tool_item"},
+		{ID: "4780000000000000000", Name: "Strange Part", Kind: "tool_item"},
 		{ID: "5480000000000000000", Name: "Storage Unit", Kind: "storage_unit", Defindex: &defStorage, StorageCount: &count, CasketID: &casketID},
 	}}
 }
@@ -279,6 +419,13 @@ func defaultSettings() domain.Settings {
 			EnableStickerExtract:   false,
 			EnableStickerRemove:    false,
 			EnableStickerApply:     false,
+			EnableNameTags:         false,
+			EnableItemDeletion:     false,
+			EnableStatTrakSwap:     false,
+			EnableStrangeParts:     false,
+			EnableItemUse:          false,
+			EnableToolApplication:  false,
+			EnableGifting:          false,
 		},
 	}
 }

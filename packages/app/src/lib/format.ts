@@ -1,9 +1,11 @@
 export function formatTimestamp(value: string): string {
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
+
+  return date.toLocaleString();
 }
 
 export function formatItemId(id: string): string {

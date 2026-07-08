@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import type { InventoryItemDto, InventorySnapshot } from "@cs-inv-edit/contracts";
-import { formatItemId } from "../lib/format";
+import { formatItemId } from "../lib/format.js";
 
 export interface InventoryViewProps {
   inventory: InventorySnapshot | undefined;
@@ -48,6 +48,7 @@ export function InventoryView(props: InventoryViewProps) {
           <option value="all">All kinds</option>
           <option value="weapon_skin">Weapon skins</option>
           <option value="sticker_item">Stickers</option>
+          <option value="tool_item">Tools</option>
           <option value="container">Containers</option>
           <option value="storage_unit">Storage units</option>
           <option value="unknown">Unknown</option>
@@ -88,34 +89,38 @@ export function InventoryView(props: InventoryViewProps) {
 
         <aside class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <Show when={selectedItem()} fallback={<p class="text-sm text-slate-500">No item selected.</p>}>
-            {(item) => (
-              <div class="space-y-4">
-                <div>
-                  <p class="text-sm font-medium text-slate-500">Selected item</p>
-                  <h3 class="mt-1 text-xl font-semibold">{item().name}</h3>
-                </div>
-                <div class="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
-                  <div class="flex items-center justify-between">
-                    <span>Item ID</span>
-                    <span class="font-mono text-slate-900">{item().id}</span>
+            {(item) => {
+              const selected = item();
+
+              return (
+                <div class="space-y-4">
+                  <div>
+                    <p class="text-sm font-medium text-slate-500">Selected item</p>
+                    <h3 class="mt-1 text-xl font-semibold">{selected.name}</h3>
                   </div>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <Show when={item().stickers && item().stickers.length > 0}>
-                      <span class="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">sticker</span>
-                    </Show>
-                    <Show when={item().storageCount !== undefined}>
-                      <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">storage</span>
-                    </Show>
-                    <Show when={item().casketId}>
-                      <span class="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">casket linkage</span>
-                    </Show>
-                    <Show when={item().kind === "unknown"}>
-                      <span class="rounded-full bg-rose-100 px-2 py-1 text-xs text-rose-700">unsupported/unknown</span>
-                    </Show>
+                  <div class="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
+                    <div class="flex items-center justify-between">
+                      <span>Item ID</span>
+                      <span class="font-mono text-slate-900">{selected.id}</span>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      <Show when={selected.stickers && selected.stickers.length > 0}>
+                        <span class="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">sticker</span>
+                      </Show>
+                      <Show when={selected.storageCount !== undefined}>
+                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">storage</span>
+                      </Show>
+                      <Show when={selected.casketId}>
+                        <span class="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">casket linkage</span>
+                      </Show>
+                      <Show when={selected.kind === "unknown"}>
+                        <span class="rounded-full bg-rose-100 px-2 py-1 text-xs text-rose-700">unsupported/unknown</span>
+                      </Show>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            }}
           </Show>
         </aside>
       </div>

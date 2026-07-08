@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import type { InventoryItemDto, InventorySnapshot, OperationReceipt } from "@cs-inv-edit/contracts";
-import { formatState, formatTimestamp } from "../lib/format";
+import { formatState, formatTimestamp } from "../lib/format.js";
 
 export interface StorageViewProps {
   inventory: InventorySnapshot | undefined;

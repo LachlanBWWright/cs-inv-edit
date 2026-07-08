@@ -1,6 +1,5 @@
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import type { FeatureFlags, SettingsData } from "@cs-inv-edit/contracts";
-import { formatState } from "../lib/format";
 
 export interface SettingsViewProps {
   settings: SettingsData | undefined;
@@ -11,6 +10,12 @@ export interface SettingsViewProps {
 export function SettingsView(props: SettingsViewProps) {
   const [draft, setDraft] = createSignal<SettingsData | undefined>(props.settings);
   const [status, setStatus] = createSignal<string>("");
+
+  createEffect(() => {
+    if (props.settings) {
+      setDraft(props.settings);
+    }
+  });
 
   const setFeature = (key: keyof FeatureFlags, value: boolean) => {
     setDraft((current) => (current ? { ...current, featureFlags: { ...current.featureFlags, [key]: value } } : current));
@@ -53,16 +58,25 @@ export function SettingsView(props: SettingsViewProps) {
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 class="text-lg font-semibold">Backend</h3>
           <div class="mt-4 space-y-3 text-sm text-slate-700">
-            <div class="flex items-center justify-between gap-3">
-              <span>Local backend URL</span>
+            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div class="flex flex-col">
+                <span class="font-medium">Local backend URL</span>
+                <span class="text-xs text-slate-500">URL to the backend server</span>
+              </div>
               <input class="rounded-md border border-slate-300 px-3 py-2" value={draft()?.backendUrl ?? ""} onInput={(event) => setDraft((current) => current ? { ...current, backendUrl: event.currentTarget.value } : current)} />
             </div>
-            <div class="flex items-center justify-between gap-3">
-              <span>Validation mode</span>
+            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div class="flex flex-col">
+                <span class="font-medium">Validation mode</span>
+                <span class="text-xs text-slate-500">Ensure operations rigidly follow game rules. Disabling this allows impossible item modifications.</span>
+              </div>
               <input type="checkbox" checked={draft()?.validationMode ?? false} onChange={(event) => setDraft((current) => current ? { ...current, validationMode: event.currentTarget.checked } : current)} />
             </div>
             <div class="flex items-center justify-between gap-3">
-              <span>Sacrificial account mode</span>
+              <div class="flex flex-col">
+                <span class="font-medium">Sacrificial account mode</span>
+                <span class="text-xs text-slate-500">WARNING: Operations will consume real items on the connected account to construct the new ones.</span>
+              </div>
               <input type="checkbox" checked={draft()?.sacrificialAccountMode ?? false} onChange={(event) => setDraft((current) => current ? { ...current, sacrificialAccountMode: event.currentTarget.checked } : current)} />
             </div>
           </div>

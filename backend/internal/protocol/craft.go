@@ -8,14 +8,21 @@ import (
 const (
 	AppIDCS2 = 730
 
+	EMsgDeleteItem                    = 1004
+	EMsgSetItemName                   = 1006
 	EMsgCraft                         = 1002
 	EMsgCraftResponse                 = 1003
+	EMsgUseItemRequest                = 1025
+	EMsgRemoveItemName                = 1030
+	EMsgApplyStrangePart              = 1073
 	EMsgSetItemPositions              = 1077
 	EMsgApplySticker                  = 1086
+	EMsgStatTrakSwap                  = 1088
 	EMsgItemCustomizationNotification = 1090
 	EMsgCasketItemAdd                 = 1092
 	EMsgCasketItemExtract             = 1093
 	EMsgCasketItemLoadContents        = 1094
+	EMsgGiftItem                      = 1034
 
 	CustomizationRemoveSticker      = 1053
 	CustomizationExtractSticker     = 1054
@@ -49,7 +56,7 @@ func DecodeCraftResponse(body []byte) (CraftResponse, error) {
 		return CraftResponse{}, fmt.Errorf("craft response is too short")
 	}
 	recipe := int16(binary.LittleEndian.Uint16(body[0:2]))
-	itemCount := int(binary.LittleEndian.Uint16(body[2:4]))
+	itemCount := int(binary.LittleEndian.Uint16(body[6:8]))
 	if len(body) != 8+itemCount*8 {
 		return CraftResponse{}, fmt.Errorf("craft response size mismatch")
 	}

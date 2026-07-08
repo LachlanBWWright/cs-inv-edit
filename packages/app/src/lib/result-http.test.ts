@@ -1,0 +1,45 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { requestJsonResult } from "./result-http";
+
+describe("requestJsonResult", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns a success result for valid JSON payloads", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ status: "ok" }),
+      }),
+    );
+
+    const result = await requestJsonResult<{ status: string }>("https://example.test", "/health").match(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toEqual({ status: "ok" });
+  });
+
+  it("returns an error result for non-ok responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+      }),
+    );
+
+    const result = await requestJsonResult("https://example.test", "/health").match(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toContain("503");
+  });
+});

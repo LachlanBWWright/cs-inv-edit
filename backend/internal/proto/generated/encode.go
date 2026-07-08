@@ -1,100 +1,322 @@
 package cs2pb
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
+	"strings"
+
+	"google.golang.org/protobuf/proto"
 )
 
+type ApplyStickerInput struct {
+	StickerItemID     uint64  `json:"stickerItemId"`
+	ItemItemID        uint64  `json:"itemItemId"`
+	StickerSlot       uint32  `json:"stickerSlot"`
+	BaseitemDefidx    uint32  `json:"baseitemDefidx"`
+	StickerWear       float32 `json:"stickerWear"`
+	StickerRotation   float32 `json:"stickerRotation"`
+	StickerScale      float32 `json:"stickerScale"`
+	StickerOffsetX    float32 `json:"stickerOffsetX"`
+	StickerOffsetY    float32 `json:"stickerOffsetY"`
+	StickerOffsetZ    float32 `json:"stickerOffsetZ"`
+	StickerWearTarget float32 `json:"stickerWearTarget"`
+}
+
+type ItemPositionInput struct {
+	LegacyItemID uint32 `json:"legacyItemId"`
+	Position     uint32 `json:"position"`
+	ItemID       uint64 `json:"itemId"`
+}
+
+type SetItemNameInput struct {
+	SubjectItemID uint64 `json:"subjectItemId"`
+	ToolItemID    uint64 `json:"toolItemId"`
+	Name          string `json:"name"`
+}
+
+type RemoveItemNameInput struct {
+	ItemID uint64 `json:"itemId"`
+}
+
+type DeleteItemInput struct {
+	ItemID uint64 `json:"itemId"`
+}
+
+type ApplyStatTrakSwapInput struct {
+	ToolItemID uint64 `json:"toolItemId"`
+	Item1ID    uint64 `json:"item1ItemId"`
+	Item2ID    uint64 `json:"item2ItemId"`
+}
+
+type ApplyStrangePartInput struct {
+	StrangePartItemID uint64 `json:"strangePartItemId"`
+	ItemItemID        uint64 `json:"itemItemId"`
+}
+
+type UseItemInput struct {
+	ItemID               uint64   `json:"itemId"`
+	TargetSteamID        *uint64  `json:"targetSteamId,omitempty"`
+	GiftPotentialTargets []uint32 `json:"giftPotentialTargets,omitempty"`
+	DuelClassLock        *uint32  `json:"duelClassLock,omitempty"`
+	InitiatorSteamID     *uint64  `json:"initiatorSteamId,omitempty"`
+}
+
+type UseMultipleItemsInput struct {
+	ItemIDs []uint64 `json:"itemIds"`
+}
+
+type ApplyToolToItemInput struct {
+	ToolItemID    uint64 `json:"toolItemId"`
+	SubjectItemID uint64 `json:"subjectItemId"`
+}
+
+type ApplyToolToBaseItemInput struct {
+	ToolItemID       uint64 `json:"toolItemId"`
+	BaseitemDefIndex uint32 `json:"baseitemDefIndex"`
+}
+
+type GiftItemInput struct {
+	ItemID            uint64 `json:"itemId"`
+	ReceiverAccountID uint32 `json:"receiverAccountId"`
+	GiftMessage       string `json:"giftMessage"`
+}
+
+type CraftItemsInput struct {
+	Recipe  int32    `json:"recipe"`
+	ItemIDs []uint64 `json:"itemIds"`
+}
+
 func EncodeCasketItem(casketID, itemID uint64) ([]byte, error) {
-	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint64(buf[0:8], casketID)
-	binary.LittleEndian.PutUint64(buf[8:16], itemID)
-	return buf, nil
+	msg := &CMsgCasketItem{
+		CasketItemId: proto.Uint64(casketID),
+		ItemItemId:   proto.Uint64(itemID),
+	}
+	return proto.Marshal(msg)
 }
 
 func EncodeLoadCasketContents(casketID uint64) ([]byte, error) {
-	return EncodeCasketItem(casketID, 0)
+	return EncodeCasketItem(casketID, casketID)
 }
 
 func EncodeExtractSticker(itemID uint64, slot uint32) ([]byte, error) {
-	msg := CMsgGCItemCustomizationNotification{ItemID: []uint64{itemID}, Request: 1054, ExtraData: []uint64{uint64(slot)}}
-	return msg.marshalBinary()
+	return encodeStickerCustomization(itemID, slot, 1054)
 }
 
 func EncodeRemoveSticker(itemID uint64, slot uint32) ([]byte, error) {
-	msg := CMsgGCItemCustomizationNotification{ItemID: []uint64{itemID}, Request: 1053, ExtraData: []uint64{uint64(slot)}}
-	return msg.marshalBinary()
+	return encodeStickerCustomization(itemID, slot, 1053)
 }
 
 func EncodeApplySticker(input ApplyStickerInput) ([]byte, error) {
-	msg := CMsgApplySticker{
-		StickerItemID:     input.StickerItemID,
-		ItemItemID:        input.ItemItemID,
-		StickerSlot:       input.StickerSlot,
-		BaseitemDefidx:    input.BaseitemDefidx,
-		StickerWear:       input.StickerWear,
-		StickerRotation:   input.StickerRotation,
-		StickerScale:      input.StickerScale,
-		StickerOffsetX:    input.StickerOffsetX,
-		StickerOffsetY:    input.StickerOffsetY,
-		StickerOffsetZ:    input.StickerOffsetZ,
-		StickerWearTarget: input.StickerWearTarget,
+	if err := requireID("sticker item id", input.StickerItemID); err != nil {
+		return nil, err
 	}
-	return msg.marshalBinary()
+	if err := requireID("item id", input.ItemItemID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgApplySticker{
+		StickerItemId:     proto.Uint64(input.StickerItemID),
+		ItemItemId:        proto.Uint64(input.ItemItemID),
+		StickerSlot:       proto.Uint32(input.StickerSlot),
+		BaseitemDefidx:    proto.Uint32(input.BaseitemDefidx),
+		StickerWear:       proto.Float32(input.StickerWear),
+		StickerRotation:   proto.Float32(input.StickerRotation),
+		StickerScale:      proto.Float32(input.StickerScale),
+		StickerOffsetX:    proto.Float32(input.StickerOffsetX),
+		StickerOffsetY:    proto.Float32(input.StickerOffsetY),
+		StickerOffsetZ:    proto.Float32(input.StickerOffsetZ),
+		StickerWearTarget: proto.Float32(input.StickerWearTarget),
+	}
+	return proto.Marshal(msg)
 }
 
-func EncodeSetItemPositions(itemPositions []ItemPosition) ([]byte, error) {
-	msg := CMsgSetItemPositions{ItemPositions: itemPositions}
-	return msg.marshalBinary()
+func EncodeSetItemName(input SetItemNameInput) ([]byte, error) {
+	if err := requireID("subject item id", input.SubjectItemID); err != nil {
+		return nil, err
+	}
+	if err := requireID("tool item id", input.ToolItemID); err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	msg := &CMsgSetItemName{
+		SubjectItemId: proto.Uint64(input.SubjectItemID),
+		ToolItemId:    proto.Uint64(input.ToolItemID),
+		Name:          proto.String(name),
+	}
+	return proto.Marshal(msg)
 }
 
-func (m CMsgApplySticker) marshalBinary() ([]byte, error) {
-	buf := make([]byte, 0, 80)
-	buf = binary.LittleEndian.AppendUint64(buf, m.StickerItemID)
-	buf = binary.LittleEndian.AppendUint64(buf, m.ItemItemID)
-	buf = binary.LittleEndian.AppendUint32(buf, m.StickerSlot)
-	buf = binary.LittleEndian.AppendUint32(buf, m.BaseitemDefidx)
-	buf = append(buf, float32ToBytes(m.StickerWear)...)
-	buf = append(buf, float32ToBytes(m.StickerRotation)...)
-	buf = append(buf, float32ToBytes(m.StickerScale)...)
-	buf = append(buf, float32ToBytes(m.StickerOffsetX)...)
-	buf = append(buf, float32ToBytes(m.StickerOffsetY)...)
-	buf = append(buf, float32ToBytes(m.StickerOffsetZ)...)
-	buf = append(buf, float32ToBytes(m.StickerWearTarget)...)
-	return buf, nil
+func EncodeRemoveItemName(input RemoveItemNameInput) ([]byte, error) {
+	if err := requireID("item id", input.ItemID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgRemoveItemName{ItemId: proto.Uint64(input.ItemID)}
+	return proto.Marshal(msg)
 }
 
-func (m CMsgGCItemCustomizationNotification) marshalBinary() ([]byte, error) {
-	if len(m.ItemID) == 0 {
-		return nil, fmt.Errorf("item ids are required")
+func EncodeDeleteItem(input DeleteItemInput) ([]byte, error) {
+	if err := requireID("item id", input.ItemID); err != nil {
+		return nil, err
 	}
-	buf := make([]byte, 0, 8+4+8*len(m.ItemID)+8*len(m.ExtraData))
-	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(m.ItemID)))
-	for _, id := range m.ItemID {
-		buf = binary.LittleEndian.AppendUint64(buf, id)
-	}
-	buf = binary.LittleEndian.AppendUint32(buf, m.Request)
-	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(m.ExtraData)))
-	for _, id := range m.ExtraData {
-		buf = binary.LittleEndian.AppendUint64(buf, id)
-	}
-	return buf, nil
+	msg := &CMsgDeleteItem{ItemId: proto.Uint64(input.ItemID)}
+	return proto.Marshal(msg)
 }
 
-func (m CMsgSetItemPositions) marshalBinary() ([]byte, error) {
-	buf := make([]byte, 0, 32)
-	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(m.ItemPositions)))
-	for _, position := range m.ItemPositions {
-		buf = binary.LittleEndian.AppendUint32(buf, position.LegacyItemID)
-		buf = binary.LittleEndian.AppendUint32(buf, position.Position)
-		buf = binary.LittleEndian.AppendUint64(buf, position.ItemID)
+func EncodeApplyStatTrakSwap(input ApplyStatTrakSwapInput) ([]byte, error) {
+	if err := requireID("tool item id", input.ToolItemID); err != nil {
+		return nil, err
 	}
-	return buf, nil
+	if err := requireID("item 1 id", input.Item1ID); err != nil {
+		return nil, err
+	}
+	if err := requireID("item 2 id", input.Item2ID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgApplyStatTrakSwap{
+		ToolItemId:   proto.Uint64(input.ToolItemID),
+		Item_1ItemId: proto.Uint64(input.Item1ID),
+		Item_2ItemId: proto.Uint64(input.Item2ID),
+	}
+	return proto.Marshal(msg)
 }
 
-func float32ToBytes(value float32) []byte {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, math.Float32bits(value))
-	return buf
+func EncodeApplyStrangePart(input ApplyStrangePartInput) ([]byte, error) {
+	if err := requireID("strange part item id", input.StrangePartItemID); err != nil {
+		return nil, err
+	}
+	if err := requireID("item id", input.ItemItemID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgApplyStrangePart{
+		StrangePartItemId: proto.Uint64(input.StrangePartItemID),
+		ItemItemId:        proto.Uint64(input.ItemItemID),
+	}
+	return proto.Marshal(msg)
+}
+
+func EncodeUseItem(input UseItemInput) ([]byte, error) {
+	if err := requireID("item id", input.ItemID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgUseItem{
+		ItemId:                proto.Uint64(input.ItemID),
+		Gift_PotentialTargets: append([]uint32(nil), input.GiftPotentialTargets...),
+	}
+	if input.TargetSteamID != nil {
+		msg.TargetSteamId = proto.Uint64(*input.TargetSteamID)
+	}
+	if input.DuelClassLock != nil {
+		msg.Duel_ClassLock = proto.Uint32(*input.DuelClassLock)
+	}
+	if input.InitiatorSteamID != nil {
+		msg.InitiatorSteamId = proto.Uint64(*input.InitiatorSteamID)
+	}
+	return proto.Marshal(msg)
+}
+
+func EncodeUseMultipleItems(input UseMultipleItemsInput) ([]byte, error) {
+	if len(input.ItemIDs) == 0 {
+		return nil, fmt.Errorf("at least one item id is required")
+	}
+	for index, itemID := range input.ItemIDs {
+		if err := requireID(fmt.Sprintf("item id at index %d", index), itemID); err != nil {
+			return nil, err
+		}
+	}
+	msg := &CMsgUseMultipleItems{ItemIds: append([]uint64(nil), input.ItemIDs...)}
+	return proto.Marshal(msg)
+}
+
+func EncodeApplyToolToItem(input ApplyToolToItemInput) ([]byte, error) {
+	if err := requireID("tool item id", input.ToolItemID); err != nil {
+		return nil, err
+	}
+	if err := requireID("subject item id", input.SubjectItemID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgApplyToolToItem{
+		ToolItemId:    proto.Uint64(input.ToolItemID),
+		SubjectItemId: proto.Uint64(input.SubjectItemID),
+	}
+	return proto.Marshal(msg)
+}
+
+func EncodeApplyToolToBaseItem(input ApplyToolToBaseItemInput) ([]byte, error) {
+	if err := requireID("tool item id", input.ToolItemID); err != nil {
+		return nil, err
+	}
+	if input.BaseitemDefIndex == 0 {
+		return nil, fmt.Errorf("base item defindex is required")
+	}
+	msg := &CMsgApplyToolToBaseItem{
+		ToolItemId:       proto.Uint64(input.ToolItemID),
+		BaseitemDefIndex: proto.Uint32(input.BaseitemDefIndex),
+	}
+	return proto.Marshal(msg)
+}
+
+func EncodeGiftItem(input GiftItemInput) ([]byte, error) {
+	if err := requireID("item id", input.ItemID); err != nil {
+		return nil, err
+	}
+	if input.ReceiverAccountID == 0 {
+		return nil, fmt.Errorf("receiver account id is required")
+	}
+	msg := &CMsgGiftItem{
+		ItemId:            proto.Uint64(input.ItemID),
+		ReceiverAccountId: proto.Uint32(input.ReceiverAccountID),
+	}
+	if text := strings.TrimSpace(input.GiftMessage); text != "" {
+		msg.GiftMessage = proto.String(text)
+	}
+	return proto.Marshal(msg)
+}
+
+func EncodeCraftItems(input CraftItemsInput) ([]byte, error) {
+	if len(input.ItemIDs) == 0 {
+		return nil, fmt.Errorf("at least one item id is required")
+	}
+	for index, itemID := range input.ItemIDs {
+		if err := requireID(fmt.Sprintf("item id at index %d", index), itemID); err != nil {
+			return nil, err
+		}
+	}
+	msg := &CMsgCraftItems{
+		Recipe:  proto.Int32(input.Recipe),
+		ItemIds: append([]uint64(nil), input.ItemIDs...),
+	}
+	return proto.Marshal(msg)
+}
+
+func EncodeSetItemPositions(itemPositions []ItemPositionInput) ([]byte, error) {
+	positions := make([]*CMsgSetItemPositions_ItemPosition, 0, len(itemPositions))
+	for _, position := range itemPositions {
+		positions = append(positions, &CMsgSetItemPositions_ItemPosition{
+			LegacyItemId: proto.Uint32(position.LegacyItemID),
+			Position:     proto.Uint32(position.Position),
+			ItemId:       proto.Uint64(position.ItemID),
+		})
+	}
+	msg := &CMsgSetItemPositions{ItemPositions: positions}
+	return proto.Marshal(msg)
+}
+
+func encodeStickerCustomization(itemID uint64, slot uint32, request uint32) ([]byte, error) {
+	if err := requireID("item id", itemID); err != nil {
+		return nil, err
+	}
+	msg := &CMsgGCItemCustomizationNotification{
+		ItemId:    []uint64{itemID},
+		Request:   proto.Uint32(request),
+		ExtraData: []uint64{uint64(slot)},
+	}
+	return proto.Marshal(msg)
+}
+
+func requireID(name string, value uint64) error {
+	if value == 0 {
+		return fmt.Errorf("%s is required", name)
+	}
+	return nil
 }

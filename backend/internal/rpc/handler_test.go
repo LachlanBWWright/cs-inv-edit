@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,6 +34,20 @@ func TestOperationsRouteRejectsMissingType(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status: %d", rr.Code)
+	}
+}
+
+func TestNameTagApplyRoute(t *testing.T) {
+	service := app.NewService()
+	handler := NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodPost, "/nametags/apply", bytes.NewBufferString(`{"itemId":"1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", rr.Code)
 	}
 }

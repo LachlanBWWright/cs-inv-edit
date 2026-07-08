@@ -1,6 +1,6 @@
-import { For, Show } from "solid-js";
+import { For } from "solid-js";
 import type { OperationEvent, OperationReceipt } from "@cs-inv-edit/contracts";
-import { formatState, formatTimestamp } from "../lib/format";
+import { formatState, formatTimestamp } from "../lib/format.js";
 
 export interface OperationsViewProps {
   receipts: OperationReceipt[] | undefined;

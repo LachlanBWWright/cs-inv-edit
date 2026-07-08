@@ -18,6 +18,64 @@ message CMsgApplySticker {
   optional float sticker_wear_target = 11;
 }
 
+message CMsgSetItemName {
+  optional uint64 subject_item_id = 1;
+  optional uint64 tool_item_id = 2;
+  optional string name = 3;
+}
+
+message CMsgRemoveItemName {
+  optional uint64 item_id = 1;
+}
+
+message CMsgDeleteItem {
+  optional uint64 item_id = 1;
+}
+
+message CMsgApplyStatTrakSwap {
+  optional uint64 tool_item_id = 1;
+  optional uint64 item_1_item_id = 2;
+  optional uint64 item_2_item_id = 3;
+}
+
+message CMsgApplyStrangePart {
+  optional uint64 strange_part_item_id = 1;
+  optional uint64 item_item_id = 2;
+}
+
+message CMsgUseItem {
+  optional uint64 item_id = 1;
+  optional fixed64 target_steam_id = 2;
+  repeated uint32 gift__potential_targets = 3;
+  optional uint32 duel__class_lock = 4;
+  optional fixed64 initiator_steam_id = 5;
+}
+
+message CMsgUseMultipleItems {
+  repeated uint64 item_ids = 1;
+}
+
+message CMsgApplyToolToItem {
+  optional uint64 tool_item_id = 1;
+  optional uint64 subject_item_id = 2;
+}
+
+message CMsgApplyToolToBaseItem {
+  optional uint64 tool_item_id = 1;
+  optional uint32 baseitem_def_index = 2;
+}
+
+message CMsgGiftItem {
+  optional uint64 item_id = 1;
+  optional uint32 receiver_account_id = 2;
+  optional string gift_message = 3;
+}
+
+message CMsgCraftItems {
+  optional int32 recipe = 1;
+  repeated uint64 item_ids = 2;
+}
+
 message CMsgGCItemCustomizationNotification {
   repeated uint64 item_id = 1;
   optional uint32 request = 2;

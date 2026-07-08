@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5174",
+    "dev": "cd ../.. && ./scripts/run.sh",
+    "start-vite": "vite --host 127.0.0.1 --port 5174",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4174"
   },

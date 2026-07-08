@@ -3,6 +3,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import type { ResultAsync } from "neverthrow";
+import { postJsonResult, requestJsonResult, type AppError } from "@cs-inv-edit/app";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendURL = "http://127.0.0.1:7331";
@@ -16,7 +18,8 @@ function startBackend() {
   if (backend) return;
   const binaryPath = backendPath();
   if (!existsSync(binaryPath)) {
-    throw new Error(`Missing backend binary at ${binaryPath}`);
+    console.error(`Missing backend binary at ${binaryPath}`);
+    return;
   }
 
   backend = spawn(binaryPath, [], {
@@ -32,17 +35,18 @@ function startBackend() {
   });
 }
 
-async function waitForBackend(attempts = 30): Promise<void> {
+async function waitForBackend(attempts = 30): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(`${backendURL}/health`);
-      if (response.ok) return;
+      if (response.ok) return true;
     } catch {
       // keep polling
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error("Backend did not become ready in time");
+
+  return false;
 }
 
 async function createWindow() {
@@ -64,10 +68,22 @@ async function createWindow() {
   }
 }
 
-async function requestJson(pathName: string, init?: RequestInit) {
-  const response = await fetch(`${backendURL}${pathName}`, init);
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
+function toPromise<T>(result: ResultAsync<T, AppError>, fallback: T): Promise<T> {
+  return result.match(
+    (value) => value,
+    (error) => {
+      console.error(error.message, error.cause);
+      return fallback;
+    },
+  );
+}
+
+async function requestJson<T>(pathName: string, init?: RequestInit): Promise<T> {
+  return toPromise(requestJsonResult<T>(backendURL, pathName, init), undefined as T);
+}
+
+function postJson<T>(pathName: string, input?: unknown): Promise<T> {
+  return toPromise(postJsonResult<T>(backendURL, pathName, input), undefined as T);
 }
 
 ipcMain.handle("backend:health", async () => requestJson("/health"));
@@ -77,13 +93,29 @@ ipcMain.handle("backend:submitOperation", async (_event, type: string, input?: u
 ipcMain.handle("backend:operations", async () => requestJson("/operations"));
 ipcMain.handle("backend:events", async () => requestJson("/events"));
 ipcMain.handle("backend:settings", async () => requestJson("/settings"));
-ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) => requestJson("/steam/connect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
-ipcMain.handle("backend:submitSteamGuard", async (_event, input?: unknown) => requestJson("/steam/guard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
+ipcMain.handle("backend:steamStatus", async () => requestJson("/steam/status"));
+ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) => postJson("/steam/connect", input));
+ipcMain.handle("backend:submitSteamGuard", async (_event, input?: unknown) => postJson("/steam/guard", input));
 ipcMain.handle("backend:disconnectSteam", async () => requestJson("/steam/disconnect", { method: "POST" }));
+ipcMain.handle("backend:applyNameTag", async (_event, input?: unknown) => postJson("/nametags/apply", input));
+ipcMain.handle("backend:removeNameTag", async (_event, input?: unknown) => postJson("/nametags/remove", input));
+ipcMain.handle("backend:deleteItem", async (_event, input?: unknown) => postJson("/items/delete", input));
+ipcMain.handle("backend:applyStatTrakSwap", async (_event, input?: unknown) => postJson("/stattrak/swap", input));
+ipcMain.handle("backend:applyStrangePart", async (_event, input?: unknown) => postJson("/strange-parts/apply", input));
+ipcMain.handle("backend:useItem", async (_event, input?: unknown) => postJson("/items/use", input));
+ipcMain.handle("backend:useMultipleItems", async (_event, input?: unknown) => postJson("/items/use-multiple", input));
+ipcMain.handle("backend:applyToolToItem", async (_event, input?: unknown) => postJson("/tools/apply", input));
+ipcMain.handle("backend:applyToolToBaseItem", async (_event, input?: unknown) => postJson("/tools/apply-base", input));
+ipcMain.handle("backend:giftItem", async (_event, input?: unknown) => postJson("/gifts/send", input));
 
 app.whenReady().then(async () => {
   startBackend();
-  await waitForBackend();
+  const ready = await waitForBackend();
+  if (!ready) {
+    console.error("Backend did not become ready in time");
+    return;
+  }
+
   await createWindow();
 });
 

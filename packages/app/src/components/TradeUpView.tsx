@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
-import type { InventoryItemDto, InventorySnapshot, OperationReceipt } from "@cs-inv-edit/contracts";
-import { formatState } from "../lib/format";
+import type { InventorySnapshot, OperationReceipt } from "@cs-inv-edit/contracts";
+import { formatState } from "../lib/format.js";
 
 export interface TradeUpViewProps {
   inventory: InventorySnapshot | undefined;
@@ -9,6 +9,7 @@ export interface TradeUpViewProps {
 
 export function TradeUpView(props: TradeUpViewProps) {
   const [selected, setSelected] = createSignal<string[]>([]);
+  const [recipe, setRecipe] = createSignal<number>(0);
   const [status, setStatus] = createSignal<string>("");
 
   const toggleSelection = (itemId: string) => {
@@ -19,12 +20,17 @@ export function TradeUpView(props: TradeUpViewProps) {
   };
 
   const runPreview = async () => {
-    setStatus("Preview placeholder: recipe validation pending backend confirmation.");
+    try {
+      const receipt = await props.onSubmit("tradeups.preview", { recipe: recipe(), itemIds: selected() });
+      setStatus(`Preview receipt: ${receipt.operationId} (${formatState(receipt.state)})`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Preview failed");
+    }
   };
 
   const runExecute = async () => {
     try {
-      const receipt = await props.onSubmit("tradeups.execute", { itemIds: selected() });
+      const receipt = await props.onSubmit("tradeups.execute", { recipe: recipe(), itemIds: selected() });
       setStatus(`Execution receipt: ${receipt.operationId} (${formatState(receipt.state)})`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Execution failed");
@@ -39,7 +45,14 @@ export function TradeUpView(props: TradeUpViewProps) {
       </header>
 
       <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <input
+            class="w-40 rounded-md border border-slate-300 px-3 py-2 text-sm"
+            type="number"
+            min="0"
+            value={recipe()}
+            onInput={(event) => setRecipe(Number(event.currentTarget.value) || 0)}
+          />
           <button class="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => runPreview()}>Preview</button>
           <button class="rounded-md border border-cyan-700 bg-cyan-700 px-3 py-2 text-sm text-white" disabled={selected().length !== 10} onClick={() => runExecute()}>
             Execute trade-up
