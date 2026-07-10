@@ -1,16 +1,12 @@
-import { createResource, createSignal, createEffect, Show } from "solid-js";
-import type { ApplyStatTrakSwapRequest, ApplyStrangePartRequest, ApplyToolToBaseItemRequest, ApplyToolToItemRequest, DeleteItemRequest, GiftItemRequest, OperationReceipt, RemoveItemNameRequest, SetItemNameRequest, SettingsData, UseItemRequest, UseMultipleItemsRequest } from "@cs-inv-edit/contracts";
+import { createEffect, createResource, createSignal, Show } from "solid-js";
+import type { ConnectionStatus, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 import { AccountView } from "./components/AccountView.js";
 import { InventoryView } from "./components/InventoryView.js";
-import { ItemManagementView } from "./components/ItemManagementView.js";
-import { NameTagsView } from "./components/NameTagsView.js";
 import { OperationsView } from "./components/OperationsView.js";
 import { SettingsView } from "./components/SettingsView.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { StickersView } from "./components/StickersView.js";
-import { StorageView } from "./components/StorageView.js";
-import { TradeUpView } from "./components/TradeUpView.js";
-import { ToolsView } from "./components/ToolsView.js";
+import { Alert } from "./components/ui/Alert.js";
+import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
 import { createOperationApi } from "./lib/api.js";
 export type { AppBackendClient } from "./lib/backend.js";
 export * from "./lib/result-http.js";
@@ -26,6 +22,7 @@ export function App(props: AppProps) {
   const [view, setView] = createSignal("inventory");
   const [selectedItemId, setSelectedItemId] = createSignal<string | undefined>();
   const [statusMessage, setStatusMessage] = createSignal<string>("");
+  const [toasts, setToasts] = createSignal<ToastItem[]>([]);
 
   const [health] = createResource(() => props.backend.health());
   const [inventory, { refetch: refetchInventory }] = createResource(() => props.backend.inventory());
@@ -34,119 +31,236 @@ export function App(props: AppProps) {
   const [settings, { refetch: refetchSettings }] = createResource(() => props.backend.settings());
   const [connection, { refetch: refetchConnection }] = createResource(() => props.backend.steamStatus?.() ?? Promise.resolve({ state: "disconnected" as const }));
 
+  const pushToast = (toast: Omit<ToastItem, "id">) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, ...toast }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== id));
+    }, 4000);
+  };
+
+  const logSteamDiagnostics = (label: string, status?: ConnectionStatus) => {
+    if (!status?.diagnostics?.length) return;
+    console.groupCollapsed(`[steam] ${label} diagnostics`);
+    for (const line of status.diagnostics) {
+      console.info(line);
+    }
+    console.groupEnd();
+  };
+
+  createEffect(() => {
+    logSteamDiagnostics("status", connection());
+  });
+
+  const dismissToast = (id: string) => {
+    setToasts((current) => current.filter((item) => item.id !== id));
+  };
+
   createEffect(() => {
     if (connection() && connection()?.state !== "connected" && view() !== "settings") {
       setView("account");
     }
   });
 
-  const settleOperation = async (receiptPromise: Promise<OperationReceipt>) => {
-    const receipt = await receiptPromise;
-    if (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation") {
-      await props.backend.refreshInventory();
-      await refetchInventory();
+  createEffect(() => {
+    const currentSettings = settings();
+    if (!currentSettings || currentSettings.featureFlags.enableNameTags) {
+      return;
     }
-    await Promise.all([refetchOperations(), refetchEvents()]);
-    return receipt;
+    console.info("[app] enabling name-tag workflow by default");
+    void props.backend.submitOperation("settings", {
+      ...currentSettings,
+      featureFlags: { ...currentSettings.featureFlags, enableNameTags: true },
+    }).then(() => refetchSettings()).catch((error) => {
+      console.error("[app] failed to enable name-tag workflow", error);
+      pushToast({ title: "Defaults updated", description: "Name-tag editing could not be enabled automatically.", variant: "warning" });
+    });
+  });
+
+  const notifyOperationReceipt = (receipt: OperationReceipt) => {
+    const base = receipt.message ?? receipt.type;
+    if (receipt.state === "completed") {
+      pushToast({ title: "Operation completed", description: base, variant: "success" });
+    } else if (receipt.state === "awaiting_gc_confirmation") {
+      pushToast({ title: "Awaiting confirmation", description: base, variant: "warning" });
+    } else if (receipt.state === "failed") {
+      pushToast({ title: "Operation failed", description: base, variant: "danger" });
+    } else if (receipt.state === "blocked_by_feature_flag" || receipt.state === "requires_validation") {
+      pushToast({ title: "Operation blocked", description: base, variant: "warning" });
+    } else {
+      pushToast({ title: "Operation updated", description: base });
+    }
+  };
+
+  const settleOperation = async (receiptPromise: Promise<OperationReceipt>) => {
+    try {
+      const receipt = await receiptPromise;
+      console.info("[app] operation receipt", receipt);
+      notifyOperationReceipt(receipt);
+      if (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation") {
+        await props.backend.refreshInventory();
+        await refetchInventory();
+      }
+      await Promise.all([refetchOperations(), refetchEvents()]);
+      return receipt;
+    } catch (error) {
+      console.error("[app] operation failed", error);
+      pushToast({ title: "Operation error", description: error instanceof Error ? error.message : "Unknown operation error", variant: "danger" });
+      throw error;
+    }
   };
 
   const refreshAll = async () => {
     setStatusMessage("Refreshing backend state");
+    console.info("[app] refreshing backend state");
     try {
-      await Promise.all([refetchInventory(), refetchOperations(), refetchEvents(), refetchSettings()]);
+      await Promise.all([refetchInventory(), refetchOperations(), refetchEvents(), refetchSettings(), refetchConnection()]);
+      pushToast({ title: "Inventory refreshed", description: "The latest backend state is now loaded.", variant: "success" });
+    } catch (error) {
+      console.error("[app] refresh failed", error);
+      pushToast({ title: "Refresh failed", description: error instanceof Error ? error.message : "Unable to refresh state", variant: "danger" });
+      throw error;
     } finally {
       setStatusMessage("");
     }
   };
 
-  const submitOperation = async (type: string, input?: unknown) => {
-    setStatusMessage(`Submitting ${type}`);
-    return settleOperation(props.backend.submitOperation(type, input));
+  const syncAccountState = async (latestStatus?: ConnectionStatus) => {
+    console.info("[app] syncing account state");
+    const refreshedStatus = await refetchConnection();
+    const status = latestStatus ?? refreshedStatus;
+    if (status?.state === "connected") {
+      setView("inventory");
+      console.info("[app] connection ready, refreshing inventory");
+      let inventoryRefreshFailed = false;
+      try {
+        const refreshPromise = props.backend.refreshInventory();
+        await new Promise((resolve) => window.setTimeout(resolve, 25));
+        await refetchInventory();
+        await refreshPromise;
+        await refetchInventory();
+      } catch (error) {
+        inventoryRefreshFailed = true;
+        console.error("[app] inventory refresh after sign-in failed", error);
+        pushToast({ title: "Inventory refresh failed", description: error instanceof Error ? error.message : "Unable to refresh inventory after sign-in", variant: "danger" });
+      }
+      pushToast({ title: "Account connected", description: inventoryRefreshFailed ? "Signed in successfully. Inventory still needs attention." : "Inventory is ready to inspect and edit.", variant: "success" });
+      return;
+    }
+    setView("account");
   };
 
   const operationApi = createOperationApi(props.backend);
 
   const saveSettings = async (next: SettingsData) => {
+    console.info("[app] saving settings", next);
     await props.backend.submitOperation("settings", next);
     await refetchSettings();
+    pushToast({ title: "Settings updated", description: "The latest backend settings are saved.", variant: "success" });
+  };
+
+  const handleSwitchAccount = async () => {
+    setSelectedItemId(undefined);
+    console.info("[app] switching account");
+    if (props.backend.disconnectSteam) {
+      await props.backend.disconnectSteam();
+    }
+    await refetchConnection();
+    setView("account");
+    pushToast({ title: "Account disconnected", description: "You can sign in with a different Steam account.", variant: "warning" });
   };
 
   return (
-    <main class="min-h-screen bg-slate-100 text-slate-950 lg:grid lg:grid-cols-[260px_1fr]">
-      <Sidebar view={view()} setView={setView} platform={props.platform} health={health()} />
+    <main class="min-h-screen bg-app text-slate-50 lg:grid lg:grid-cols-[280px_1fr]">
+      <Sidebar view={view()} setView={setView} platform={props.platform} health={health()} connection={connection()} inventory={inventory()} onSwitchAccount={() => void handleSwitchAccount()} onRefreshInventory={() => void refreshAll()} />
 
       <section class="p-5 sm:p-7">
         <Show when={statusMessage()}>
-          <div class="mb-5 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">{statusMessage()}</div>
+          <Alert class="mb-5">{statusMessage()}</Alert>
         </Show>
 
         <Show when={view() === "account"}>
           <AccountView
             connection={connection()}
             onConnect={async (input) => {
-              if (props.backend.connectSteam) {
-                const res = await props.backend.connectSteam(input);
-                if (res.state === "error") throw new Error(res.detail || "Connection failed");
+              try {
+                if (props.backend.connectSteam) {
+                  console.info("[app] connecting Steam account", input);
+                  const res = await props.backend.connectSteam(input);
+                  console.info("[app] connect result", res);
+                  logSteamDiagnostics("connect", res);
+                  if (res.state === "error") throw new Error(res.detail || "Connection failed");
+                  if (res.state === "connected") {
+                    setView("inventory");
+                  }
+                  await syncAccountState(res);
+                } else {
+                  await syncAccountState();
+                }
+              } catch (error) {
+                console.error("[app] connect failed", error);
+                pushToast({ title: "Sign-in failed", description: error instanceof Error ? error.message : "Unable to sign in to Steam", variant: "danger" });
+                throw error;
               }
-              await refetchConnection();
-              if (connection()?.state === "connected") setView("inventory");
             }}
             onSubmitSteamGuard={async (input) => {
-              if (props.backend.submitSteamGuard) {
-                const res = await props.backend.submitSteamGuard(input);
-                if (res.state === "error") throw new Error(res.detail || "Steam Guard failed");
+              try {
+                if (props.backend.submitSteamGuard) {
+                  console.info("[app] submitting Steam Guard code");
+                  const res = await props.backend.submitSteamGuard(input);
+                  console.info("[app] Steam Guard result", res);
+                  logSteamDiagnostics("steam guard", res);
+                  if (res.state === "error") throw new Error(res.detail || "Steam Guard failed");
+                  if (res.state === "connected") {
+                    setView("inventory");
+                  }
+                  await syncAccountState(res);
+                } else {
+                  await syncAccountState();
+                }
+              } catch (error) {
+                console.error("[app] steam guard failed", error);
+                pushToast({ title: "Steam Guard failed", description: error instanceof Error ? error.message : "Unable to verify the code", variant: "danger" });
+                throw error;
               }
-              await refetchConnection();
-              if (connection()?.state === "connected") setView("inventory");
             }}
             onDisconnect={async () => {
-              if (props.backend.disconnectSteam) await props.backend.disconnectSteam();
-              await refetchConnection();
+              try {
+                console.info("[app] disconnecting Steam account");
+                if (props.backend.disconnectSteam) await props.backend.disconnectSteam();
+                await refetchConnection();
+                setView("account");
+                pushToast({ title: "Account disconnected", description: "The session has been cleared.", variant: "warning" });
+              } catch (error) {
+                console.error("[app] disconnect failed", error);
+                pushToast({ title: "Disconnect failed", description: error instanceof Error ? error.message : "Unable to disconnect", variant: "danger" });
+                throw error;
+              }
             }}
+            onToast={pushToast}
           />
         </Show>
         <Show when={view() === "inventory"}>
-          <InventoryView inventory={inventory()} selectedItemId={selectedItemId()} setSelectedItemId={setSelectedItemId} onRefresh={() => void refreshAll()} onQueueOperation={() => void submitOperation("storage.move-in")} />
-        </Show>
-        <Show when={view() === "storage"}>
-          <StorageView inventory={inventory()} onSubmit={submitOperation} onRefresh={() => void refreshAll()} />
-        </Show>
-        <Show when={view() === "trade-ups"}>
-          <TradeUpView inventory={inventory()} onSubmit={submitOperation} />
-        </Show>
-        <Show when={view() === "stickers"}>
-          <StickersView inventory={inventory()} onSubmit={submitOperation} />
-        </Show>
-        <Show when={view() === "name-tags"}>
-          <NameTagsView
+          <InventoryView
             inventory={inventory()}
-            onApply={(input: SetItemNameRequest) => settleOperation(operationApi.applyNameTag(input))}
-            onRemove={(input: RemoveItemNameRequest) => settleOperation(operationApi.removeNameTag(input))}
-          />
-        </Show>
-        <Show when={view() === "tools"}>
-          <ToolsView
-            onApplyStatTrakSwap={(input: ApplyStatTrakSwapRequest) => settleOperation(operationApi.applyStatTrakSwap(input))}
-            onApplyStrangePart={(input: ApplyStrangePartRequest) => settleOperation(operationApi.applyStrangePart(input))}
-            onApplyToolToItem={(input: ApplyToolToItemRequest) => settleOperation(operationApi.applyToolToItem(input))}
-            onApplyToolToBaseItem={(input: ApplyToolToBaseItemRequest) => settleOperation(operationApi.applyToolToBaseItem(input))}
-          />
-        </Show>
-        <Show when={view() === "item-management"}>
-          <ItemManagementView
-            onDeleteItem={(input: DeleteItemRequest) => settleOperation(operationApi.deleteItem(input))}
-            onUseItem={(input: UseItemRequest) => settleOperation(operationApi.useItem(input))}
-            onUseMultipleItems={(input: UseMultipleItemsRequest) => settleOperation(operationApi.useMultipleItems(input))}
-            onGiftItem={(input: GiftItemRequest) => settleOperation(operationApi.giftItem(input))}
+            selectedItemId={selectedItemId()}
+            setSelectedItemId={setSelectedItemId}
+            connection={connection()}
+            onRefresh={() => void refreshAll()}
+            onRename={(input: { subjectItemId: string; toolItemId: string; name: string }) => settleOperation(operationApi.applyNameTag(input))}
+            onRemoveName={(input: { itemId: string }) => settleOperation(operationApi.removeNameTag(input))}
+            onToast={pushToast}
           />
         </Show>
         <Show when={view() === "operations"}>
           <OperationsView receipts={receipts()} events={events()} />
         </Show>
         <Show when={view() === "settings"}>
-          <SettingsView settings={settings()} onRefresh={() => void refreshAll()} onSave={saveSettings} />
+          <SettingsView settings={settings()} onRefresh={() => void refreshAll()} onSave={saveSettings} onToast={pushToast} />
         </Show>
       </section>
+
+      <ToastViewport toasts={toasts()} onDismiss={dismissToast} />
     </main>
   );
 }

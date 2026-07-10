@@ -23,6 +23,7 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/inventory/refresh", h.inventoryRefresh)
 	h.mux.HandleFunc("/operations", h.operations)
 	h.mux.HandleFunc("/operations/", h.operationRoot)
+	h.mux.HandleFunc("/operations/{type}", h.operation)
 	h.mux.HandleFunc("/events", h.events)
 	h.mux.HandleFunc("/settings", h.settings)
 	h.mux.HandleFunc("/steam/status", h.steamStatus)

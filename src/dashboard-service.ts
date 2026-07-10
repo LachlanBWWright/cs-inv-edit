@@ -1,5 +1,4 @@
-import { err, ok, Result, ResultAsync } from 'neverthrow'
-import { dashboardFixture } from './mock-data'
+import { err, ok, Result } from 'neverthrow'
 import type {
   DashboardData,
   DashboardError,
@@ -19,14 +18,19 @@ const createInvalidSelectionError = (message: string): DashboardError => ({
   message,
 })
 
-export const loadDashboardData = (): ResultAsync<DashboardData, DashboardError> =>
-  ResultAsync.fromPromise(
-    wait(120).then(() => dashboardFixture),
-    () => ({
+export type ResultTuple<T, E> = readonly [T, null] | readonly [null, E]
+
+export const loadDashboardData = async (): Promise<ResultTuple<DashboardData, DashboardError>> => {
+  await wait(120)
+
+  return [
+    null,
+    {
       code: 'DATA_UNAVAILABLE',
-      message: 'The placeholder dashboard data could not be prepared.',
-    }),
-  )
+      message: 'No backend inventory snapshot is available from this dashboard shell.',
+    },
+  ]
+}
 
 export const buildStickerPlan = (item: InventoryItem, preset: string): Result<StickerPlan, DashboardError> => {
   if (item.inStorage) {

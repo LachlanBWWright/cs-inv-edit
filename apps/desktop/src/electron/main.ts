@@ -68,22 +68,22 @@ async function createWindow() {
   }
 }
 
-function toPromise<T>(result: ResultAsync<T, AppError>, fallback: T): Promise<T> {
+function toPromise<T>(result: ResultAsync<T, AppError>): Promise<T> {
   return result.match(
     (value) => value,
     (error) => {
       console.error(error.message, error.cause);
-      return fallback;
+      throw error;
     },
   );
 }
 
 async function requestJson<T>(pathName: string, init?: RequestInit): Promise<T> {
-  return toPromise(requestJsonResult<T>(backendURL, pathName, init), undefined as T);
+  return toPromise(requestJsonResult<T>(backendURL, pathName, init));
 }
 
 function postJson<T>(pathName: string, input?: unknown): Promise<T> {
-  return toPromise(postJsonResult<T>(backendURL, pathName, input), undefined as T);
+  return toPromise(postJsonResult<T>(backendURL, pathName, input));
 }
 
 ipcMain.handle("backend:health", async () => requestJson("/health"));

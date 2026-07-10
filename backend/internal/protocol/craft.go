@@ -28,6 +28,15 @@ const (
 	CustomizationExtractSticker     = 1054
 	CustomizationEncapsulateSticker = 1055
 	CustomizationApplySticker       = 1086
+
+	EMsgGCClientWelcome          = 4004
+	EMsgGCClientHello            = 4006
+	EMsgGCClientHelloR2          = 4013
+	EMsgGCClientHelloR3          = 4014
+	EMsgGCClientHelloR4          = 4015
+	EMsgGCClientConnectionStatus = 4009
+
+	EMsgGCCStrike15V2ClientLogonFatalError = 9187
 )
 
 type CraftResponse struct {

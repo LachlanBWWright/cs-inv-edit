@@ -31,6 +31,7 @@ describe("requestJsonResult", () => {
         ok: false,
         status: 503,
         statusText: "Service Unavailable",
+        text: vi.fn().mockResolvedValue("Steam unavailable"),
       }),
     );
 
@@ -41,5 +42,26 @@ describe("requestJsonResult", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error.message).toContain("503");
+    expect(result.error.message).toContain("Steam unavailable");
+  });
+
+  it("includes JSON error bodies for non-ok responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: vi.fn().mockResolvedValue(JSON.stringify({ error: "Steam Guard failed" })),
+      }),
+    );
+
+    const result = await requestJsonResult("https://example.test", "/steam/guard").match(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error.message).toContain("Steam Guard failed");
   });
 });

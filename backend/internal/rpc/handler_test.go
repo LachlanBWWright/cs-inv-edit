@@ -38,6 +38,20 @@ func TestOperationsRouteRejectsMissingType(t *testing.T) {
 	}
 }
 
+func TestOperationRouteDispatchesSettings(t *testing.T) {
+	service := app.NewService()
+	handler := NewHandler(service)
+
+	req := httptest.NewRequest(http.MethodPost, "/operations/settings", bytes.NewBufferString(`{"validationMode":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%q", rr.Code, rr.Body.String())
+	}
+}
+
 func TestNameTagApplyRoute(t *testing.T) {
 	service := app.NewService()
 	handler := NewHandler(service)

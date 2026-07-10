@@ -1,13 +1,17 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
+	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
+	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 )
 
 type HealthStatus struct {
@@ -18,12 +22,13 @@ type HealthStatus struct {
 }
 
 type Service struct {
-	mu            sync.Mutex
-	events        []operations.Event
-	operations    []operations.Receipt
-	inventory     domain.InventorySnapshot
-	settings      domain.Settings
+	mu              sync.Mutex
+	events          []operations.Event
+	operations      []operations.Receipt
+	inventory       domain.InventorySnapshot
+	settings        domain.Settings
 	connection      domain.ConnectionStatus
+	gcClient        transport.GCClient
 	lastOperation   operations.Receipt
 	pendingUsername string
 	pendingPassword string
@@ -31,9 +36,10 @@ type Service struct {
 
 func NewService() *Service {
 	service := &Service{
-		inventory:  fixtureInventory(),
+		inventory:  emptyInventory(),
 		settings:   defaultSettings(),
-		connection: domain.ConnectionStatus{State: "disconnected"},
+		connection: domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
+		gcClient:   transport.NewSteamGCClient(),
 	}
 	service.events = []operations.Event{{
 		OperationID: "system",
@@ -63,9 +69,40 @@ func (s *Service) Inventory() domain.InventorySnapshot {
 func (s *Service) RefreshInventory() operations.Receipt {
 	receipt := s.newReceipt("inventory.refresh")
 	s.mu.Lock()
+	if s.connection.State != "connected" {
+		s.inventory.Status = "requires_connection"
+		s.inventory.RefreshedAt = now()
+		receipt.State = "requires_connection"
+		receipt.Message = "connect a Steam account to load inventory"
+		s.operations = append(s.operations, receipt)
+		s.events = append(s.events, operations.NewEvent(receipt, receipt.State, receipt.Message))
+		s.lastOperation = receipt
+		s.mu.Unlock()
+		return receipt
+	}
+	s.inventory.Status = "loading"
+	s.inventory.Message = "loading CS2 inventory from Steam Game Coordinator"
+	s.inventory.Error = ""
+	s.inventory.Diagnostics = nil
 	s.inventory.RefreshedAt = now()
 	s.mu.Unlock()
-	s.addEvent(receipt, "completed", "inventory refreshed")
+
+	snapshot, err := s.fetchInventory()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
+		s.inventory = inventoryError(err.Error(), transport.DiagnosticsFromError(err))
+		receipt.State = "failed"
+		receipt.Message = err.Error()
+	} else {
+		s.inventory = snapshot
+		receipt.State = "completed"
+		receipt.Message = "inventory refreshed"
+	}
+	s.operations = append(s.operations, receipt)
+	s.events = append(s.events, operations.NewEvent(receipt, receipt.State, receipt.Message))
+	s.lastOperation = receipt
 	return receipt
 }
 
@@ -189,9 +226,24 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		if !s.settings.FeatureFlags.EnableNameTags {
 			state = "blocked_by_feature_flag"
 			message = "name tag operations disabled"
-		} else if s.settings.ValidationMode {
-			state = "requires_validation"
-			message = "name tag workflow requires live validation"
+		} else if s.connection.State != "connected" {
+			state = "awaiting_gc_confirmation"
+			message = "awaiting GC confirmation"
+		} else {
+			var ok bool
+			var detail string
+			if opType == "nametags.apply" {
+				ok, detail = s.applyNameTag(input)
+			} else {
+				ok, detail = s.removeNameTag(input)
+			}
+			if ok {
+				state = "completed"
+				message = detail
+			} else {
+				state = "failed"
+				message = detail
+			}
 		}
 	} else if opType == "items.delete" {
 		recognizedMutation = true
@@ -254,6 +306,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	}
 	receipt.State = state
 	receipt.Message = message
+	fmt.Printf("[backend] operation=%s state=%s message=%s\n", opType, state, message)
 	s.operations = append(s.operations, receipt)
 	s.events = append(s.events, operations.NewEvent(receipt, state, message))
 	s.lastOperation = receipt
@@ -300,61 +353,74 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 		return domain.ConnectionStatus{State: "error", Detail: "Username and password required"}
 	}
 
-	steamClient := transport.NewSteamClient()
-	state, err := steamClient.ValidateCredentials(username, password, "")
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err != nil {
-		if state == "awaiting_guard" {
-			s.connection = domain.ConnectionStatus{State: "awaiting_guard", Detail: err.Error()}
-			s.pendingUsername = username
-			s.pendingPassword = password
-			return s.connection
-		}
-		s.connection = domain.ConnectionStatus{State: "error", Detail: err.Error()}
+	if err := s.gcClient.Connect(context.Background()); err != nil {
+		s.connection = domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam CM connect", err), AccountName: username, Diagnostics: transport.DiagnosticsFromError(err)}
 		return s.connection
 	}
-
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "connected"}
+	result, err := s.gcClient.LogOn(context.Background(), transport.LogonCredentials{Username: username, Password: password})
+	if err != nil {
+		if steamGuardRequired(result.EResult) {
+			s.pendingUsername = username
+			s.pendingPassword = password
+			s.connection = domain.ConnectionStatus{State: "needs_steam_guard", Detail: err.Error(), AccountName: username, Diagnostics: transport.DiagnosticsFromError(err)}
+			return s.connection
+		}
+		s.connection = domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam CM logon", err), AccountName: username, Diagnostics: transport.DiagnosticsFromError(err)}
+		return s.connection
+	}
+	if err := s.gcClient.SendGamesPlayed(context.Background(), protocol.AppIDCS2); err != nil {
+		s.connection = domain.ConnectionStatus{State: "error", Detail: "CS2 launch presence failed: " + err.Error(), AccountName: username}
+		return s.connection
+	}
 	s.pendingUsername = ""
 	s.pendingPassword = ""
+	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
 	return s.connection
 }
 
 func (s *Service) SubmitSteamGuard(input map[string]any) domain.ConnectionStatus {
 	code, _ := input["code"].(string)
-
-	s.mu.Lock()
-	username := s.pendingUsername
-	password := s.pendingPassword
-	s.mu.Unlock()
-
-	if username == "" || password == "" {
-		return domain.ConnectionStatus{State: "error", Detail: "No pending login session"}
-	}
-
-	steamClient := transport.NewSteamClient()
-	_, err := steamClient.ValidateCredentials(username, password, code)
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err != nil {
-		s.connection = domain.ConnectionStatus{State: "error", Detail: err.Error()}
+	if s.pendingUsername == "" || s.pendingPassword == "" {
+		s.connection = domain.ConnectionStatus{State: "error", Detail: "No Steam Guard challenge is pending"}
 		return s.connection
 	}
-
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "connected"}
+	if code == "" {
+		s.connection = domain.ConnectionStatus{State: "needs_steam_guard", Detail: "Steam Guard code required", AccountName: s.pendingUsername}
+		return s.connection
+	}
+	result, err := s.gcClient.LogOn(context.Background(), transport.LogonCredentials{
+		Username:      s.pendingUsername,
+		Password:      s.pendingPassword,
+		AuthCode:      code,
+		TwoFactorCode: code,
+	})
+	if err != nil {
+		if steamGuardRequired(result.EResult) {
+			s.connection = domain.ConnectionStatus{State: "needs_steam_guard", Detail: err.Error(), AccountName: s.pendingUsername, Diagnostics: transport.DiagnosticsFromError(err)}
+			return s.connection
+		}
+		s.connection = domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam CM Steam Guard logon", err), AccountName: s.pendingUsername, Diagnostics: transport.DiagnosticsFromError(err)}
+		return s.connection
+	}
+	if err := s.gcClient.SendGamesPlayed(context.Background(), protocol.AppIDCS2); err != nil {
+		s.connection = domain.ConnectionStatus{State: "error", Detail: "CS2 launch presence failed: " + err.Error(), AccountName: s.pendingUsername}
+		return s.connection
+	}
+	accountName := s.pendingUsername
 	s.pendingUsername = ""
 	s.pendingPassword = ""
+	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: accountName}
 	return s.connection
 }
 
 func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	s.mu.Lock()
 	s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "disconnected"}
+	s.inventory = emptyInventory()
 	s.pendingUsername = ""
 	s.pendingPassword = ""
 	s.mu.Unlock()
@@ -366,7 +432,7 @@ func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 func (s *Service) ConnectionStatus() domain.ConnectionStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return domain.ConnectionStatus{State: s.connection.State, Detail: s.connection.Detail}
+	return domain.ConnectionStatus{State: s.connection.State, Detail: s.connection.Detail, SteamID: s.connection.SteamID, AccountName: s.connection.AccountName, AvatarURL: s.connection.AvatarURL, Diagnostics: append([]string(nil), s.connection.Diagnostics...)}
 }
 
 func (s *Service) addEvent(receipt operations.Receipt, state string, message string) {
@@ -390,22 +456,113 @@ func (s *Service) newReceipt(opType string) operations.Receipt {
 	return receipt
 }
 
-func fixtureInventory() domain.InventorySnapshot {
-	wear := 0.0671
-	count := uint32(742)
-	defWeapon := uint32(7)
-	defStorage := uint32(1201)
-	stickerID := uint32(42)
-	stickerWear := 0.21
-	casketID := "casket-01"
-	return domain.InventorySnapshot{RefreshedAt: now(), Items: []domain.InventoryItem{
-		{ID: "2480000000000000000", Name: "AK-47 | Example Finish", Kind: "weapon_skin", Defindex: &defWeapon, PaintWear: &wear, Stickers: []domain.Sticker{{Slot: ptrUint32(0), StickerID: &stickerID, Wear: &stickerWear}}},
-		{ID: "3480000000000000000", Name: "Example Sticker", Kind: "sticker_item", UnsupportedFields: []string{"live_validation"}},
-		{ID: "4480000000000000000", Name: "Name Tag", Kind: "tool_item"},
-		{ID: "4680000000000000000", Name: "StatTrak Swap Tool", Kind: "tool_item"},
-		{ID: "4780000000000000000", Name: "Strange Part", Kind: "tool_item"},
-		{ID: "5480000000000000000", Name: "Storage Unit", Kind: "storage_unit", Defindex: &defStorage, StorageCount: &count, CasketID: &casketID},
-	}}
+func emptyInventory() domain.InventorySnapshot {
+	return domain.InventorySnapshot{RefreshedAt: now(), Status: "requires_connection", Items: []domain.InventoryItem{}}
+}
+
+func inventoryError(message string, diagnostics []string) domain.InventorySnapshot {
+	return domain.InventorySnapshot{RefreshedAt: now(), Status: "error", Message: message, Error: message, Diagnostics: append([]string(nil), diagnostics...), Items: []domain.InventoryItem{}}
+}
+
+func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	gcItems, err := s.gcClient.RequestInventory(ctx)
+	if err != nil {
+		return domain.InventorySnapshot{}, fmt.Errorf("CS2 GC inventory request failed: %w", err)
+	}
+	items := make([]domain.InventoryItem, 0, len(gcItems))
+	for _, item := range gcItems {
+		defIndex := item.DefIndex
+		inventoryItem := domain.InventoryItem{
+			ID:         fmt.Sprintf("%d", item.ID),
+			Name:       fmt.Sprintf("CS2 item #%d", item.DefIndex),
+			MarketName: fmt.Sprintf("CS2 item #%d", item.DefIndex),
+			Kind:       "cs2_econ_item",
+			Defindex:   &defIndex,
+		}
+		if item.CustomName != "" {
+			inventoryItem.CustomName = item.CustomName
+			inventoryItem.HasCustomName = true
+		}
+		items = append(items, inventoryItem)
+	}
+	return domain.InventorySnapshot{
+		Items:       items,
+		RefreshedAt: now(),
+		Status:      "ready",
+	}, nil
+}
+
+func steamGuardRequired(result int32) bool {
+	switch steamlang.EResult(result) {
+	case steamlang.EResult_AccountLogonDenied,
+		steamlang.EResult_AccountLoginDeniedNeedTwoFactor,
+		steamlang.EResult_InvalidLoginAuthCode,
+		steamlang.EResult_TwoFactorCodeMismatch,
+		steamlang.EResult_ExpiredLoginAuthCode:
+		return true
+	default:
+		return false
+	}
+}
+
+func steamErrorDetail(stage string, err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Sprintf("%s timed out: %v", stage, err)
+	}
+	return err.Error()
+}
+
+func (s *Service) applyNameTag(input map[string]any) (bool, string) {
+	subjectItemID, _ := input["subjectItemId"].(string)
+	toolItemID, _ := input["toolItemId"].(string)
+	name, _ := input["name"].(string)
+	if subjectItemID == "" || toolItemID == "" || name == "" {
+		return false, "subject item, name tag tool, and custom name are required"
+	}
+	toolFound := false
+	for _, item := range s.inventory.Items {
+		if item.ID == toolItemID && item.IsNameTagTool {
+			toolFound = true
+			break
+		}
+	}
+	if !toolFound {
+		return false, "no usable name tag tool found in the current inventory"
+	}
+	for i := range s.inventory.Items {
+		if s.inventory.Items[i].ID == subjectItemID {
+			s.inventory.Items[i].CustomName = name
+			s.inventory.Items[i].HasCustomName = true
+			s.inventory.Items[i].MarketName = s.inventory.Items[i].MarketName
+			s.inventory.RefreshedAt = now()
+			return true, "custom name applied"
+		}
+	}
+	return false, "target item not found"
+}
+
+func (s *Service) removeNameTag(input map[string]any) (bool, string) {
+	itemID, _ := input["itemId"].(string)
+	if itemID == "" {
+		return false, "item id is required"
+	}
+	for i := range s.inventory.Items {
+		if s.inventory.Items[i].ID == itemID {
+			if !s.inventory.Items[i].HasCustomName {
+				return false, "selected item does not have a custom name"
+			}
+			s.inventory.Items[i].CustomName = ""
+			s.inventory.Items[i].HasCustomName = false
+			s.inventory.RefreshedAt = now()
+			return true, "custom name removed"
+		}
+	}
+	return false, "target item not found"
 }
 
 func defaultSettings() domain.Settings {
@@ -433,7 +590,7 @@ func defaultSettings() domain.Settings {
 func cloneInventory(inventory domain.InventorySnapshot) domain.InventorySnapshot {
 	items := make([]domain.InventoryItem, len(inventory.Items))
 	copy(items, inventory.Items)
-	return domain.InventorySnapshot{Items: items, RefreshedAt: inventory.RefreshedAt}
+	return domain.InventorySnapshot{Items: items, RefreshedAt: inventory.RefreshedAt, Status: inventory.Status, Message: inventory.Message, Error: inventory.Error, Diagnostics: append([]string(nil), inventory.Diagnostics...)}
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {

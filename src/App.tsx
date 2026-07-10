@@ -54,25 +54,27 @@ function App() {
   const [stickerPreset, setStickerPreset] = createSignal<string>('Precision alignment')
   const [notice, setNotice] = createSignal<Notice>({
     tone: 'info',
-    message: 'Loading the placeholder-safe inventory control surface…',
+    message: 'Loading backend-backed inventory data…',
   })
 
   onMount(() => {
-    void loadDashboardData().match(
-      (data) => {
+    void loadDashboardData().then(([data, error]) => {
+      if (error !== null) {
+        setNotice({ tone: 'warning', message: error.message })
+        return
+      }
+
+      if (data !== null) {
         setDashboard(data)
         setSelectedItemId(data.inventory[0]?.id ?? '')
         setTradeUpQueue(data.recommendedTradeUpIds)
         setSelectedStorageId(data.storageUnits[0]?.id ?? '')
         setNotice({
           tone: 'success',
-          message: 'Dashboard ready. Every action is framed as a reviewed plan with placeholder data.',
+          message: 'Dashboard ready.',
         })
-      },
-      (error) => {
-        setNotice({ tone: 'warning', message: error.message })
-      },
-    )
+      }
+    })
   })
 
   const selectedItem = createMemo(() => dashboard()?.inventory.find((item) => item.id === selectedItemId()))
@@ -306,8 +308,7 @@ function App() {
                     UI-first review flows for sticker, trade-up, and storage operations.
                   </h2>
                   <p class="mt-4 max-w-2xl text-sm text-slate-300 sm:text-base">
-                    The layout keeps high-risk actions in clear view, scales cleanly from wide desktop panes to thumb-friendly mobile stacks,
-                    and stays explicit about placeholder-only data.
+                    The layout keeps high-risk actions in clear view and scales cleanly from wide desktop panes to thumb-friendly mobile stacks.
                   </p>
                 </div>
                 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:min-w-[28rem]">
@@ -642,7 +643,7 @@ function App() {
                   <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Activity rail</p>
                   <h2 class="mt-2 text-2xl font-semibold text-white">Recent review signals</h2>
                 </div>
-                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">Live mock feed</span>
+                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">Backend events</span>
               </div>
               <div class="mt-5 space-y-3">
                 <For each={dashboard()?.activity ?? []}>

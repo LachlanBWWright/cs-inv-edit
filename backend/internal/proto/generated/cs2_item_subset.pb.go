@@ -21,6 +21,71 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type GCConnectionStatus int32
+
+const (
+	GCConnectionStatus_GCConnectionStatus_HAVE_SESSION              GCConnectionStatus = 0
+	GCConnectionStatus_GCConnectionStatus_GC_GOING_DOWN             GCConnectionStatus = 1
+	GCConnectionStatus_GCConnectionStatus_NO_SESSION                GCConnectionStatus = 2
+	GCConnectionStatus_GCConnectionStatus_NO_SESSION_IN_LOGON_QUEUE GCConnectionStatus = 3
+	GCConnectionStatus_GCConnectionStatus_NO_STEAM                  GCConnectionStatus = 4
+)
+
+// Enum value maps for GCConnectionStatus.
+var (
+	GCConnectionStatus_name = map[int32]string{
+		0: "GCConnectionStatus_HAVE_SESSION",
+		1: "GCConnectionStatus_GC_GOING_DOWN",
+		2: "GCConnectionStatus_NO_SESSION",
+		3: "GCConnectionStatus_NO_SESSION_IN_LOGON_QUEUE",
+		4: "GCConnectionStatus_NO_STEAM",
+	}
+	GCConnectionStatus_value = map[string]int32{
+		"GCConnectionStatus_HAVE_SESSION":              0,
+		"GCConnectionStatus_GC_GOING_DOWN":             1,
+		"GCConnectionStatus_NO_SESSION":                2,
+		"GCConnectionStatus_NO_SESSION_IN_LOGON_QUEUE": 3,
+		"GCConnectionStatus_NO_STEAM":                  4,
+	}
+)
+
+func (x GCConnectionStatus) Enum() *GCConnectionStatus {
+	p := new(GCConnectionStatus)
+	*p = x
+	return p
+}
+
+func (x GCConnectionStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (GCConnectionStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_cs2_item_subset_proto_enumTypes[0].Descriptor()
+}
+
+func (GCConnectionStatus) Type() protoreflect.EnumType {
+	return &file_cs2_item_subset_proto_enumTypes[0]
+}
+
+func (x GCConnectionStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *GCConnectionStatus) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = GCConnectionStatus(num)
+	return nil
+}
+
+// Deprecated: Use GCConnectionStatus.Descriptor instead.
+func (GCConnectionStatus) EnumDescriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{0}
+}
+
 type CMsgApplySticker struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	StickerItemId     *uint64                `protobuf:"varint,1,opt,name=sticker_item_id,json=stickerItemId" json:"sticker_item_id,omitempty"`
@@ -897,6 +962,567 @@ func (x *CMsgSetItemPositions) GetItemPositions() []*CMsgSetItemPositions_ItemPo
 	return nil
 }
 
+type CMsgClientHello struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Version           *uint32                `protobuf:"varint,1,opt,name=version" json:"version,omitempty"`
+	ClientSessionNeed *uint32                `protobuf:"varint,3,opt,name=client_session_need,json=clientSessionNeed" json:"client_session_need,omitempty"`
+	ClientLauncher    *uint32                `protobuf:"varint,4,opt,name=client_launcher,json=clientLauncher" json:"client_launcher,omitempty"`
+	SteamLauncher     *uint32                `protobuf:"varint,9,opt,name=steam_launcher,json=steamLauncher" json:"steam_launcher,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CMsgClientHello) Reset() {
+	*x = CMsgClientHello{}
+	mi := &file_cs2_item_subset_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgClientHello) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgClientHello) ProtoMessage() {}
+
+func (x *CMsgClientHello) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgClientHello.ProtoReflect.Descriptor instead.
+func (*CMsgClientHello) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CMsgClientHello) GetVersion() uint32 {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return 0
+}
+
+func (x *CMsgClientHello) GetClientSessionNeed() uint32 {
+	if x != nil && x.ClientSessionNeed != nil {
+		return *x.ClientSessionNeed
+	}
+	return 0
+}
+
+func (x *CMsgClientHello) GetClientLauncher() uint32 {
+	if x != nil && x.ClientLauncher != nil {
+		return *x.ClientLauncher
+	}
+	return 0
+}
+
+func (x *CMsgClientHello) GetSteamLauncher() uint32 {
+	if x != nil && x.SteamLauncher != nil {
+		return *x.SteamLauncher
+	}
+	return 0
+}
+
+type CMsgClientWelcome struct {
+	state                     protoimpl.MessageState   `protogen:"open.v1"`
+	Version                   *uint32                  `protobuf:"varint,1,opt,name=version" json:"version,omitempty"`
+	GameData                  []byte                   `protobuf:"bytes,2,opt,name=game_data,json=gameData" json:"game_data,omitempty"`
+	OutofdateSubscribedCaches []*CMsgSOCacheSubscribed `protobuf:"bytes,3,rep,name=outofdate_subscribed_caches,json=outofdateSubscribedCaches" json:"outofdate_subscribed_caches,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *CMsgClientWelcome) Reset() {
+	*x = CMsgClientWelcome{}
+	mi := &file_cs2_item_subset_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgClientWelcome) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgClientWelcome) ProtoMessage() {}
+
+func (x *CMsgClientWelcome) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgClientWelcome.ProtoReflect.Descriptor instead.
+func (*CMsgClientWelcome) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *CMsgClientWelcome) GetVersion() uint32 {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return 0
+}
+
+func (x *CMsgClientWelcome) GetGameData() []byte {
+	if x != nil {
+		return x.GameData
+	}
+	return nil
+}
+
+func (x *CMsgClientWelcome) GetOutofdateSubscribedCaches() []*CMsgSOCacheSubscribed {
+	if x != nil {
+		return x.OutofdateSubscribedCaches
+	}
+	return nil
+}
+
+type CMsgConnectionStatus struct {
+	state                         protoimpl.MessageState `protogen:"open.v1"`
+	Status                        *GCConnectionStatus    `protobuf:"varint,1,opt,name=status,enum=cs2item.GCConnectionStatus,def=0" json:"status,omitempty"`
+	ClientSessionNeed             *uint32                `protobuf:"varint,2,opt,name=client_session_need,json=clientSessionNeed" json:"client_session_need,omitempty"`
+	QueuePosition                 *int32                 `protobuf:"varint,3,opt,name=queue_position,json=queuePosition" json:"queue_position,omitempty"`
+	QueueSize                     *int32                 `protobuf:"varint,4,opt,name=queue_size,json=queueSize" json:"queue_size,omitempty"`
+	WaitSeconds                   *int32                 `protobuf:"varint,5,opt,name=wait_seconds,json=waitSeconds" json:"wait_seconds,omitempty"`
+	EstimatedWaitSecondsRemaining *int32                 `protobuf:"varint,6,opt,name=estimated_wait_seconds_remaining,json=estimatedWaitSecondsRemaining" json:"estimated_wait_seconds_remaining,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
+}
+
+// Default values for CMsgConnectionStatus fields.
+const (
+	Default_CMsgConnectionStatus_Status = GCConnectionStatus_GCConnectionStatus_HAVE_SESSION
+)
+
+func (x *CMsgConnectionStatus) Reset() {
+	*x = CMsgConnectionStatus{}
+	mi := &file_cs2_item_subset_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgConnectionStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgConnectionStatus) ProtoMessage() {}
+
+func (x *CMsgConnectionStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgConnectionStatus.ProtoReflect.Descriptor instead.
+func (*CMsgConnectionStatus) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CMsgConnectionStatus) GetStatus() GCConnectionStatus {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return Default_CMsgConnectionStatus_Status
+}
+
+func (x *CMsgConnectionStatus) GetClientSessionNeed() uint32 {
+	if x != nil && x.ClientSessionNeed != nil {
+		return *x.ClientSessionNeed
+	}
+	return 0
+}
+
+func (x *CMsgConnectionStatus) GetQueuePosition() int32 {
+	if x != nil && x.QueuePosition != nil {
+		return *x.QueuePosition
+	}
+	return 0
+}
+
+func (x *CMsgConnectionStatus) GetQueueSize() int32 {
+	if x != nil && x.QueueSize != nil {
+		return *x.QueueSize
+	}
+	return 0
+}
+
+func (x *CMsgConnectionStatus) GetWaitSeconds() int32 {
+	if x != nil && x.WaitSeconds != nil {
+		return *x.WaitSeconds
+	}
+	return 0
+}
+
+func (x *CMsgConnectionStatus) GetEstimatedWaitSecondsRemaining() int32 {
+	if x != nil && x.EstimatedWaitSecondsRemaining != nil {
+		return *x.EstimatedWaitSecondsRemaining
+	}
+	return 0
+}
+
+type CMsgGCCStrike15V2ClientLogonFatalError struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Errorcode     *uint32                `protobuf:"varint,1,opt,name=errorcode" json:"errorcode,omitempty"`
+	Message       *string                `protobuf:"bytes,2,opt,name=message" json:"message,omitempty"`
+	Country       *string                `protobuf:"bytes,3,opt,name=country" json:"country,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgGCCStrike15V2ClientLogonFatalError) Reset() {
+	*x = CMsgGCCStrike15V2ClientLogonFatalError{}
+	mi := &file_cs2_item_subset_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgGCCStrike15V2ClientLogonFatalError) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgGCCStrike15V2ClientLogonFatalError) ProtoMessage() {}
+
+func (x *CMsgGCCStrike15V2ClientLogonFatalError) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgGCCStrike15V2ClientLogonFatalError.ProtoReflect.Descriptor instead.
+func (*CMsgGCCStrike15V2ClientLogonFatalError) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CMsgGCCStrike15V2ClientLogonFatalError) GetErrorcode() uint32 {
+	if x != nil && x.Errorcode != nil {
+		return *x.Errorcode
+	}
+	return 0
+}
+
+func (x *CMsgGCCStrike15V2ClientLogonFatalError) GetMessage() string {
+	if x != nil && x.Message != nil {
+		return *x.Message
+	}
+	return ""
+}
+
+func (x *CMsgGCCStrike15V2ClientLogonFatalError) GetCountry() string {
+	if x != nil && x.Country != nil {
+		return *x.Country
+	}
+	return ""
+}
+
+type CMsgSOIDOwner struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          *uint32                `protobuf:"varint,1,opt,name=type" json:"type,omitempty"`
+	Id            *uint64                `protobuf:"varint,2,opt,name=id" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSOIDOwner) Reset() {
+	*x = CMsgSOIDOwner{}
+	mi := &file_cs2_item_subset_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSOIDOwner) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSOIDOwner) ProtoMessage() {}
+
+func (x *CMsgSOIDOwner) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSOIDOwner.ProtoReflect.Descriptor instead.
+func (*CMsgSOIDOwner) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *CMsgSOIDOwner) GetType() uint32 {
+	if x != nil && x.Type != nil {
+		return *x.Type
+	}
+	return 0
+}
+
+func (x *CMsgSOIDOwner) GetId() uint64 {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return 0
+}
+
+type CMsgSOCacheSubscribed struct {
+	state         protoimpl.MessageState                  `protogen:"open.v1"`
+	Objects       []*CMsgSOCacheSubscribed_SubscribedType `protobuf:"bytes,2,rep,name=objects" json:"objects,omitempty"`
+	Version       *uint64                                 `protobuf:"varint,3,opt,name=version" json:"version,omitempty"`
+	OwnerSoid     *CMsgSOIDOwner                          `protobuf:"bytes,4,opt,name=owner_soid,json=ownerSoid" json:"owner_soid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSOCacheSubscribed) Reset() {
+	*x = CMsgSOCacheSubscribed{}
+	mi := &file_cs2_item_subset_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSOCacheSubscribed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSOCacheSubscribed) ProtoMessage() {}
+
+func (x *CMsgSOCacheSubscribed) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSOCacheSubscribed.ProtoReflect.Descriptor instead.
+func (*CMsgSOCacheSubscribed) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CMsgSOCacheSubscribed) GetObjects() []*CMsgSOCacheSubscribed_SubscribedType {
+	if x != nil {
+		return x.Objects
+	}
+	return nil
+}
+
+func (x *CMsgSOCacheSubscribed) GetVersion() uint64 {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return 0
+}
+
+func (x *CMsgSOCacheSubscribed) GetOwnerSoid() *CMsgSOIDOwner {
+	if x != nil {
+		return x.OwnerSoid
+	}
+	return nil
+}
+
+type CSOEconItem struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Id            *uint64                  `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
+	AccountId     *uint32                  `protobuf:"varint,2,opt,name=account_id,json=accountId" json:"account_id,omitempty"`
+	Inventory     *uint32                  `protobuf:"varint,3,opt,name=inventory" json:"inventory,omitempty"`
+	DefIndex      *uint32                  `protobuf:"varint,4,opt,name=def_index,json=defIndex" json:"def_index,omitempty"`
+	Quantity      *uint32                  `protobuf:"varint,5,opt,name=quantity" json:"quantity,omitempty"`
+	Level         *uint32                  `protobuf:"varint,6,opt,name=level" json:"level,omitempty"`
+	Quality       *uint32                  `protobuf:"varint,7,opt,name=quality" json:"quality,omitempty"`
+	Flags         *uint32                  `protobuf:"varint,8,opt,name=flags" json:"flags,omitempty"`
+	Origin        *uint32                  `protobuf:"varint,9,opt,name=origin" json:"origin,omitempty"`
+	CustomName    *string                  `protobuf:"bytes,10,opt,name=custom_name,json=customName" json:"custom_name,omitempty"`
+	CustomDesc    *string                  `protobuf:"bytes,11,opt,name=custom_desc,json=customDesc" json:"custom_desc,omitempty"`
+	Attribute     []*CSOEconItem_Attribute `protobuf:"bytes,12,rep,name=attribute" json:"attribute,omitempty"`
+	InteriorItem  *CSOEconItem             `protobuf:"bytes,13,opt,name=interior_item,json=interiorItem" json:"interior_item,omitempty"`
+	InUse         *bool                    `protobuf:"varint,14,opt,name=in_use,json=inUse" json:"in_use,omitempty"`
+	Style         *uint32                  `protobuf:"varint,15,opt,name=style" json:"style,omitempty"`
+	OriginalId    *uint64                  `protobuf:"varint,16,opt,name=original_id,json=originalId" json:"original_id,omitempty"`
+	Rarity        *uint32                  `protobuf:"varint,19,opt,name=rarity" json:"rarity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CSOEconItem) Reset() {
+	*x = CSOEconItem{}
+	mi := &file_cs2_item_subset_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CSOEconItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CSOEconItem) ProtoMessage() {}
+
+func (x *CSOEconItem) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CSOEconItem.ProtoReflect.Descriptor instead.
+func (*CSOEconItem) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *CSOEconItem) GetId() uint64 {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetAccountId() uint32 {
+	if x != nil && x.AccountId != nil {
+		return *x.AccountId
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetInventory() uint32 {
+	if x != nil && x.Inventory != nil {
+		return *x.Inventory
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetDefIndex() uint32 {
+	if x != nil && x.DefIndex != nil {
+		return *x.DefIndex
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetQuantity() uint32 {
+	if x != nil && x.Quantity != nil {
+		return *x.Quantity
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetLevel() uint32 {
+	if x != nil && x.Level != nil {
+		return *x.Level
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetQuality() uint32 {
+	if x != nil && x.Quality != nil {
+		return *x.Quality
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetFlags() uint32 {
+	if x != nil && x.Flags != nil {
+		return *x.Flags
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetOrigin() uint32 {
+	if x != nil && x.Origin != nil {
+		return *x.Origin
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetCustomName() string {
+	if x != nil && x.CustomName != nil {
+		return *x.CustomName
+	}
+	return ""
+}
+
+func (x *CSOEconItem) GetCustomDesc() string {
+	if x != nil && x.CustomDesc != nil {
+		return *x.CustomDesc
+	}
+	return ""
+}
+
+func (x *CSOEconItem) GetAttribute() []*CSOEconItem_Attribute {
+	if x != nil {
+		return x.Attribute
+	}
+	return nil
+}
+
+func (x *CSOEconItem) GetInteriorItem() *CSOEconItem {
+	if x != nil {
+		return x.InteriorItem
+	}
+	return nil
+}
+
+func (x *CSOEconItem) GetInUse() bool {
+	if x != nil && x.InUse != nil {
+		return *x.InUse
+	}
+	return false
+}
+
+func (x *CSOEconItem) GetStyle() uint32 {
+	if x != nil && x.Style != nil {
+		return *x.Style
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetOriginalId() uint64 {
+	if x != nil && x.OriginalId != nil {
+		return *x.OriginalId
+	}
+	return 0
+}
+
+func (x *CSOEconItem) GetRarity() uint32 {
+	if x != nil && x.Rarity != nil {
+		return *x.Rarity
+	}
+	return 0
+}
+
 type CMsgSetItemPositions_ItemPosition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	LegacyItemId  *uint32                `protobuf:"varint,1,opt,name=legacy_item_id,json=legacyItemId" json:"legacy_item_id,omitempty"`
@@ -908,7 +1534,7 @@ type CMsgSetItemPositions_ItemPosition struct {
 
 func (x *CMsgSetItemPositions_ItemPosition) Reset() {
 	*x = CMsgSetItemPositions_ItemPosition{}
-	mi := &file_cs2_item_subset_proto_msgTypes[15]
+	mi := &file_cs2_item_subset_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -920,7 +1546,7 @@ func (x *CMsgSetItemPositions_ItemPosition) String() string {
 func (*CMsgSetItemPositions_ItemPosition) ProtoMessage() {}
 
 func (x *CMsgSetItemPositions_ItemPosition) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[15]
+	mi := &file_cs2_item_subset_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -955,6 +1581,118 @@ func (x *CMsgSetItemPositions_ItemPosition) GetItemId() uint64 {
 		return *x.ItemId
 	}
 	return 0
+}
+
+type CMsgSOCacheSubscribed_SubscribedType struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TypeId        *int32                 `protobuf:"varint,1,opt,name=type_id,json=typeId" json:"type_id,omitempty"`
+	ObjectData    [][]byte               `protobuf:"bytes,2,rep,name=object_data,json=objectData" json:"object_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSOCacheSubscribed_SubscribedType) Reset() {
+	*x = CMsgSOCacheSubscribed_SubscribedType{}
+	mi := &file_cs2_item_subset_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSOCacheSubscribed_SubscribedType) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSOCacheSubscribed_SubscribedType) ProtoMessage() {}
+
+func (x *CMsgSOCacheSubscribed_SubscribedType) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSOCacheSubscribed_SubscribedType.ProtoReflect.Descriptor instead.
+func (*CMsgSOCacheSubscribed_SubscribedType) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{20, 0}
+}
+
+func (x *CMsgSOCacheSubscribed_SubscribedType) GetTypeId() int32 {
+	if x != nil && x.TypeId != nil {
+		return *x.TypeId
+	}
+	return 0
+}
+
+func (x *CMsgSOCacheSubscribed_SubscribedType) GetObjectData() [][]byte {
+	if x != nil {
+		return x.ObjectData
+	}
+	return nil
+}
+
+type CSOEconItem_Attribute struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DefIndex      *uint32                `protobuf:"varint,1,opt,name=def_index,json=defIndex" json:"def_index,omitempty"`
+	Value         *uint32                `protobuf:"varint,2,opt,name=value" json:"value,omitempty"`
+	ValueBytes    []byte                 `protobuf:"bytes,3,opt,name=value_bytes,json=valueBytes" json:"value_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CSOEconItem_Attribute) Reset() {
+	*x = CSOEconItem_Attribute{}
+	mi := &file_cs2_item_subset_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CSOEconItem_Attribute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CSOEconItem_Attribute) ProtoMessage() {}
+
+func (x *CSOEconItem_Attribute) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CSOEconItem_Attribute.ProtoReflect.Descriptor instead.
+func (*CSOEconItem_Attribute) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{21, 0}
+}
+
+func (x *CSOEconItem_Attribute) GetDefIndex() uint32 {
+	if x != nil && x.DefIndex != nil {
+		return *x.DefIndex
+	}
+	return 0
+}
+
+func (x *CSOEconItem_Attribute) GetValue() uint32 {
+	if x != nil && x.Value != nil {
+		return *x.Value
+	}
+	return 0
+}
+
+func (x *CSOEconItem_Attribute) GetValueBytes() []byte {
+	if x != nil {
+		return x.ValueBytes
+	}
+	return nil
 }
 
 var File_cs2_item_subset_proto protoreflect.FileDescriptor
@@ -1031,7 +1769,74 @@ const file_cs2_item_subset_proto_rawDesc = "" +
 	"\fItemPosition\x12$\n" +
 	"\x0elegacy_item_id\x18\x01 \x01(\rR\flegacyItemId\x12\x1a\n" +
 	"\bposition\x18\x02 \x01(\rR\bposition\x12\x17\n" +
-	"\aitem_id\x18\x03 \x01(\x04R\x06itemIdB4Z2cs-inv-edit/backend/internal/proto/generated;cs2pb"
+	"\aitem_id\x18\x03 \x01(\x04R\x06itemId\"\xab\x01\n" +
+	"\x0fCMsgClientHello\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12.\n" +
+	"\x13client_session_need\x18\x03 \x01(\rR\x11clientSessionNeed\x12'\n" +
+	"\x0fclient_launcher\x18\x04 \x01(\rR\x0eclientLauncher\x12%\n" +
+	"\x0esteam_launcher\x18\t \x01(\rR\rsteamLauncher\"\xaa\x01\n" +
+	"\x11CMsgClientWelcome\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12\x1b\n" +
+	"\tgame_data\x18\x02 \x01(\fR\bgameData\x12^\n" +
+	"\x1boutofdate_subscribed_caches\x18\x03 \x03(\v2\x1e.cs2item.CMsgSOCacheSubscribedR\x19outofdateSubscribedCaches\"\xce\x02\n" +
+	"\x14CMsgConnectionStatus\x12T\n" +
+	"\x06status\x18\x01 \x01(\x0e2\x1b.cs2item.GCConnectionStatus:\x1fGCConnectionStatus_HAVE_SESSIONR\x06status\x12.\n" +
+	"\x13client_session_need\x18\x02 \x01(\rR\x11clientSessionNeed\x12%\n" +
+	"\x0equeue_position\x18\x03 \x01(\x05R\rqueuePosition\x12\x1d\n" +
+	"\n" +
+	"queue_size\x18\x04 \x01(\x05R\tqueueSize\x12!\n" +
+	"\fwait_seconds\x18\x05 \x01(\x05R\vwaitSeconds\x12G\n" +
+	" estimated_wait_seconds_remaining\x18\x06 \x01(\x05R\x1destimatedWaitSecondsRemaining\"z\n" +
+	"&CMsgGCCStrike15V2ClientLogonFatalError\x12\x1c\n" +
+	"\terrorcode\x18\x01 \x01(\rR\terrorcode\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x18\n" +
+	"\acountry\x18\x03 \x01(\tR\acountry\"3\n" +
+	"\rCMsgSOIDOwner\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\rR\x04type\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\"\xfd\x01\n" +
+	"\x15CMsgSOCacheSubscribed\x12G\n" +
+	"\aobjects\x18\x02 \x03(\v2-.cs2item.CMsgSOCacheSubscribed.SubscribedTypeR\aobjects\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\x04R\aversion\x125\n" +
+	"\n" +
+	"owner_soid\x18\x04 \x01(\v2\x16.cs2item.CMsgSOIDOwnerR\townerSoid\x1aJ\n" +
+	"\x0eSubscribedType\x12\x17\n" +
+	"\atype_id\x18\x01 \x01(\x05R\x06typeId\x12\x1f\n" +
+	"\vobject_data\x18\x02 \x03(\fR\n" +
+	"objectData\"\xf3\x04\n" +
+	"\vCSOEconItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\rR\taccountId\x12\x1c\n" +
+	"\tinventory\x18\x03 \x01(\rR\tinventory\x12\x1b\n" +
+	"\tdef_index\x18\x04 \x01(\rR\bdefIndex\x12\x1a\n" +
+	"\bquantity\x18\x05 \x01(\rR\bquantity\x12\x14\n" +
+	"\x05level\x18\x06 \x01(\rR\x05level\x12\x18\n" +
+	"\aquality\x18\a \x01(\rR\aquality\x12\x14\n" +
+	"\x05flags\x18\b \x01(\rR\x05flags\x12\x16\n" +
+	"\x06origin\x18\t \x01(\rR\x06origin\x12\x1f\n" +
+	"\vcustom_name\x18\n" +
+	" \x01(\tR\n" +
+	"customName\x12\x1f\n" +
+	"\vcustom_desc\x18\v \x01(\tR\n" +
+	"customDesc\x12<\n" +
+	"\tattribute\x18\f \x03(\v2\x1e.cs2item.CSOEconItem.AttributeR\tattribute\x129\n" +
+	"\rinterior_item\x18\r \x01(\v2\x14.cs2item.CSOEconItemR\finteriorItem\x12\x15\n" +
+	"\x06in_use\x18\x0e \x01(\bR\x05inUse\x12\x14\n" +
+	"\x05style\x18\x0f \x01(\rR\x05style\x12\x1f\n" +
+	"\voriginal_id\x18\x10 \x01(\x04R\n" +
+	"originalId\x12\x16\n" +
+	"\x06rarity\x18\x13 \x01(\rR\x06rarity\x1a_\n" +
+	"\tAttribute\x12\x1b\n" +
+	"\tdef_index\x18\x01 \x01(\rR\bdefIndex\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value\x12\x1f\n" +
+	"\vvalue_bytes\x18\x03 \x01(\fR\n" +
+	"valueBytes*\xd5\x01\n" +
+	"\x12GCConnectionStatus\x12#\n" +
+	"\x1fGCConnectionStatus_HAVE_SESSION\x10\x00\x12$\n" +
+	" GCConnectionStatus_GC_GOING_DOWN\x10\x01\x12!\n" +
+	"\x1dGCConnectionStatus_NO_SESSION\x10\x02\x120\n" +
+	",GCConnectionStatus_NO_SESSION_IN_LOGON_QUEUE\x10\x03\x12\x1f\n" +
+	"\x1bGCConnectionStatus_NO_STEAM\x10\x04B4Z2cs-inv-edit/backend/internal/proto/generated;cs2pb"
 
 var (
 	file_cs2_item_subset_proto_rawDescOnce sync.Once
@@ -1045,32 +1850,49 @@ func file_cs2_item_subset_proto_rawDescGZIP() []byte {
 	return file_cs2_item_subset_proto_rawDescData
 }
 
-var file_cs2_item_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_cs2_item_subset_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_cs2_item_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_cs2_item_subset_proto_goTypes = []any{
-	(*CMsgApplySticker)(nil),                    // 0: cs2item.CMsgApplySticker
-	(*CMsgSetItemName)(nil),                     // 1: cs2item.CMsgSetItemName
-	(*CMsgRemoveItemName)(nil),                  // 2: cs2item.CMsgRemoveItemName
-	(*CMsgDeleteItem)(nil),                      // 3: cs2item.CMsgDeleteItem
-	(*CMsgApplyStatTrakSwap)(nil),               // 4: cs2item.CMsgApplyStatTrakSwap
-	(*CMsgApplyStrangePart)(nil),                // 5: cs2item.CMsgApplyStrangePart
-	(*CMsgUseItem)(nil),                         // 6: cs2item.CMsgUseItem
-	(*CMsgUseMultipleItems)(nil),                // 7: cs2item.CMsgUseMultipleItems
-	(*CMsgApplyToolToItem)(nil),                 // 8: cs2item.CMsgApplyToolToItem
-	(*CMsgApplyToolToBaseItem)(nil),             // 9: cs2item.CMsgApplyToolToBaseItem
-	(*CMsgGiftItem)(nil),                        // 10: cs2item.CMsgGiftItem
-	(*CMsgCraftItems)(nil),                      // 11: cs2item.CMsgCraftItems
-	(*CMsgGCItemCustomizationNotification)(nil), // 12: cs2item.CMsgGCItemCustomizationNotification
-	(*CMsgCasketItem)(nil),                      // 13: cs2item.CMsgCasketItem
-	(*CMsgSetItemPositions)(nil),                // 14: cs2item.CMsgSetItemPositions
-	(*CMsgSetItemPositions_ItemPosition)(nil),   // 15: cs2item.CMsgSetItemPositions.ItemPosition
+	(GCConnectionStatus)(0),                        // 0: cs2item.GCConnectionStatus
+	(*CMsgApplySticker)(nil),                       // 1: cs2item.CMsgApplySticker
+	(*CMsgSetItemName)(nil),                        // 2: cs2item.CMsgSetItemName
+	(*CMsgRemoveItemName)(nil),                     // 3: cs2item.CMsgRemoveItemName
+	(*CMsgDeleteItem)(nil),                         // 4: cs2item.CMsgDeleteItem
+	(*CMsgApplyStatTrakSwap)(nil),                  // 5: cs2item.CMsgApplyStatTrakSwap
+	(*CMsgApplyStrangePart)(nil),                   // 6: cs2item.CMsgApplyStrangePart
+	(*CMsgUseItem)(nil),                            // 7: cs2item.CMsgUseItem
+	(*CMsgUseMultipleItems)(nil),                   // 8: cs2item.CMsgUseMultipleItems
+	(*CMsgApplyToolToItem)(nil),                    // 9: cs2item.CMsgApplyToolToItem
+	(*CMsgApplyToolToBaseItem)(nil),                // 10: cs2item.CMsgApplyToolToBaseItem
+	(*CMsgGiftItem)(nil),                           // 11: cs2item.CMsgGiftItem
+	(*CMsgCraftItems)(nil),                         // 12: cs2item.CMsgCraftItems
+	(*CMsgGCItemCustomizationNotification)(nil),    // 13: cs2item.CMsgGCItemCustomizationNotification
+	(*CMsgCasketItem)(nil),                         // 14: cs2item.CMsgCasketItem
+	(*CMsgSetItemPositions)(nil),                   // 15: cs2item.CMsgSetItemPositions
+	(*CMsgClientHello)(nil),                        // 16: cs2item.CMsgClientHello
+	(*CMsgClientWelcome)(nil),                      // 17: cs2item.CMsgClientWelcome
+	(*CMsgConnectionStatus)(nil),                   // 18: cs2item.CMsgConnectionStatus
+	(*CMsgGCCStrike15V2ClientLogonFatalError)(nil), // 19: cs2item.CMsgGCCStrike15V2ClientLogonFatalError
+	(*CMsgSOIDOwner)(nil),                          // 20: cs2item.CMsgSOIDOwner
+	(*CMsgSOCacheSubscribed)(nil),                  // 21: cs2item.CMsgSOCacheSubscribed
+	(*CSOEconItem)(nil),                            // 22: cs2item.CSOEconItem
+	(*CMsgSetItemPositions_ItemPosition)(nil),      // 23: cs2item.CMsgSetItemPositions.ItemPosition
+	(*CMsgSOCacheSubscribed_SubscribedType)(nil),   // 24: cs2item.CMsgSOCacheSubscribed.SubscribedType
+	(*CSOEconItem_Attribute)(nil),                  // 25: cs2item.CSOEconItem.Attribute
 }
 var file_cs2_item_subset_proto_depIdxs = []int32{
-	15, // 0: cs2item.CMsgSetItemPositions.item_positions:type_name -> cs2item.CMsgSetItemPositions.ItemPosition
-	1,  // [1:1] is the sub-list for method output_type
-	1,  // [1:1] is the sub-list for method input_type
-	1,  // [1:1] is the sub-list for extension type_name
-	1,  // [1:1] is the sub-list for extension extendee
-	0,  // [0:1] is the sub-list for field type_name
+	23, // 0: cs2item.CMsgSetItemPositions.item_positions:type_name -> cs2item.CMsgSetItemPositions.ItemPosition
+	21, // 1: cs2item.CMsgClientWelcome.outofdate_subscribed_caches:type_name -> cs2item.CMsgSOCacheSubscribed
+	0,  // 2: cs2item.CMsgConnectionStatus.status:type_name -> cs2item.GCConnectionStatus
+	24, // 3: cs2item.CMsgSOCacheSubscribed.objects:type_name -> cs2item.CMsgSOCacheSubscribed.SubscribedType
+	20, // 4: cs2item.CMsgSOCacheSubscribed.owner_soid:type_name -> cs2item.CMsgSOIDOwner
+	25, // 5: cs2item.CSOEconItem.attribute:type_name -> cs2item.CSOEconItem.Attribute
+	22, // 6: cs2item.CSOEconItem.interior_item:type_name -> cs2item.CSOEconItem
+	7,  // [7:7] is the sub-list for method output_type
+	7,  // [7:7] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_cs2_item_subset_proto_init() }
@@ -1083,13 +1905,14 @@ func file_cs2_item_subset_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cs2_item_subset_proto_rawDesc), len(file_cs2_item_subset_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   16,
+			NumEnums:      1,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_cs2_item_subset_proto_goTypes,
 		DependencyIndexes: file_cs2_item_subset_proto_depIdxs,
+		EnumInfos:         file_cs2_item_subset_proto_enumTypes,
 		MessageInfos:      file_cs2_item_subset_proto_msgTypes,
 	}.Build()
 	File_cs2_item_subset_proto = out.File

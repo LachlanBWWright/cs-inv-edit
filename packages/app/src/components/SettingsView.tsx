@@ -1,10 +1,15 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import type { FeatureFlags, SettingsData } from "@cs-inv-edit/contracts";
+import { Alert } from "./ui/Alert.js";
+import { Button } from "./ui/Button.js";
+import { Card, CardContent } from "./ui/Card.js";
+import { Input } from "./ui/Input.js";
 
 export interface SettingsViewProps {
   settings: SettingsData | undefined;
   onRefresh: () => void;
   onSave: (next: SettingsData) => Promise<void>;
+  onToast?: (toast: { title: string; description?: string; variant?: "default" | "success" | "warning" | "danger" }) => void;
 }
 
 export function SettingsView(props: SettingsViewProps) {
@@ -17,6 +22,8 @@ export function SettingsView(props: SettingsViewProps) {
     }
   });
 
+  const featureEntries = () => Object.entries(draft()?.featureFlags ?? {}) as Array<[keyof FeatureFlags, boolean]>;
+
   const setFeature = (key: keyof FeatureFlags, value: boolean) => {
     setDraft((current) => (current ? { ...current, featureFlags: { ...current.featureFlags, [key]: value } } : current));
   };
@@ -28,8 +35,11 @@ export function SettingsView(props: SettingsViewProps) {
     try {
       await props.onSave(value);
       setStatus("Settings updated");
+      props.onToast?.({ title: "Settings updated", description: "The backend settings are now active.", variant: "success" });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Save failed");
+      const message = error instanceof Error ? error.message : "Save failed";
+      setStatus(message);
+      props.onToast?.({ title: "Settings save failed", description: message, variant: "danger" });
     }
   };
 
@@ -37,64 +47,68 @@ export function SettingsView(props: SettingsViewProps) {
     <div class="space-y-5">
       <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 class="text-3xl font-semibold">Settings</h2>
-          <p class="mt-2 max-w-2xl text-sm text-slate-600">Backend health, Steam placeholder state, feature flags, and local backend URL are surfaced here.</p>
+          <h2 class="text-3xl font-semibold text-slate-50">Settings</h2>
+          <p class="mt-2 max-w-2xl text-sm text-slate-400">Backend health, Steam connection state, feature flags, and local backend URL are surfaced here.</p>
         </div>
-        <div class="flex gap-2">
-          <button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:border-slate-500" onClick={() => props.onRefresh()}>
+        <div class="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => props.onRefresh()}>
             Reload
-          </button>
-          <button class="rounded-md border border-cyan-700 bg-cyan-700 px-3 py-2 text-sm text-white hover:bg-cyan-800" onClick={() => save()}>
+          </Button>
+          <Button onClick={() => void save()}>
             Save
-          </button>
+          </Button>
         </div>
       </header>
 
       <Show when={status()}>
-        <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{status()}</div>
+        <Alert>{status()}</Alert>
       </Show>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.9fr]">
-        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 class="text-lg font-semibold">Backend</h3>
-          <div class="mt-4 space-y-3 text-sm text-slate-700">
-            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-              <div class="flex flex-col">
-                <span class="font-medium">Local backend URL</span>
-                <span class="text-xs text-slate-500">URL to the backend server</span>
+        <Card>
+          <CardContent>
+            <h3 class="text-lg font-semibold text-slate-50">Backend</h3>
+            <div class="mt-4 space-y-4 text-sm text-slate-400">
+              <div class="flex flex-col gap-2 border-b border-slate-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex flex-col">
+                  <span class="font-medium text-slate-200">Local backend URL</span>
+                  <span class="text-xs text-slate-500">URL to the backend server</span>
+                </div>
+                <Input class="max-w-xs" value={draft()?.backendUrl ?? ""} onInput={(event) => setDraft((current) => (current ? { ...current, backendUrl: (event.currentTarget as HTMLInputElement | null)?.value ?? "" } : current))} />
               </div>
-              <input class="rounded-md border border-slate-300 px-3 py-2" value={draft()?.backendUrl ?? ""} onInput={(event) => setDraft((current) => current ? { ...current, backendUrl: event.currentTarget.value } : current)} />
-            </div>
-            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-              <div class="flex flex-col">
-                <span class="font-medium">Validation mode</span>
-                <span class="text-xs text-slate-500">Ensure operations rigidly follow game rules. Disabling this allows impossible item modifications.</span>
+              <div class="flex items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div class="flex flex-col">
+                  <span class="font-medium text-slate-200">Validation mode</span>
+                  <span class="text-xs text-slate-500">Ensure operations follow game rules before execution.</span>
+                </div>
+                <input type="checkbox" checked={draft()?.validationMode ?? false} onChange={(event) => setDraft((current) => (current ? { ...current, validationMode: (event.currentTarget as HTMLInputElement | null)?.checked ?? false } : current))} />
               </div>
-              <input type="checkbox" checked={draft()?.validationMode ?? false} onChange={(event) => setDraft((current) => current ? { ...current, validationMode: event.currentTarget.checked } : current)} />
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex flex-col">
-                <span class="font-medium">Sacrificial account mode</span>
-                <span class="text-xs text-slate-500">WARNING: Operations will consume real items on the connected account to construct the new ones.</span>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col">
+                  <span class="font-medium text-slate-200">Sacrificial account mode</span>
+                  <span class="text-xs text-slate-500">WARNING: operations can consume real items on the connected account.</span>
+                </div>
+                <input type="checkbox" checked={draft()?.sacrificialAccountMode ?? false} onChange={(event) => setDraft((current) => (current ? { ...current, sacrificialAccountMode: (event.currentTarget as HTMLInputElement | null)?.checked ?? false } : current))} />
               </div>
-              <input type="checkbox" checked={draft()?.sacrificialAccountMode ?? false} onChange={(event) => setDraft((current) => current ? { ...current, sacrificialAccountMode: event.currentTarget.checked } : current)} />
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 class="text-lg font-semibold">Feature flags</h3>
-          <div class="mt-4 space-y-3 text-sm text-slate-700">
-            <For each={Object.entries(draft()?.featureFlags ?? {}) as [keyof FeatureFlags, boolean][]}>
-              {(entry) => (
-                <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-                  <span>{entry[0]}</span>
-                  <input type="checkbox" checked={entry[1]} onChange={(event) => setFeature(entry[0], event.currentTarget.checked)} />
-                </label>
-              )}
-            </For>
-          </div>
-        </div>
+        <Card>
+          <CardContent>
+            <h3 class="text-lg font-semibold text-slate-50">Feature flags</h3>
+            <div class="mt-4 space-y-3 text-sm text-slate-400">
+              <For each={featureEntries()}>
+                {(entry) => (
+                  <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                    <span class="text-slate-200">{entry[0]}</span>
+                    <input type="checkbox" checked={entry[1]} onChange={(event) => setFeature(entry[0], (event.currentTarget as HTMLInputElement | null)?.checked ?? false)} />
+                  </label>
+                )}
+              </For>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-export type ConnectionState = "disconnected" | "connecting" | "awaiting_guard" | "connected" | "error";
+export type ConnectionState = "disconnected" | "connecting" | "awaiting_guard" | "needs_steam_guard" | "connected" | "error";
 
 export interface HealthStatus {
   status: "ok" | "error";
@@ -16,23 +16,40 @@ export interface StickerDto {
 export interface InventoryItemDto {
   id: string;
   name: string;
-  kind: "weapon_skin" | "sticker_item" | "container" | "storage_unit" | "tool_item" | "unknown";
+  marketName?: string;
+  customName?: string;
+  kind: "weapon_skin" | "sticker_item" | "container" | "storage_unit" | "tool_item" | "cs2_econ_item" | "unknown";
   defindex?: number;
   paintWear?: number;
   storageCount?: number;
   casketId?: string;
+  collection?: string;
+  exterior?: string;
+  rarity?: string;
+  storageLocation?: string;
+  toolType?: string;
   stickers?: StickerDto[];
   unsupportedFields?: string[];
+  hasCustomName?: boolean;
+  isNameTagTool?: boolean;
 }
 
 export interface InventorySnapshot {
   items: InventoryItemDto[];
   refreshedAt: string;
+  status?: "ready" | "requires_connection" | "loading" | "error";
+  message?: string;
+  error?: string;
+  diagnostics?: string[];
 }
 
 export interface ConnectionStatus {
   state: ConnectionState;
   detail?: string;
+  steamId?: string;
+  accountName?: string;
+  avatarUrl?: string;
+  diagnostics?: string[];
 }
 
 export interface OperationReceipt {

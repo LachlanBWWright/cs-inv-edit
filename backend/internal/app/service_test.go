@@ -32,3 +32,22 @@ func TestSubmitOperationBlocksItemDeletionWhenDisabled(t *testing.T) {
 		t.Fatalf("expected blocked_by_feature_flag, got %q", receipt.State)
 	}
 }
+
+func TestNewServiceStartsWithEmptyInventoryUntilConnected(t *testing.T) {
+	service := NewService()
+	inventory := service.Inventory()
+	if inventory.Status != "requires_connection" {
+		t.Fatalf("expected requires_connection status, got %q", inventory.Status)
+	}
+	if len(inventory.Items) != 0 {
+		t.Fatalf("expected no inventory items before connection, got %d", len(inventory.Items))
+	}
+}
+
+func TestRefreshInventoryRequiresConnection(t *testing.T) {
+	service := NewService()
+	receipt := service.RefreshInventory()
+	if receipt.State != "requires_connection" {
+		t.Fatalf("expected requires_connection, got %q", receipt.State)
+	}
+}

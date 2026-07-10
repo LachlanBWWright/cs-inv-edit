@@ -1,11 +1,16 @@
 import { createSignal, Show } from "solid-js";
 import type { ConnectionStatus } from "@cs-inv-edit/contracts";
+import { Alert } from "./ui/Alert.js";
+import { Button } from "./ui/Button.js";
+import { Card, CardContent, CardHeader } from "./ui/Card.js";
+import { Input } from "./ui/Input.js";
 
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
   onConnect: (input: { username?: string; password?: string }) => Promise<void>;
   onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
   onDisconnect: () => Promise<void>;
+  onToast?: (toast: { title: string; description?: string; variant?: "default" | "success" | "warning" | "danger" }) => void;
 }
 
 export function AccountView(props: AccountViewProps) {
@@ -23,7 +28,9 @@ export function AccountView(props: AccountViewProps) {
       await props.onConnect({ username: username(), password: password() });
       setStatus("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Failed to sign in.");
+      const message = err instanceof Error ? err.message : "Failed to sign in.";
+      setStatus(message);
+      props.onToast?.({ title: "Sign in failed", description: message, variant: "danger" });
     } finally {
       setLoading(false);
     }
@@ -37,7 +44,9 @@ export function AccountView(props: AccountViewProps) {
       await props.onSubmitSteamGuard({ code: guardCode() });
       setStatus("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Failed to verify Steam Guard.");
+      const message = err instanceof Error ? err.message : "Failed to verify Steam Guard.";
+      setStatus(message);
+      props.onToast?.({ title: "Steam Guard failed", description: message, variant: "danger" });
     } finally {
       setLoading(false);
     }
@@ -51,110 +60,83 @@ export function AccountView(props: AccountViewProps) {
       setStatus("Signed out.");
     } catch {
       setStatus("Failed to sign out.");
+      props.onToast?.({ title: "Disconnect failed", description: "The session could not be closed.", variant: "danger" });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div class="mx-auto max-w-md space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <header>
-        <h2 class="text-2xl font-semibold">Steam Sign In</h2>
-        <p class="mt-1 text-sm text-slate-600">
-          Sign in to your Steam account to fetch your inventory and interact with the Game Coordinator.
-        </p>
-      </header>
-
-      <Show when={status()}>
-        <div class="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-          {status()}
-        </div>
-      </Show>
-
-      <Show when={props.connection?.state === "connected"}>
-        <div class="space-y-4">
-          <div class="rounded-lg border border-green-200 bg-green-50 p-4">
-            <h3 class="font-semibold text-green-900">Signed In</h3>
-            <p class="mt-1 text-sm text-green-800">
-              Your Steam session is active. Live GC inventory mutations are linked to this account.
+    <div class="mx-auto max-w-2xl">
+      <Card class="overflow-hidden">
+        <CardHeader>
+          <div class="flex flex-col gap-2">
+            <h2 class="text-2xl font-semibold text-slate-50">Steam inventory access</h2>
+            <p class="text-sm text-slate-400">
+              Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleDisconnect}
-            disabled={loading()}
-            class="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Sign Out / Switch Account
-          </button>
-        </div>
-      </Show>
+        </CardHeader>
+        <CardContent class="space-y-5">
+          <Show when={status()}>
+            <Alert variant="warning">{status()}</Alert>
+          </Show>
 
-      <Show when={props.connection?.state === "awaiting_guard"}>
-        <form class="space-y-4" onSubmit={handleSteamGuard}>
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-700">Steam Guard Code</label>
-            <input
-              type="text"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
-              value={guardCode()}
-              onInput={(e) => setGuardCode(e.currentTarget.value)}
-              disabled={loading()}
-              placeholder="Enter code from email or mobile app"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading()}
-            class="w-full rounded-md bg-cyan-700 px-4 py-2 text-white hover:bg-cyan-800 disabled:opacity-50"
-          >
-            {loading() ? "Verifying..." : "Submit Code"}
-          </button>
-          <button
-            type="button"
-            onClick={handleDisconnect}
-            disabled={loading()}
-            class="w-full rounded-md border border-transparent bg-transparent px-4 py-2 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-        </form>
-      </Show>
+          <Show when={props.connection?.state === "connected"}>
+            <div class="space-y-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+              <div>
+                <h3 class="font-semibold text-emerald-100">Signed in</h3>
+                <p class="mt-1 text-sm text-emerald-200">
+                  {props.connection?.accountName ? `Signed in as ${props.connection.accountName}.` : "Your Steam session is active."} Live inventory and mutations stay scoped to this account.
+                </p>
+              </div>
+              <Button variant="secondary" class="w-full justify-center" onClick={() => void handleDisconnect()} disabled={loading()}>
+                Disconnect account
+              </Button>
+            </div>
+          </Show>
 
-      <Show when={props.connection?.state !== "connected" && props.connection?.state !== "awaiting_guard"}>
-        <form class="space-y-4" onSubmit={handleConnect}>
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-700">Steam Username</label>
-            <input
-              type="text"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
-              value={username()}
-              onInput={(e) => setUsername(e.currentTarget.value)}
-              disabled={loading()}
-              required
-            />
-          </div>
-          <div class="space-y-1">
-            <label class="text-sm font-medium text-slate-700">Password</label>
-            <input
-              type="password"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
-              value={password()}
-              onInput={(e) => setPassword(e.currentTarget.value)}
-              disabled={loading()}
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading()}
-            class="w-full rounded-md bg-cyan-700 px-4 py-2 text-white hover:bg-cyan-800 disabled:opacity-50"
-          >
-            {loading() ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
-      </Show>
+          <Show when={props.connection?.state === "needs_steam_guard"}>
+            <form class="space-y-4" onSubmit={handleSteamGuard}>
+              <Alert>Approve the Steam sign-in prompt on your phone, or enter a Steam Guard code below.</Alert>
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-200">Steam Guard code</label>
+                <Input
+                  type="text"
+                  value={guardCode()}
+                  onInput={(e) => setGuardCode((e.currentTarget as HTMLInputElement | null)?.value ?? "")}
+                  disabled={loading()}
+                  placeholder="Enter code from email or mobile app"
+                  autocomplete="one-time-code"
+                  required
+                />
+              </div>
+              <Button type="submit" class="w-full justify-center" disabled={loading()}>
+                {loading() ? "Verifying..." : "Submit code"}
+              </Button>
+              <Button type="button" variant="ghost" class="w-full justify-center" onClick={() => void handleDisconnect()} disabled={loading()}>
+                Cancel
+              </Button>
+            </form>
+          </Show>
+
+          <Show when={props.connection?.state !== "connected" && props.connection?.state !== "needs_steam_guard"}>
+            <form class="space-y-4" onSubmit={handleConnect}>
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-200">Steam username</label>
+                <Input type="text" value={username()} onInput={(e) => setUsername((e.currentTarget as HTMLInputElement | null)?.value ?? "")} disabled={loading()} autocomplete="username" required />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-200">Password</label>
+                <Input type="password" value={password()} onInput={(e) => setPassword((e.currentTarget as HTMLInputElement | null)?.value ?? "")} disabled={loading()} autocomplete="current-password" required />
+              </div>
+              <Button type="submit" class="w-full justify-center" disabled={loading()}>
+                {loading() ? "Signing in..." : "Sign in"}
+              </Button>
+            </form>
+          </Show>
+        </CardContent>
+      </Card>
     </div>
   );
 }

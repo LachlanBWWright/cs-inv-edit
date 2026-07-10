@@ -1,6 +1,6 @@
 # cs-inv-edit
 
-A responsive SolidJS control surface for researching and planning Counter-Strike inventory edits, with placeholder-safe workflows for sticker preparation, trade-up review, storage orchestration, and operational status tracking.
+A responsive SolidJS control surface for managing Counter-Strike inventory edits with account-scoped inventory workflows, inline rename controls, and backend-driven operation receipts.
 
 ## Platform shells
 

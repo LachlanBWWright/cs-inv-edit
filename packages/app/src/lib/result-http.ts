@@ -15,11 +15,28 @@ export function requestJsonResult<T>(baseUrl: string, path: string, init?: Reque
 
   return ResultAsync.fromPromise(fetch(target, init), (error) => createAppError(`Request failed for ${target}`, undefined, error)).andThen((response) => {
     if (!response.ok) {
-      return err(createAppError(`${response.status} ${response.statusText}`, response.status));
+      return ResultAsync.fromPromise(response.text(), () => "")
+        .mapErr(() => createAppError(`${response.status} ${response.statusText}`, response.status))
+        .andThen((body) => err(createAppError(errorMessageFromResponse(response, body), response.status)));
     }
 
     return ResultAsync.fromPromise(response.json() as Promise<T>, (error) => createAppError(`Failed to parse JSON for ${target}`, response.status, error));
   });
+}
+
+function errorMessageFromResponse(response: Response, body: string): string {
+  const fallback = `${response.status} ${response.statusText}`;
+  const trimmed = body.trim();
+  if (trimmed === "") {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: unknown; message?: unknown };
+    const message = typeof parsed.error === "string" ? parsed.error : typeof parsed.message === "string" ? parsed.message : "";
+    return message === "" ? `${fallback}: ${trimmed}` : `${fallback}: ${message}`;
+  } catch {
+    return `${fallback}: ${trimmed}`;
+  }
 }
 
 export function postJsonResult<T>(baseUrl: string, path: string, input?: unknown): ResultAsync<T, AppError> {
