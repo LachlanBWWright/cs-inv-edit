@@ -1,19 +1,84 @@
 import { createSignal, For, Show } from "solid-js";
-import type { ConnectionStatus, InventoryItemDto, InventorySnapshot } from "@cs-inv-edit/contracts";
+import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 import { Card, CardContent } from "./ui/Card.js";
 import { Input } from "./ui/Input.js";
 import { Select } from "./ui/Select.js";
 
+function itemKindLabel(kind: InventoryItemDto["kind"] | undefined) {
+  switch (kind) {
+    case "weapon_skin":
+      return "Weapon skin";
+    case "sticker_item":
+      return "Sticker";
+    case "tool_item":
+      return "Tool";
+    case "container":
+      return "Container";
+    case "storage_unit":
+      return "Storage unit";
+    case "cs2_econ_item":
+      return "CS2 item";
+    case "unknown":
+      return "Unknown item";
+    default:
+      return "Item";
+  }
+}
+
+function itemDisplayName(item: InventoryItemDto) {
+  return item.customName || item.marketName || item.name || `CS2 item #${item.defindex}`;
+}
+
+function itemSubtitle(item: InventoryItemDto) {
+  const title = itemDisplayName(item);
+  const candidates = [
+    item.customName ? item.marketName : undefined,
+    item.collection,
+    item.exterior,
+    item.rarity,
+    itemKindLabel(item.kind),
+  ];
+  return candidates.find((value) => value && value !== title) ?? "";
+}
+
+function itemInitials(item: InventoryItemDto) {
+  const words = itemDisplayName(item)
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "").join("");
+  return initials || "#";
+}
+
+function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
+  const boxClass = () =>
+    props.large
+      ? "mt-3 flex h-32 w-full items-center justify-center rounded bg-slate-950 text-xl font-semibold text-slate-600"
+      : "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
+  const imageClass = () =>
+    props.large
+      ? "mt-3 h-32 w-full rounded bg-slate-950 object-contain"
+      : "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain";
+
+  return (
+    <Show when={props.item.imageUrl} fallback={<div class={boxClass()}>{itemInitials(props.item)}</div>}>
+      <img class={imageClass()} src={props.item.imageUrl} alt={itemDisplayName(props.item)} loading="lazy" />
+    </Show>
+  );
+}
+
 export interface InventoryViewProps {
   inventory: InventorySnapshot | undefined;
   selectedItemId: string | undefined;
   setSelectedItemId: (id: string | undefined) => void;
   connection: ConnectionStatus | undefined;
+  settings: SettingsData | undefined;
   onRefresh: () => void;
   onRename: (input: { subjectItemId: string; toolItemId: string; name: string }) => Promise<unknown>;
   onRemoveName: (input: { itemId: string }) => Promise<unknown>;
+  onOpenContainer: (input: { itemId: string }) => Promise<unknown>;
   onToast?: (toast: { title: string; description?: string; variant?: "default" | "success" | "warning" | "danger" }) => void;
 }
 
@@ -24,6 +89,8 @@ export function InventoryView(props: InventoryViewProps) {
   const [draftName, setDraftName] = createSignal("");
   const [selectedToolId, setSelectedToolId] = createSignal("");
   const [statusMessage, setStatusMessage] = createSignal("");
+  const [containerStatusMessage, setContainerStatusMessage] = createSignal("");
+  const [localSelectedItemKey, setLocalSelectedItemKey] = createSignal<string | undefined>();
   const [pending, setPending] = createSignal(false);
 
   const filteredItems = () => {
@@ -32,8 +99,10 @@ export function InventoryView(props: InventoryViewProps) {
       const searchable = [
         item.name,
         item.marketName,
+        item.marketPrice,
         item.customName,
         item.kind,
+        itemKindLabel(item.kind),
         item.collection,
         item.exterior,
         item.rarity,
@@ -50,17 +119,52 @@ export function InventoryView(props: InventoryViewProps) {
     });
   };
 
-  const selectedItem = () => filteredItems().find((item) => item.id === props.selectedItemId) ?? filteredItems()[0];
+  const itemKey = (item: InventoryItemDto, index: number) => `${index}:${item.id}:${item.defindex ?? ""}:${item.marketName ?? item.name}`;
+  const selectedItem = () => {
+    const items = filteredItems();
+    const selectedKey = localSelectedItemKey();
+    if (selectedKey) {
+      const keyed = items.find((item, index) => itemKey(item, index) === selectedKey);
+      if (keyed) return keyed;
+    }
+    if (props.selectedItemId) {
+      const byID = items.find((item) => item.id === props.selectedItemId);
+      if (byID) return byID;
+    }
+    return items[0];
+  };
+  const selectedItemKey = () => {
+    const selected = selectedItem();
+    if (!selected) return undefined;
+    const index = filteredItems().indexOf(selected);
+    return itemKey(selected, index);
+  };
+  const selectItem = (item: InventoryItemDto, index: number) => {
+    setLocalSelectedItemKey(itemKey(item, index));
+    props.setSelectedItemId(item.id);
+  };
   const nameTagTools = () => (props.inventory?.items ?? []).filter((item) => item.isNameTagTool);
   const connected = () => props.connection?.state === "connected";
+  const inventoryDebugEnabled = () => props.settings?.featureFlags.enableInventoryDebug ?? false;
+  const canUseNameTagOn = (item: InventoryItemDto | undefined) => !!item && item.kind === "weapon_skin" && nameTagTools().length > 0;
+  const canOpenContainer = (item: InventoryItemDto | undefined) => {
+    if (!item) return false;
+    const haystack = `${item.kind} ${item.name} ${item.marketName ?? ""}`.toLowerCase();
+    return item.kind === "container" || haystack.includes("capsule") || haystack.includes("case") || haystack.includes("container");
+  };
   const inventoryError = () => props.inventory?.error || props.inventory?.message;
   const inventoryDiagnostics = () => props.inventory?.diagnostics ?? [];
+  const inventoryLoading = () => props.inventory?.status === "loading" || (connected() && props.inventory?.status === "requires_connection");
 
   const openRenameEditor = (item: InventoryItemDto) => {
     setDraftName(item.customName || item.name);
     const firstTool = nameTagTools()[0]?.id;
     setSelectedToolId(firstTool ?? "");
     setRenameOpen(true);
+    const index = filteredItems().indexOf(item);
+    if (index >= 0) {
+      setLocalSelectedItemKey(itemKey(item, index));
+    }
     props.setSelectedItemId(item.id);
   };
 
@@ -120,6 +224,54 @@ export function InventoryView(props: InventoryViewProps) {
     }
   };
 
+  const handleOpenContainer = async () => {
+    const item = selectedItem();
+    if (!item) return;
+    if (!connected()) {
+      const message = "Connect to Steam before opening containers.";
+      setContainerStatusMessage(message);
+      return;
+    }
+    if (!canOpenContainer(item)) {
+      const message = "Selected item is not a container or capsule.";
+      setContainerStatusMessage(message);
+      return;
+    }
+    setPending(true);
+    setContainerStatusMessage("Sending open request to CS2...");
+    try {
+      const receipt = await props.onOpenContainer({ itemId: item.id });
+      if (typeof receipt === "object" && receipt && "state" in receipt && receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation") {
+        const message = "message" in receipt && typeof receipt.message === "string" ? receipt.message : "Container open request was not accepted.";
+        const responseBody =
+          "result" in receipt && typeof receipt.result === "object" && receipt.result && "responseBodyHex" in receipt.result && typeof receipt.result.responseBodyHex === "string"
+            ? ` Response body: ${receipt.result.responseBodyHex}`
+            : "";
+        setContainerStatusMessage(`${message}${responseBody}`);
+      } else {
+        const openedItem =
+          typeof receipt === "object" && receipt && "result" in receipt && typeof receipt.result === "object" && receipt.result && "openedItem" in receipt.result
+            ? (receipt.result.openedItem as InventoryItemDto | undefined)
+            : undefined;
+        const message = openedItem
+          ? `Received ${itemDisplayName(openedItem)}.`
+          : typeof receipt === "object" && receipt && "message" in receipt && typeof receipt.message === "string"
+            ? receipt.message
+            : "Container opened and inventory was reconciled.";
+        setContainerStatusMessage(message);
+        if (openedItem?.id) {
+          props.setSelectedItemId(openedItem.id);
+          setLocalSelectedItemKey(undefined);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to open container.";
+      setContainerStatusMessage(message);
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <div class="space-y-5">
       <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -137,9 +289,6 @@ export function InventoryView(props: InventoryViewProps) {
       <Show when={props.inventory?.status === "requires_connection" && !connected()}>
         <Alert variant="warning">Connect a Steam account to load inventory items and enable name-tag editing.</Alert>
       </Show>
-      <Show when={props.inventory?.status === "loading" || (connected() && props.inventory?.status === "requires_connection")}>
-        <Alert>Loading CS2 inventory from Steam Game Coordinator...</Alert>
-      </Show>
       <Show when={props.inventory?.status === "error"}>
         <Alert variant="danger">
           <div class="space-y-2">
@@ -156,6 +305,16 @@ export function InventoryView(props: InventoryViewProps) {
           </div>
         </Alert>
       </Show>
+      <Show when={props.inventory?.status === "ready" && inventoryDiagnostics().length > 0}>
+        <Alert variant="warning">
+          <details class="text-xs text-amber-100/80">
+            <summary class="cursor-pointer">Inventory metadata diagnostics</summary>
+            <div class="mt-1 space-y-1 font-mono">
+              <For each={inventoryDiagnostics()}>{(line) => <p>{line}</p>}</For>
+            </div>
+          </details>
+        </Alert>
+      </Show>
 
       <Show when={statusMessage()}>
         <Alert>{statusMessage()}</Alert>
@@ -169,7 +328,7 @@ export function InventoryView(props: InventoryViewProps) {
             <option value="weapon_skin">Weapon skins</option>
             <option value="sticker_item">Stickers</option>
             <option value="tool_item">Tools</option>
-            <option value="cs2_econ_item">CS2 econ items</option>
+            <option value="cs2_econ_item">CS2 items</option>
             <option value="container">Containers</option>
             <option value="storage_unit">Storage units</option>
             <option value="unknown">Unknown</option>
@@ -179,63 +338,79 @@ export function InventoryView(props: InventoryViewProps) {
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_0.9fr]">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Show when={filteredItems().length > 0} fallback={<Alert>No inventory items are loaded.</Alert>}>
+          <Show when={filteredItems().length > 0} fallback={<Alert>{inventoryLoading() ? "Loading CS2 inventory from Steam Game Coordinator..." : "No inventory items are loaded."}</Alert>}>
             <For each={filteredItems()}>
-            {(item) => (
-              <Card class={`min-h-28 cursor-pointer transition ${props.selectedItemId === item.id ? "border-cyan-500/40 bg-cyan-500/10" : "bg-slate-900/70"}`} onClick={() => props.setSelectedItemId(item.id)}>
-                <CardContent>
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <strong class="text-base leading-snug text-slate-50">{item.customName || item.marketName || item.name}</strong>
-                      <p class="mt-1 text-sm text-slate-400">{item.marketName && item.customName ? item.marketName : item.kind}</p>
+              {(item, index) => (
+                <button
+                  type="button"
+                  class={`min-h-28 cursor-pointer rounded-2xl border border-slate-800 text-left shadow-[0_10px_60px_-30px_rgba(34,211,238,0.35)] transition duration-150 hover:border-cyan-400/50 hover:bg-slate-800/90 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${
+                    selectedItemKey() === itemKey(item, index()) ? "border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]" : "bg-slate-900/70"
+                  }`}
+                  onClick={() => selectItem(item, index())}
+                >
+                  <CardContent>
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="flex min-w-0 gap-3">
+                        <ItemIcon item={item} />
+                        <div class="min-w-0">
+                          <strong class="text-base leading-snug text-slate-50">{itemDisplayName(item)}</strong>
+                          <Show when={itemSubtitle(item)}>
+                            <p class="mt-1 text-sm text-slate-400">{itemSubtitle(item)}</p>
+                          </Show>
+                        </div>
+                      </div>
                     </div>
-                    <span class="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-300">{item.kind}</span>
-                  </div>
-                  <dl class="mt-4 grid gap-1 text-sm text-slate-400">
-                    <Show when={item.collection}>
-                      <div class="flex justify-between gap-3">
-                        <dt>Collection</dt>
-                        <dd>{item.collection}</dd>
-                      </div>
-                    </Show>
-                    <Show when={item.exterior}>
-                      <div class="flex justify-between gap-3">
-                        <dt>Exterior</dt>
-                        <dd>{item.exterior}</dd>
-                      </div>
-                    </Show>
-                    <Show when={item.storageLocation}>
-                      <div class="flex justify-between gap-3">
-                        <dt>Storage</dt>
-                        <dd>{item.storageLocation}</dd>
-                      </div>
-                    </Show>
-                    <Show when={item.paintWear !== undefined}>
-                      <div class="flex justify-between gap-3">
-                        <dt>Wear</dt>
-                        <dd>{item.paintWear}</dd>
-                      </div>
-                    </Show>
-                  </dl>
-                </CardContent>
-              </Card>
-            )}
+                    <dl class="mt-4 grid gap-1 text-sm text-slate-400">
+                      <Show when={item.collection}>
+                        <div class="flex justify-between gap-3">
+                          <dt>Collection</dt>
+                          <dd>{item.collection}</dd>
+                        </div>
+                      </Show>
+                      <Show when={item.exterior}>
+                        <div class="flex justify-between gap-3">
+                          <dt>Exterior</dt>
+                          <dd>{item.exterior}</dd>
+                        </div>
+                      </Show>
+                      <Show when={item.storageLocation}>
+                        <div class="flex justify-between gap-3">
+                          <dt>Storage</dt>
+                          <dd>{item.storageLocation}</dd>
+                        </div>
+                      </Show>
+                      <Show when={item.paintWear !== undefined}>
+                        <div class="flex justify-between gap-3">
+                          <dt>Wear</dt>
+                          <dd>{item.paintWear}</dd>
+                        </div>
+                      </Show>
+                      <Show when={item.marketPrice}>
+                        <div class="flex justify-between gap-3">
+                          <dt>Market</dt>
+                          <dd>{item.marketPrice}</dd>
+                        </div>
+                      </Show>
+                    </dl>
+                  </CardContent>
+                </button>
+              )}
             </For>
           </Show>
         </div>
 
         <Card>
           <CardContent>
-            <Show when={selectedItem()} fallback={<p class="text-sm text-slate-400">No item selected.</p>}>
-              {(item) => {
-                const selected = item();
-
-                return (
+            <Show keyed when={selectedItem()} fallback={<p class="text-sm text-slate-400">No item selected.</p>}>
+              {(selected) => (
                   <div class="space-y-4">
                     <div>
                       <p class="text-sm font-medium text-slate-400">Selected item</p>
-                      <h3 class="mt-1 text-xl font-semibold text-slate-50">{selected.customName || selected.marketName || selected.name}</h3>
-                      <p class="mt-1 text-sm text-slate-400">{selected.marketName && selected.customName ? selected.marketName : selected.name}</p>
+                      <ItemIcon item={selected} large />
+                      <h3 class="mt-3 text-xl font-semibold text-slate-50">{itemDisplayName(selected)}</h3>
+                      <Show when={itemSubtitle(selected)}>
+                        <p class="mt-1 text-sm text-slate-400">{itemSubtitle(selected)}</p>
+                      </Show>
                     </div>
 
                     <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-300">
@@ -243,7 +418,7 @@ export function InventoryView(props: InventoryViewProps) {
                         <Show when={selected.kind}>
                           <div>
                             <p class="text-xs uppercase tracking-wide text-slate-500">Type</p>
-                            <p class="mt-1 font-medium text-slate-100">{selected.kind}</p>
+                            <p class="mt-1 font-medium text-slate-100">{itemKindLabel(selected.kind)}</p>
                           </div>
                         </Show>
                         <Show when={selected.rarity}>
@@ -270,6 +445,18 @@ export function InventoryView(props: InventoryViewProps) {
                             <p class="mt-1 font-medium text-slate-100">{selected.paintWear}</p>
                           </div>
                         </Show>
+                        <Show when={selected.marketPrice}>
+                          <div>
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Market</p>
+                            <p class="mt-1 font-medium text-slate-100">{selected.marketPrice}</p>
+                          </div>
+                        </Show>
+                        <Show when={selected.marketSellListings}>
+                          <div>
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Listings</p>
+                            <p class="mt-1 font-medium text-slate-100">{selected.marketSellListings}</p>
+                          </div>
+                        </Show>
                         <Show when={selected.stickers && selected.stickers.length > 0}>
                           <div>
                             <p class="text-xs uppercase tracking-wide text-slate-500">Stickers</p>
@@ -280,9 +467,21 @@ export function InventoryView(props: InventoryViewProps) {
                     </div>
 
                     <div class="flex flex-wrap gap-2">
-                      <Button variant="secondary" onClick={() => openRenameEditor(selected)} disabled={pending()}>
-                        Rename
-                      </Button>
+                      <Show when={canOpenContainer(selected)}>
+                        <div class="flex flex-col gap-2">
+                          <Button onClick={() => void handleOpenContainer()} disabled={pending()}>
+                            Open container
+                          </Button>
+                          <Show when={containerStatusMessage()}>
+                            <p class="max-w-sm text-sm text-slate-400">{containerStatusMessage()}</p>
+                          </Show>
+                        </div>
+                      </Show>
+                      <Show when={canUseNameTagOn(selected)}>
+                        <Button variant="secondary" onClick={() => openRenameEditor(selected)} disabled={pending()}>
+                          Rename
+                        </Button>
+                      </Show>
                       <Show when={selected.hasCustomName || selected.customName}>
                         <Button variant="danger" class="bg-rose-600/90 hover:bg-rose-500" onClick={() => void handleRemoveName()} disabled={pending()}>
                           Remove custom name
@@ -324,11 +523,29 @@ export function InventoryView(props: InventoryViewProps) {
                         <Show when={selected.unsupportedFields?.length}>
                           <p>Unsupported fields: {selected.unsupportedFields?.join(", ")}</p>
                         </Show>
+                        <Show when={inventoryDebugEnabled() && selected.debug}>
+                          {(debug) => (
+                            <div class="space-y-1 border-t border-slate-800 pt-2">
+                              <p>GC ID: {debug().gcId}</p>
+                              <p>GC original ID: {debug().gcOriginalId}</p>
+                              <p>GC defindex: {debug().gcDefIndex}</p>
+                              <p>GC inventory: {debug().gcInventory}</p>
+                              <p>GC quantity: {debug().gcQuantity}</p>
+                              <p>GC quality: {debug().gcQuality}</p>
+                              <p>GC rarity: {debug().gcRarity}</p>
+                              <p>GC paint kit: {debug().gcPaintKit}</p>
+                              <p>Description matched: {debug().descriptionMatched ? "yes" : "no"}</p>
+                              <p>Market fallback used: {debug().marketDescriptionUsed ? "yes" : "no"}</p>
+                              <Show when={debug().attributes}>
+                                <p>Attributes: {JSON.stringify(debug().attributes)}</p>
+                              </Show>
+                            </div>
+                          )}
+                        </Show>
                       </div>
                     </details>
                   </div>
-                );
-              }}
+                )}
             </Show>
           </CardContent>
         </Card>

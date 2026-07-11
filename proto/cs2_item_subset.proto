@@ -4,18 +4,58 @@ package cs2item;
 
 option go_package = "cs-inv-edit/backend/internal/proto/generated;cs2pb";
 
-message CMsgApplySticker {
-  optional uint64 sticker_item_id = 1;
-  optional uint64 item_item_id = 2;
-  optional uint32 sticker_slot = 3;
-  optional uint32 baseitem_defidx = 4;
-  optional float sticker_wear = 5;
-  optional float sticker_rotation = 6;
-  optional float sticker_scale = 7;
-  optional float sticker_offset_x = 8;
-  optional float sticker_offset_y = 9;
-  optional float sticker_offset_z = 10;
-  optional float sticker_wear_target = 11;
+// Source: SteamTracking/GameTracking-CS2 Protobufs/econ_gcmessages.proto, enum EGCItemMsg.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/econ_gcmessages.proto
+enum EGCItemMsg {
+  k_EMsgGCBase = 1000;
+  k_EMsgGCSetItemPosition = 1001;
+  k_EMsgGCCraft = 1002;
+  k_EMsgGCCraftResponse = 1003;
+  k_EMsgGCDelete = 1004;
+  k_EMsgGCNameItem = 1006;
+  k_EMsgGCUnlockCrateResponse = 1008;
+  k_EMsgGCUseItemRequest = 1025;
+  k_EMsgGCRemoveItemName = 1030;
+  k_EMsgGCDeliverGift = 1034;
+  k_EMsgGCApplyStrangePart = 1073;
+  k_EMsgGCSetItemPositions = 1077;
+  k_EMsgGCStatTrakSwap = 1088;
+  k_EMsgGCItemCustomizationNotification = 1090;
+  k_EMsgGCCasketItemAdd = 1092;
+  k_EMsgGCCasketItemExtract = 1093;
+  k_EMsgGCCasketItemLoadContents = 1094;
+  k_EMsgGCOpenCrate = 2534;
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/econ_gcmessages.proto,
+// enum EGCItemCustomizationNotification.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/econ_gcmessages.proto
+enum EGCItemCustomizationNotification {
+  k_EGCItemCustomizationNotification_UnlockCrate = 1007;
+  k_EGCItemCustomizationNotification_XRayItemReveal = 1008;
+  k_EGCItemCustomizationNotification_XRayItemClaim = 1009;
+  k_EGCItemCustomizationNotification_ExtractSticker = 1054;
+  k_EGCItemCustomizationNotification_EncapsulateSticker = 1055;
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/gcsdk_gcmessages.proto,
+// enum EGCBaseClientMsg.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/gcsdk_gcmessages.proto
+enum EGCBaseClientMsg {
+  k_EMsgGCClientWelcome = 4004;
+  k_EMsgGCClientHello = 4006;
+  k_EMsgGCClientConnectionStatus = 4009;
+  k_EMsgGCClientHelloR2 = 4013;
+  k_EMsgGCClientHelloR3 = 4014;
+  k_EMsgGCClientHelloR4 = 4015;
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/cstrike15_gcmessages.proto,
+// enum ECsgoGCMsg. The file and enum retain legacy CS:GO naming for CS2 GC messages.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/cstrike15_gcmessages.proto
+enum ECsgoGCMsg {
+  k_EMsgGCCStrike15_v2_GC2ClientGlobalStats = 9173;
+  k_EMsgGCCStrike15_v2_ClientLogonFatalError = 9187;
 }
 
 message CMsgSetItemName {
@@ -49,6 +89,16 @@ message CMsgUseItem {
   repeated uint32 gift__potential_targets = 3;
   optional uint32 duel__class_lock = 4;
   optional fixed64 initiator_steam_id = 5;
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/base_gcmessages.proto.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/base_gcmessages.proto
+message CMsgOpenCrate {
+  optional uint64 tool_item_id = 1;
+  optional uint64 subject_item_id = 2;
+  optional bool for_rental = 3;
+  optional uint32 points_remaining = 4;
+  optional uint32 volatile_limit = 5;
 }
 
 message CMsgUseMultipleItems {

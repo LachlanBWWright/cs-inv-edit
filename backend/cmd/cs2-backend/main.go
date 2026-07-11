@@ -18,8 +18,8 @@ import (
 )
 
 type encodeResult struct {
-	AppID                  int    `json:"appid"`
-	EMSG                   int    `json:"emsg"`
+	AppID                  uint32 `json:"appid"`
+	EMSG                   uint32 `json:"emsg"`
 	BodyHex                string `json:"bodyHex"`
 	BodySHA256             string `json:"bodySha256"`
 	Confidence             string `json:"confidence"`
@@ -67,21 +67,6 @@ func runEncode(args []string) error {
 			return err
 		}
 		return printResult(encodeResult{AppID: protocol.AppIDCS2, EMSG: protocol.EMsgCasketItemAdd, BodyHex: toHex(body), BodySHA256: sha256Hex(body), Confidence: "high"}, false)
-	case "sticker.apply":
-		fs := flag.NewFlagSet("sticker.apply", flag.ContinueOnError)
-		jsonPath := fs.String("json", "", "path to json input")
-		if err := fs.Parse(args[1:]); err != nil {
-			return err
-		}
-		input, err := readApplyStickerInput(*jsonPath)
-		if err != nil {
-			return err
-		}
-		body, err := cs2pb.EncodeApplySticker(input)
-		if err != nil {
-			return err
-		}
-		return printResult(encodeResult{AppID: protocol.AppIDCS2, EMSG: protocol.EMsgApplySticker, BodyHex: toHex(body), BodySHA256: sha256Hex(body), Confidence: "low", RequiresLiveValidation: true, Reason: "ApplySticker payload contract not yet confirmed against current live client"}, false)
 	case "nametags.apply":
 		input, err := readInputFromJSONArgs[cs2pb.SetItemNameInput]("nametags.apply", args[1:])
 		if err != nil {
@@ -209,10 +194,6 @@ type tradeupInput struct {
 
 func readTradeupInput(path string) (tradeupInput, error) {
 	return readJSONInput[tradeupInput](path)
-}
-
-func readApplyStickerInput(path string) (cs2pb.ApplyStickerInput, error) {
-	return readJSONInput[cs2pb.ApplyStickerInput](path)
 }
 
 func readInputFromJSONArgs[T any](operation string, args []string) (T, error) {

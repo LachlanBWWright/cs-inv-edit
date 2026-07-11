@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"cs-inv-edit/backend/internal/protocol"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 	"github.com/Lucino772/envelop/pkg/steam/steammsg"
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
@@ -13,7 +14,7 @@ import (
 
 func TestEncodeGCClientPacketWrapsPayload(t *testing.T) {
 	inner := []byte{0x01, 0x02, 0x03}
-	packet, err := encodeGCClientPacket(730, 1006, inner, false)
+	packet, err := encodeGCClientPacket(protocol.AppIDCS2, protocol.EMsgSetItemName, inner, false)
 	if err != nil {
 		t.Fatalf("encodeGCClientPacket returned error: %v", err)
 	}
@@ -27,7 +28,7 @@ func TestEncodeGCClientPacketWrapsPayload(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ProtoHeader, got %T", packet.Header())
 	}
-	if got := header.Proto.GetRoutingAppid(); got != 730 {
+	if got := header.Proto.GetRoutingAppid(); got != protocol.AppIDCS2 {
 		t.Fatalf("expected routing appid 730, got %d", got)
 	}
 	var body steampb.CMsgGCClient
@@ -81,10 +82,10 @@ func TestGCHandlerDecodesClientFromGC(t *testing.T) {
 	events := make(chan GCEvent, 1)
 	handler := NewGCHandler(events)
 	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientFromGC)
-	header.Proto.RoutingAppid = proto.Uint32(730)
+	header.Proto.RoutingAppid = proto.Uint32(protocol.AppIDCS2)
 	packet, err := steammsg.EncodePacket(header, &steampb.CMsgGCClient{
-		Appid:   proto.Uint32(730),
-		Msgtype: proto.Uint32(4004),
+		Appid:   proto.Uint32(protocol.AppIDCS2),
+		Msgtype: proto.Uint32(protocol.EMsgGCClientWelcome),
 		Payload: []byte{0x09},
 		Steamid: proto.Uint64(76561198000000000),
 		Gcname:  proto.String("CS2"),
@@ -103,7 +104,7 @@ func TestGCHandlerDecodesClientFromGC(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected GCMessage payload, got %T", event.Payload)
 	}
-	if message.AppID != 730 || message.EMsg != 4004 || message.SteamID != 76561198000000000 || message.GCName != "CS2" {
+	if message.AppID != protocol.AppIDCS2 || message.EMsg != protocol.EMsgGCClientWelcome || message.SteamID != 76561198000000000 || message.GCName != "CS2" {
 		t.Fatalf("unexpected decoded message: %+v", message)
 	}
 	if !bytes.Equal(message.Body, []byte{0x09}) {

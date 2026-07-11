@@ -7,5 +7,3 @@ require google.golang.org/protobuf v1.36.11
 require (
 	github.com/Lucino772/envelop v0.6.1 // indirect
 )
-
-replace github.com/Lucino772/envelop => ../third_party/envelop

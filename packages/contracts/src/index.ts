@@ -17,7 +17,11 @@ export interface InventoryItemDto {
   id: string;
   name: string;
   marketName?: string;
+  marketPrice?: string;
+  marketSalePrice?: string;
+  marketSellListings?: number;
   customName?: string;
+  imageUrl?: string;
   kind: "weapon_skin" | "sticker_item" | "container" | "storage_unit" | "tool_item" | "cs2_econ_item" | "unknown";
   defindex?: number;
   paintWear?: number;
@@ -32,6 +36,21 @@ export interface InventoryItemDto {
   unsupportedFields?: string[];
   hasCustomName?: boolean;
   isNameTagTool?: boolean;
+  debug?: ItemDebugDto;
+}
+
+export interface ItemDebugDto {
+  gcId?: string;
+  gcOriginalId?: string;
+  gcDefIndex?: number;
+  gcInventory?: number;
+  gcQuantity?: number;
+  gcQuality?: number;
+  gcRarity?: number;
+  gcPaintKit?: number;
+  descriptionMatched: boolean;
+  marketDescriptionUsed: boolean;
+  attributes?: Record<string, number>;
 }
 
 export interface InventorySnapshot {
@@ -58,6 +77,21 @@ export interface OperationReceipt {
   state: "queued" | "validating" | "encoded" | "sent" | "awaiting_gc_confirmation" | "reconciling_inventory" | "completed" | "failed" | "blocked_by_feature_flag" | "requires_validation";
   createdAt: string;
   message?: string;
+  result?: OperationResult;
+}
+
+export interface OperationResult {
+  openedItem?: InventoryItemDto;
+  consumedItemId?: string;
+  requestEMsg?: number;
+  requestMethod?: string;
+  requestBodyHex?: string;
+  confirmation?: string;
+  responseEMsg?: number;
+  responseBodyHex?: string;
+  beforeItemCount?: number;
+  afterItemCount?: number;
+  diagnostics?: string[];
 }
 
 export interface OperationEvent {
@@ -70,10 +104,10 @@ export interface OperationEvent {
 
 export interface FeatureFlags {
   enableStorageMutations: boolean;
+  enableContainerOpening: boolean;
+  enableInventoryDebug: boolean;
   enableTradeups: boolean;
   enableStickerExtract: boolean;
-  enableStickerRemove: boolean;
-  enableStickerApply: boolean;
   enableNameTags: boolean;
   enableItemDeletion: boolean;
   enableStatTrakSwap: boolean;

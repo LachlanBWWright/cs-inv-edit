@@ -1,0 +1,3 @@
+[submodule "proto/vendor/gametracking-cs2"]
+	path = proto/vendor/gametracking-cs2
+	url = https://github.com/SteamTracking/GameTracking-CS2.git

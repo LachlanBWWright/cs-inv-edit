@@ -33,11 +33,10 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/storage/load", h.storageLoad)
 	h.mux.HandleFunc("/storage/move-in", h.storageMoveIn)
 	h.mux.HandleFunc("/storage/move-out", h.storageMoveOut)
+	h.mux.HandleFunc("/containers/open", h.containerOpen)
 	h.mux.HandleFunc("/tradeups/preview", h.tradeupPreview)
 	h.mux.HandleFunc("/tradeups/execute", h.tradeupExecute)
 	h.mux.HandleFunc("/stickers/extract", h.stickerExtract)
-	h.mux.HandleFunc("/stickers/remove", h.stickerRemove)
-	h.mux.HandleFunc("/stickers/apply", h.stickerApply)
 	h.mux.HandleFunc("/nametags/apply", h.nametagApply)
 	h.mux.HandleFunc("/nametags/remove", h.nametagRemove)
 	h.mux.HandleFunc("/items/delete", h.itemDelete)
@@ -104,6 +103,9 @@ func (h *Handler) storageMoveIn(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) storageMoveOut(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "storage.move-out"))
 }
+func (h *Handler) containerOpen(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, h.handleBodyOperation(r, "containers.open"))
+}
 func (h *Handler) tradeupPreview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "tradeups.preview"))
 }
@@ -112,12 +114,6 @@ func (h *Handler) tradeupExecute(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) stickerExtract(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "stickers.extract"))
-}
-func (h *Handler) stickerRemove(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.handleBodyOperation(r, "stickers.remove"))
-}
-func (h *Handler) stickerApply(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.handleBodyOperation(r, "stickers.apply"))
 }
 func (h *Handler) nametagApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "nametags.apply"))

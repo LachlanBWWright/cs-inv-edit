@@ -24,12 +24,12 @@ export function StickersView(props: StickersViewProps) {
     <div class="space-y-5">
       <header>
         <h2 class="text-3xl font-semibold">Stickers</h2>
-        <p class="mt-2 max-w-2xl text-sm text-slate-600">Read-only sticker display first, with feature-flagged actions surfaced as development-only controls.</p>
+        <p class="mt-2 max-w-2xl text-sm text-slate-600">Read-only sticker display with extraction gated behind live validation.</p>
       </header>
 
       <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p class="font-semibold">Requires live validation</p>
-        <p class="mt-1">Sticker apply/remove workflows remain development-only and must not be treated as production-ready.</p>
+        <p class="mt-1">Sticker extraction remains development-only and must not be treated as production-ready.</p>
       </div>
 
       <Show when={status()}>
@@ -44,8 +44,6 @@ export function StickersView(props: StickersViewProps) {
               <p class="mt-2 text-sm text-slate-600">Read-only preview for sticker assets.</p>
               <div class="mt-4 flex flex-wrap gap-2">
                 <button class="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => runOperation("stickers.extract")}>Extract</button>
-                <button class="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => runOperation("stickers.remove")}>Remove</button>
-                <button class="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => runOperation("stickers.apply")}>Apply</button>
               </div>
             </article>
           )}

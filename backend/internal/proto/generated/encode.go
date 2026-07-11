@@ -7,20 +7,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type ApplyStickerInput struct {
-	StickerItemID     uint64  `json:"stickerItemId"`
-	ItemItemID        uint64  `json:"itemItemId"`
-	StickerSlot       uint32  `json:"stickerSlot"`
-	BaseitemDefidx    uint32  `json:"baseitemDefidx"`
-	StickerWear       float32 `json:"stickerWear"`
-	StickerRotation   float32 `json:"stickerRotation"`
-	StickerScale      float32 `json:"stickerScale"`
-	StickerOffsetX    float32 `json:"stickerOffsetX"`
-	StickerOffsetY    float32 `json:"stickerOffsetY"`
-	StickerOffsetZ    float32 `json:"stickerOffsetZ"`
-	StickerWearTarget float32 `json:"stickerWearTarget"`
-}
-
 type ItemPositionInput struct {
 	LegacyItemID uint32 `json:"legacyItemId"`
 	Position     uint32 `json:"position"`
@@ -98,34 +84,7 @@ func EncodeLoadCasketContents(casketID uint64) ([]byte, error) {
 }
 
 func EncodeExtractSticker(itemID uint64, slot uint32) ([]byte, error) {
-	return encodeStickerCustomization(itemID, slot, 1054)
-}
-
-func EncodeRemoveSticker(itemID uint64, slot uint32) ([]byte, error) {
-	return encodeStickerCustomization(itemID, slot, 1053)
-}
-
-func EncodeApplySticker(input ApplyStickerInput) ([]byte, error) {
-	if err := requireID("sticker item id", input.StickerItemID); err != nil {
-		return nil, err
-	}
-	if err := requireID("item id", input.ItemItemID); err != nil {
-		return nil, err
-	}
-	msg := &CMsgApplySticker{
-		StickerItemId:     proto.Uint64(input.StickerItemID),
-		ItemItemId:        proto.Uint64(input.ItemItemID),
-		StickerSlot:       proto.Uint32(input.StickerSlot),
-		BaseitemDefidx:    proto.Uint32(input.BaseitemDefidx),
-		StickerWear:       proto.Float32(input.StickerWear),
-		StickerRotation:   proto.Float32(input.StickerRotation),
-		StickerScale:      proto.Float32(input.StickerScale),
-		StickerOffsetX:    proto.Float32(input.StickerOffsetX),
-		StickerOffsetY:    proto.Float32(input.StickerOffsetY),
-		StickerOffsetZ:    proto.Float32(input.StickerOffsetZ),
-		StickerWearTarget: proto.Float32(input.StickerWearTarget),
-	}
-	return proto.Marshal(msg)
+	return encodeStickerCustomization(itemID, slot, uint32(EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_ExtractSticker))
 }
 
 func EncodeSetItemName(input SetItemNameInput) ([]byte, error) {

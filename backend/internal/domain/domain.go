@@ -16,24 +16,29 @@ type Sticker struct {
 }
 
 type InventoryItem struct {
-	ID                string    `json:"id"`
-	Name              string    `json:"name"`
-	MarketName        string    `json:"marketName,omitempty"`
-	CustomName        string    `json:"customName,omitempty"`
-	Kind              string    `json:"kind"`
-	Defindex          *uint32   `json:"defindex,omitempty"`
-	PaintWear         *float64  `json:"paintWear,omitempty"`
-	Stickers          []Sticker `json:"stickers,omitempty"`
-	StorageCount      *uint32   `json:"storageCount,omitempty"`
-	CasketID          *string   `json:"casketId,omitempty"`
-	Collection        string    `json:"collection,omitempty"`
-	Exterior          string    `json:"exterior,omitempty"`
-	Rarity            string    `json:"rarity,omitempty"`
-	StorageLocation   string    `json:"storageLocation,omitempty"`
-	ToolType          string    `json:"toolType,omitempty"`
-	UnsupportedFields []string  `json:"unsupportedFields,omitempty"`
-	HasCustomName     bool      `json:"hasCustomName,omitempty"`
-	IsNameTagTool     bool      `json:"isNameTagTool,omitempty"`
+	ID                 string     `json:"id"`
+	Name               string     `json:"name"`
+	MarketName         string     `json:"marketName,omitempty"`
+	MarketPrice        string     `json:"marketPrice,omitempty"`
+	MarketSalePrice    string     `json:"marketSalePrice,omitempty"`
+	MarketSellListings *int       `json:"marketSellListings,omitempty"`
+	CustomName         string     `json:"customName,omitempty"`
+	ImageURL           string     `json:"imageUrl,omitempty"`
+	Kind               string     `json:"kind"`
+	Defindex           *uint32    `json:"defindex,omitempty"`
+	PaintWear          *float64   `json:"paintWear,omitempty"`
+	Stickers           []Sticker  `json:"stickers,omitempty"`
+	StorageCount       *uint32    `json:"storageCount,omitempty"`
+	CasketID           *string    `json:"casketId,omitempty"`
+	Collection         string     `json:"collection,omitempty"`
+	Exterior           string     `json:"exterior,omitempty"`
+	Rarity             string     `json:"rarity,omitempty"`
+	StorageLocation    string     `json:"storageLocation,omitempty"`
+	ToolType           string     `json:"toolType,omitempty"`
+	UnsupportedFields  []string   `json:"unsupportedFields,omitempty"`
+	HasCustomName      bool       `json:"hasCustomName,omitempty"`
+	IsNameTagTool      bool       `json:"isNameTagTool,omitempty"`
+	Debug              *ItemDebug `json:"debug,omitempty"`
 }
 
 type InventorySnapshot struct {
@@ -47,10 +52,10 @@ type InventorySnapshot struct {
 
 type FeatureFlags struct {
 	EnableStorageMutations bool `json:"enableStorageMutations"`
+	EnableContainerOpening bool `json:"enableContainerOpening"`
+	EnableInventoryDebug   bool `json:"enableInventoryDebug"`
 	EnableTradeups         bool `json:"enableTradeups"`
 	EnableStickerExtract   bool `json:"enableStickerExtract"`
-	EnableStickerRemove    bool `json:"enableStickerRemove"`
-	EnableStickerApply     bool `json:"enableStickerApply"`
 	EnableNameTags         bool `json:"enableNameTags"`
 	EnableItemDeletion     bool `json:"enableItemDeletion"`
 	EnableStatTrakSwap     bool `json:"enableStatTrakSwap"`
@@ -58,6 +63,20 @@ type FeatureFlags struct {
 	EnableItemUse          bool `json:"enableItemUse"`
 	EnableToolApplication  bool `json:"enableToolApplication"`
 	EnableGifting          bool `json:"enableGifting"`
+}
+
+type ItemDebug struct {
+	GCID                  string            `json:"gcId,omitempty"`
+	GCOriginalID          string            `json:"gcOriginalId,omitempty"`
+	GCDefIndex            uint32            `json:"gcDefIndex,omitempty"`
+	GCInventory           uint32            `json:"gcInventory,omitempty"`
+	GCQuantity            uint32            `json:"gcQuantity,omitempty"`
+	GCQuality             uint32            `json:"gcQuality,omitempty"`
+	GCRarity              uint32            `json:"gcRarity,omitempty"`
+	GCPaintKit            uint32            `json:"gcPaintKit,omitempty"`
+	DescriptionMatched    bool              `json:"descriptionMatched"`
+	MarketDescriptionUsed bool              `json:"marketDescriptionUsed"`
+	Attributes            map[string]uint32 `json:"attributes,omitempty"`
 }
 
 type Settings struct {

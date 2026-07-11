@@ -5,6 +5,11 @@ if ! command -v protoc >/dev/null 2>&1; then
   echo "protoc is required to generate protobuf bindings" >&2
   exit 1
 fi
+export PATH="$(go env GOPATH)/bin:$PATH"
+if ! command -v protoc-gen-go >/dev/null 2>&1; then
+  echo "protoc-gen-go is required to generate Go protobuf bindings" >&2
+  exit 1
+fi
 mkdir -p "$ROOT_DIR/backend/internal/proto/generated"
 protoc \
   --go_out="$ROOT_DIR/backend/internal/proto/generated" \

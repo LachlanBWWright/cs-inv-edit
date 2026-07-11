@@ -52,6 +52,51 @@ export function App(props: AppProps) {
     logSteamDiagnostics("status", connection());
   });
 
+  let steamGuardPollTimer: number | undefined;
+  let steamGuardPollInFlight = false;
+  const pollSteamGuardMobileApproval = async () => {
+    if (steamGuardPollInFlight || connection()?.state !== "needs_steam_guard" || !props.backend.submitSteamGuard) {
+      return;
+    }
+    steamGuardPollInFlight = true;
+    try {
+      const res = await props.backend.submitSteamGuard({ code: "" });
+      console.info("[app] Steam Guard mobile poll result", res);
+      logSteamDiagnostics("steam guard mobile poll", res);
+      if (res.state === "connected") {
+        if (steamGuardPollTimer !== undefined) {
+          window.clearInterval(steamGuardPollTimer);
+          steamGuardPollTimer = undefined;
+        }
+        setView("inventory");
+        await syncAccountState(res);
+      } else if (res.state === "error") {
+        console.info("[app] Steam Guard mobile approval still pending or transiently unavailable", res);
+      } else {
+        await refetchConnection();
+      }
+    } catch (error) {
+      console.info("[app] Steam Guard mobile approval pending", error);
+    } finally {
+      steamGuardPollInFlight = false;
+    }
+  };
+
+  createEffect(() => {
+    if (steamGuardPollTimer !== undefined) {
+      window.clearInterval(steamGuardPollTimer);
+      steamGuardPollTimer = undefined;
+    }
+    steamGuardPollInFlight = false;
+    if (connection()?.state !== "needs_steam_guard" || !props.backend.submitSteamGuard) {
+      return;
+    }
+    void pollSteamGuardMobileApproval();
+    steamGuardPollTimer = window.setInterval(() => {
+      void pollSteamGuardMobileApproval();
+    }, 2000);
+  });
+
   const dismissToast = (id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));
   };
@@ -78,6 +123,9 @@ export function App(props: AppProps) {
   });
 
   const notifyOperationReceipt = (receipt: OperationReceipt) => {
+    if (receipt.type === "containers.open") {
+      return;
+    }
     const base = receipt.message ?? receipt.type;
     if (receipt.state === "completed") {
       pushToast({ title: "Operation completed", description: base, variant: "success" });
@@ -97,8 +145,10 @@ export function App(props: AppProps) {
       const receipt = await receiptPromise;
       console.info("[app] operation receipt", receipt);
       notifyOperationReceipt(receipt);
-      if (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation") {
+      if (receipt.type !== "containers.open" && (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation")) {
         await props.backend.refreshInventory();
+        await refetchInventory();
+      } else if (receipt.type === "containers.open") {
         await refetchInventory();
       }
       await Promise.all([refetchOperations(), refetchEvents()]);
@@ -246,9 +296,11 @@ export function App(props: AppProps) {
             selectedItemId={selectedItemId()}
             setSelectedItemId={setSelectedItemId}
             connection={connection()}
+            settings={settings()}
             onRefresh={() => void refreshAll()}
             onRename={(input: { subjectItemId: string; toolItemId: string; name: string }) => settleOperation(operationApi.applyNameTag(input))}
             onRemoveName={(input: { itemId: string }) => settleOperation(operationApi.removeNameTag(input))}
+            onOpenContainer={(input: { itemId: string }) => settleOperation(props.backend.submitOperation("containers.open", input))}
             onToast={pushToast}
           />
         </Show>

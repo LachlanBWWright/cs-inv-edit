@@ -12,6 +12,7 @@ type Receipt struct {
 	State       string `json:"state"`
 	CreatedAt   string `json:"createdAt"`
 	Message     string `json:"message,omitempty"`
+	Result      any    `json:"result,omitempty"`
 }
 
 type Event struct {

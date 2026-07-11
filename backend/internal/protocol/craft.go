@@ -5,45 +5,6 @@ import (
 	"fmt"
 )
 
-const (
-	AppIDCS2 = 730
-
-	EMsgDeleteItem                    = 1004
-	EMsgSetItemName                   = 1006
-	EMsgCraft                         = 1002
-	EMsgCraftResponse                 = 1003
-	EMsgUseItemRequest                = 1025
-	EMsgRemoveItemName                = 1030
-	EMsgApplyStrangePart              = 1073
-	EMsgSetItemPositions              = 1077
-	EMsgApplySticker                  = 1086
-	EMsgStatTrakSwap                  = 1088
-	EMsgItemCustomizationNotification = 1090
-	EMsgCasketItemAdd                 = 1092
-	EMsgCasketItemExtract             = 1093
-	EMsgCasketItemLoadContents        = 1094
-	EMsgGiftItem                      = 1034
-
-	CustomizationRemoveSticker      = 1053
-	CustomizationExtractSticker     = 1054
-	CustomizationEncapsulateSticker = 1055
-	CustomizationApplySticker       = 1086
-
-	EMsgGCClientWelcome          = 4004
-	EMsgGCClientHello            = 4006
-	EMsgGCClientHelloR2          = 4013
-	EMsgGCClientHelloR3          = 4014
-	EMsgGCClientHelloR4          = 4015
-	EMsgGCClientConnectionStatus = 4009
-
-	EMsgGCCStrike15V2ClientLogonFatalError = 9187
-)
-
-type CraftResponse struct {
-	Recipe        int16
-	GainedItemIDs []uint64
-}
-
 func EncodeCraftRequest(recipe int16, itemIDs []uint64) ([]byte, error) {
 	if len(itemIDs) != 10 {
 		return nil, fmt.Errorf("trade-up requires exactly 10 item ids")

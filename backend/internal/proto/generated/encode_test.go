@@ -27,19 +27,6 @@ func TestEncodeLoadCasketContentsUsesCasketIDForBothFields(t *testing.T) {
 	}
 }
 
-func TestEncodeApplySticker(t *testing.T) {
-	encoded, err := EncodeApplySticker(ApplyStickerInput{StickerItemID: 1, ItemItemID: 2, StickerSlot: 3, StickerScale: 1})
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-	if len(encoded) == 0 {
-		t.Fatal("expected protobuf bytes")
-	}
-	if encoded[0] != 0x08 {
-		t.Fatalf("expected protobuf field tag at start, got %x", encoded[0])
-	}
-}
-
 func TestEncodeSetItemName(t *testing.T) {
 	encoded, err := EncodeSetItemName(SetItemNameInput{SubjectItemID: 11, ToolItemID: 22, Name: "AK-47"})
 	if err != nil {

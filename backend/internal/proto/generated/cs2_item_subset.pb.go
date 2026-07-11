@@ -21,6 +21,310 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Source: SteamTracking/GameTracking-CS2 Protobufs/econ_gcmessages.proto, enum EGCItemMsg.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/econ_gcmessages.proto
+type EGCItemMsg int32
+
+const (
+	EGCItemMsg_k_EMsgGCBase                          EGCItemMsg = 1000
+	EGCItemMsg_k_EMsgGCSetItemPosition               EGCItemMsg = 1001
+	EGCItemMsg_k_EMsgGCCraft                         EGCItemMsg = 1002
+	EGCItemMsg_k_EMsgGCCraftResponse                 EGCItemMsg = 1003
+	EGCItemMsg_k_EMsgGCDelete                        EGCItemMsg = 1004
+	EGCItemMsg_k_EMsgGCNameItem                      EGCItemMsg = 1006
+	EGCItemMsg_k_EMsgGCUnlockCrateResponse           EGCItemMsg = 1008
+	EGCItemMsg_k_EMsgGCUseItemRequest                EGCItemMsg = 1025
+	EGCItemMsg_k_EMsgGCRemoveItemName                EGCItemMsg = 1030
+	EGCItemMsg_k_EMsgGCDeliverGift                   EGCItemMsg = 1034
+	EGCItemMsg_k_EMsgGCApplyStrangePart              EGCItemMsg = 1073
+	EGCItemMsg_k_EMsgGCSetItemPositions              EGCItemMsg = 1077
+	EGCItemMsg_k_EMsgGCStatTrakSwap                  EGCItemMsg = 1088
+	EGCItemMsg_k_EMsgGCItemCustomizationNotification EGCItemMsg = 1090
+	EGCItemMsg_k_EMsgGCCasketItemAdd                 EGCItemMsg = 1092
+	EGCItemMsg_k_EMsgGCCasketItemExtract             EGCItemMsg = 1093
+	EGCItemMsg_k_EMsgGCCasketItemLoadContents        EGCItemMsg = 1094
+	EGCItemMsg_k_EMsgGCOpenCrate                     EGCItemMsg = 2534
+)
+
+// Enum value maps for EGCItemMsg.
+var (
+	EGCItemMsg_name = map[int32]string{
+		1000: "k_EMsgGCBase",
+		1001: "k_EMsgGCSetItemPosition",
+		1002: "k_EMsgGCCraft",
+		1003: "k_EMsgGCCraftResponse",
+		1004: "k_EMsgGCDelete",
+		1006: "k_EMsgGCNameItem",
+		1008: "k_EMsgGCUnlockCrateResponse",
+		1025: "k_EMsgGCUseItemRequest",
+		1030: "k_EMsgGCRemoveItemName",
+		1034: "k_EMsgGCDeliverGift",
+		1073: "k_EMsgGCApplyStrangePart",
+		1077: "k_EMsgGCSetItemPositions",
+		1088: "k_EMsgGCStatTrakSwap",
+		1090: "k_EMsgGCItemCustomizationNotification",
+		1092: "k_EMsgGCCasketItemAdd",
+		1093: "k_EMsgGCCasketItemExtract",
+		1094: "k_EMsgGCCasketItemLoadContents",
+		2534: "k_EMsgGCOpenCrate",
+	}
+	EGCItemMsg_value = map[string]int32{
+		"k_EMsgGCBase":                          1000,
+		"k_EMsgGCSetItemPosition":               1001,
+		"k_EMsgGCCraft":                         1002,
+		"k_EMsgGCCraftResponse":                 1003,
+		"k_EMsgGCDelete":                        1004,
+		"k_EMsgGCNameItem":                      1006,
+		"k_EMsgGCUnlockCrateResponse":           1008,
+		"k_EMsgGCUseItemRequest":                1025,
+		"k_EMsgGCRemoveItemName":                1030,
+		"k_EMsgGCDeliverGift":                   1034,
+		"k_EMsgGCApplyStrangePart":              1073,
+		"k_EMsgGCSetItemPositions":              1077,
+		"k_EMsgGCStatTrakSwap":                  1088,
+		"k_EMsgGCItemCustomizationNotification": 1090,
+		"k_EMsgGCCasketItemAdd":                 1092,
+		"k_EMsgGCCasketItemExtract":             1093,
+		"k_EMsgGCCasketItemLoadContents":        1094,
+		"k_EMsgGCOpenCrate":                     2534,
+	}
+)
+
+func (x EGCItemMsg) Enum() *EGCItemMsg {
+	p := new(EGCItemMsg)
+	*p = x
+	return p
+}
+
+func (x EGCItemMsg) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EGCItemMsg) Descriptor() protoreflect.EnumDescriptor {
+	return file_cs2_item_subset_proto_enumTypes[0].Descriptor()
+}
+
+func (EGCItemMsg) Type() protoreflect.EnumType {
+	return &file_cs2_item_subset_proto_enumTypes[0]
+}
+
+func (x EGCItemMsg) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *EGCItemMsg) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = EGCItemMsg(num)
+	return nil
+}
+
+// Deprecated: Use EGCItemMsg.Descriptor instead.
+func (EGCItemMsg) EnumDescriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{0}
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/econ_gcmessages.proto,
+// enum EGCItemCustomizationNotification.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/econ_gcmessages.proto
+type EGCItemCustomizationNotification int32
+
+const (
+	EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_UnlockCrate        EGCItemCustomizationNotification = 1007
+	EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_XRayItemReveal     EGCItemCustomizationNotification = 1008
+	EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_XRayItemClaim      EGCItemCustomizationNotification = 1009
+	EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_ExtractSticker     EGCItemCustomizationNotification = 1054
+	EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_EncapsulateSticker EGCItemCustomizationNotification = 1055
+)
+
+// Enum value maps for EGCItemCustomizationNotification.
+var (
+	EGCItemCustomizationNotification_name = map[int32]string{
+		1007: "k_EGCItemCustomizationNotification_UnlockCrate",
+		1008: "k_EGCItemCustomizationNotification_XRayItemReveal",
+		1009: "k_EGCItemCustomizationNotification_XRayItemClaim",
+		1054: "k_EGCItemCustomizationNotification_ExtractSticker",
+		1055: "k_EGCItemCustomizationNotification_EncapsulateSticker",
+	}
+	EGCItemCustomizationNotification_value = map[string]int32{
+		"k_EGCItemCustomizationNotification_UnlockCrate":        1007,
+		"k_EGCItemCustomizationNotification_XRayItemReveal":     1008,
+		"k_EGCItemCustomizationNotification_XRayItemClaim":      1009,
+		"k_EGCItemCustomizationNotification_ExtractSticker":     1054,
+		"k_EGCItemCustomizationNotification_EncapsulateSticker": 1055,
+	}
+)
+
+func (x EGCItemCustomizationNotification) Enum() *EGCItemCustomizationNotification {
+	p := new(EGCItemCustomizationNotification)
+	*p = x
+	return p
+}
+
+func (x EGCItemCustomizationNotification) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EGCItemCustomizationNotification) Descriptor() protoreflect.EnumDescriptor {
+	return file_cs2_item_subset_proto_enumTypes[1].Descriptor()
+}
+
+func (EGCItemCustomizationNotification) Type() protoreflect.EnumType {
+	return &file_cs2_item_subset_proto_enumTypes[1]
+}
+
+func (x EGCItemCustomizationNotification) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *EGCItemCustomizationNotification) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = EGCItemCustomizationNotification(num)
+	return nil
+}
+
+// Deprecated: Use EGCItemCustomizationNotification.Descriptor instead.
+func (EGCItemCustomizationNotification) EnumDescriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{1}
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/gcsdk_gcmessages.proto,
+// enum EGCBaseClientMsg.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/gcsdk_gcmessages.proto
+type EGCBaseClientMsg int32
+
+const (
+	EGCBaseClientMsg_k_EMsgGCClientWelcome          EGCBaseClientMsg = 4004
+	EGCBaseClientMsg_k_EMsgGCClientHello            EGCBaseClientMsg = 4006
+	EGCBaseClientMsg_k_EMsgGCClientConnectionStatus EGCBaseClientMsg = 4009
+	EGCBaseClientMsg_k_EMsgGCClientHelloR2          EGCBaseClientMsg = 4013
+	EGCBaseClientMsg_k_EMsgGCClientHelloR3          EGCBaseClientMsg = 4014
+	EGCBaseClientMsg_k_EMsgGCClientHelloR4          EGCBaseClientMsg = 4015
+)
+
+// Enum value maps for EGCBaseClientMsg.
+var (
+	EGCBaseClientMsg_name = map[int32]string{
+		4004: "k_EMsgGCClientWelcome",
+		4006: "k_EMsgGCClientHello",
+		4009: "k_EMsgGCClientConnectionStatus",
+		4013: "k_EMsgGCClientHelloR2",
+		4014: "k_EMsgGCClientHelloR3",
+		4015: "k_EMsgGCClientHelloR4",
+	}
+	EGCBaseClientMsg_value = map[string]int32{
+		"k_EMsgGCClientWelcome":          4004,
+		"k_EMsgGCClientHello":            4006,
+		"k_EMsgGCClientConnectionStatus": 4009,
+		"k_EMsgGCClientHelloR2":          4013,
+		"k_EMsgGCClientHelloR3":          4014,
+		"k_EMsgGCClientHelloR4":          4015,
+	}
+)
+
+func (x EGCBaseClientMsg) Enum() *EGCBaseClientMsg {
+	p := new(EGCBaseClientMsg)
+	*p = x
+	return p
+}
+
+func (x EGCBaseClientMsg) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EGCBaseClientMsg) Descriptor() protoreflect.EnumDescriptor {
+	return file_cs2_item_subset_proto_enumTypes[2].Descriptor()
+}
+
+func (EGCBaseClientMsg) Type() protoreflect.EnumType {
+	return &file_cs2_item_subset_proto_enumTypes[2]
+}
+
+func (x EGCBaseClientMsg) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *EGCBaseClientMsg) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = EGCBaseClientMsg(num)
+	return nil
+}
+
+// Deprecated: Use EGCBaseClientMsg.Descriptor instead.
+func (EGCBaseClientMsg) EnumDescriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{2}
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/cstrike15_gcmessages.proto,
+// enum ECsgoGCMsg. The file and enum retain legacy CS:GO naming for CS2 GC messages.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/cstrike15_gcmessages.proto
+type ECsgoGCMsg int32
+
+const (
+	ECsgoGCMsg_k_EMsgGCCStrike15_v2_GC2ClientGlobalStats  ECsgoGCMsg = 9173
+	ECsgoGCMsg_k_EMsgGCCStrike15_v2_ClientLogonFatalError ECsgoGCMsg = 9187
+)
+
+// Enum value maps for ECsgoGCMsg.
+var (
+	ECsgoGCMsg_name = map[int32]string{
+		9173: "k_EMsgGCCStrike15_v2_GC2ClientGlobalStats",
+		9187: "k_EMsgGCCStrike15_v2_ClientLogonFatalError",
+	}
+	ECsgoGCMsg_value = map[string]int32{
+		"k_EMsgGCCStrike15_v2_GC2ClientGlobalStats":  9173,
+		"k_EMsgGCCStrike15_v2_ClientLogonFatalError": 9187,
+	}
+)
+
+func (x ECsgoGCMsg) Enum() *ECsgoGCMsg {
+	p := new(ECsgoGCMsg)
+	*p = x
+	return p
+}
+
+func (x ECsgoGCMsg) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ECsgoGCMsg) Descriptor() protoreflect.EnumDescriptor {
+	return file_cs2_item_subset_proto_enumTypes[3].Descriptor()
+}
+
+func (ECsgoGCMsg) Type() protoreflect.EnumType {
+	return &file_cs2_item_subset_proto_enumTypes[3]
+}
+
+func (x ECsgoGCMsg) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *ECsgoGCMsg) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = ECsgoGCMsg(num)
+	return nil
+}
+
+// Deprecated: Use ECsgoGCMsg.Descriptor instead.
+func (ECsgoGCMsg) EnumDescriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{3}
+}
+
 type GCConnectionStatus int32
 
 const (
@@ -60,11 +364,11 @@ func (x GCConnectionStatus) String() string {
 }
 
 func (GCConnectionStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_cs2_item_subset_proto_enumTypes[0].Descriptor()
+	return file_cs2_item_subset_proto_enumTypes[4].Descriptor()
 }
 
 func (GCConnectionStatus) Type() protoreflect.EnumType {
-	return &file_cs2_item_subset_proto_enumTypes[0]
+	return &file_cs2_item_subset_proto_enumTypes[4]
 }
 
 func (x GCConnectionStatus) Number() protoreflect.EnumNumber {
@@ -83,131 +387,7 @@ func (x *GCConnectionStatus) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use GCConnectionStatus.Descriptor instead.
 func (GCConnectionStatus) EnumDescriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{0}
-}
-
-type CMsgApplySticker struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	StickerItemId     *uint64                `protobuf:"varint,1,opt,name=sticker_item_id,json=stickerItemId" json:"sticker_item_id,omitempty"`
-	ItemItemId        *uint64                `protobuf:"varint,2,opt,name=item_item_id,json=itemItemId" json:"item_item_id,omitempty"`
-	StickerSlot       *uint32                `protobuf:"varint,3,opt,name=sticker_slot,json=stickerSlot" json:"sticker_slot,omitempty"`
-	BaseitemDefidx    *uint32                `protobuf:"varint,4,opt,name=baseitem_defidx,json=baseitemDefidx" json:"baseitem_defidx,omitempty"`
-	StickerWear       *float32               `protobuf:"fixed32,5,opt,name=sticker_wear,json=stickerWear" json:"sticker_wear,omitempty"`
-	StickerRotation   *float32               `protobuf:"fixed32,6,opt,name=sticker_rotation,json=stickerRotation" json:"sticker_rotation,omitempty"`
-	StickerScale      *float32               `protobuf:"fixed32,7,opt,name=sticker_scale,json=stickerScale" json:"sticker_scale,omitempty"`
-	StickerOffsetX    *float32               `protobuf:"fixed32,8,opt,name=sticker_offset_x,json=stickerOffsetX" json:"sticker_offset_x,omitempty"`
-	StickerOffsetY    *float32               `protobuf:"fixed32,9,opt,name=sticker_offset_y,json=stickerOffsetY" json:"sticker_offset_y,omitempty"`
-	StickerOffsetZ    *float32               `protobuf:"fixed32,10,opt,name=sticker_offset_z,json=stickerOffsetZ" json:"sticker_offset_z,omitempty"`
-	StickerWearTarget *float32               `protobuf:"fixed32,11,opt,name=sticker_wear_target,json=stickerWearTarget" json:"sticker_wear_target,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *CMsgApplySticker) Reset() {
-	*x = CMsgApplySticker{}
-	mi := &file_cs2_item_subset_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CMsgApplySticker) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CMsgApplySticker) ProtoMessage() {}
-
-func (x *CMsgApplySticker) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CMsgApplySticker.ProtoReflect.Descriptor instead.
-func (*CMsgApplySticker) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *CMsgApplySticker) GetStickerItemId() uint64 {
-	if x != nil && x.StickerItemId != nil {
-		return *x.StickerItemId
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetItemItemId() uint64 {
-	if x != nil && x.ItemItemId != nil {
-		return *x.ItemItemId
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerSlot() uint32 {
-	if x != nil && x.StickerSlot != nil {
-		return *x.StickerSlot
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetBaseitemDefidx() uint32 {
-	if x != nil && x.BaseitemDefidx != nil {
-		return *x.BaseitemDefidx
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerWear() float32 {
-	if x != nil && x.StickerWear != nil {
-		return *x.StickerWear
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerRotation() float32 {
-	if x != nil && x.StickerRotation != nil {
-		return *x.StickerRotation
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerScale() float32 {
-	if x != nil && x.StickerScale != nil {
-		return *x.StickerScale
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerOffsetX() float32 {
-	if x != nil && x.StickerOffsetX != nil {
-		return *x.StickerOffsetX
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerOffsetY() float32 {
-	if x != nil && x.StickerOffsetY != nil {
-		return *x.StickerOffsetY
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerOffsetZ() float32 {
-	if x != nil && x.StickerOffsetZ != nil {
-		return *x.StickerOffsetZ
-	}
-	return 0
-}
-
-func (x *CMsgApplySticker) GetStickerWearTarget() float32 {
-	if x != nil && x.StickerWearTarget != nil {
-		return *x.StickerWearTarget
-	}
-	return 0
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{4}
 }
 
 type CMsgSetItemName struct {
@@ -221,7 +401,7 @@ type CMsgSetItemName struct {
 
 func (x *CMsgSetItemName) Reset() {
 	*x = CMsgSetItemName{}
-	mi := &file_cs2_item_subset_proto_msgTypes[1]
+	mi := &file_cs2_item_subset_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -233,7 +413,7 @@ func (x *CMsgSetItemName) String() string {
 func (*CMsgSetItemName) ProtoMessage() {}
 
 func (x *CMsgSetItemName) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[1]
+	mi := &file_cs2_item_subset_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -246,7 +426,7 @@ func (x *CMsgSetItemName) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CMsgSetItemName.ProtoReflect.Descriptor instead.
 func (*CMsgSetItemName) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{1}
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CMsgSetItemName) GetSubjectItemId() uint64 {
@@ -279,7 +459,7 @@ type CMsgRemoveItemName struct {
 
 func (x *CMsgRemoveItemName) Reset() {
 	*x = CMsgRemoveItemName{}
-	mi := &file_cs2_item_subset_proto_msgTypes[2]
+	mi := &file_cs2_item_subset_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -291,7 +471,7 @@ func (x *CMsgRemoveItemName) String() string {
 func (*CMsgRemoveItemName) ProtoMessage() {}
 
 func (x *CMsgRemoveItemName) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[2]
+	mi := &file_cs2_item_subset_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,7 +484,7 @@ func (x *CMsgRemoveItemName) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CMsgRemoveItemName.ProtoReflect.Descriptor instead.
 func (*CMsgRemoveItemName) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{2}
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CMsgRemoveItemName) GetItemId() uint64 {
@@ -323,7 +503,7 @@ type CMsgDeleteItem struct {
 
 func (x *CMsgDeleteItem) Reset() {
 	*x = CMsgDeleteItem{}
-	mi := &file_cs2_item_subset_proto_msgTypes[3]
+	mi := &file_cs2_item_subset_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -335,7 +515,7 @@ func (x *CMsgDeleteItem) String() string {
 func (*CMsgDeleteItem) ProtoMessage() {}
 
 func (x *CMsgDeleteItem) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[3]
+	mi := &file_cs2_item_subset_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -348,7 +528,7 @@ func (x *CMsgDeleteItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CMsgDeleteItem.ProtoReflect.Descriptor instead.
 func (*CMsgDeleteItem) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{3}
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CMsgDeleteItem) GetItemId() uint64 {
@@ -369,7 +549,7 @@ type CMsgApplyStatTrakSwap struct {
 
 func (x *CMsgApplyStatTrakSwap) Reset() {
 	*x = CMsgApplyStatTrakSwap{}
-	mi := &file_cs2_item_subset_proto_msgTypes[4]
+	mi := &file_cs2_item_subset_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -381,7 +561,7 @@ func (x *CMsgApplyStatTrakSwap) String() string {
 func (*CMsgApplyStatTrakSwap) ProtoMessage() {}
 
 func (x *CMsgApplyStatTrakSwap) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[4]
+	mi := &file_cs2_item_subset_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -394,7 +574,7 @@ func (x *CMsgApplyStatTrakSwap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CMsgApplyStatTrakSwap.ProtoReflect.Descriptor instead.
 func (*CMsgApplyStatTrakSwap) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{4}
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CMsgApplyStatTrakSwap) GetToolItemId() uint64 {
@@ -428,7 +608,7 @@ type CMsgApplyStrangePart struct {
 
 func (x *CMsgApplyStrangePart) Reset() {
 	*x = CMsgApplyStrangePart{}
-	mi := &file_cs2_item_subset_proto_msgTypes[5]
+	mi := &file_cs2_item_subset_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -440,7 +620,7 @@ func (x *CMsgApplyStrangePart) String() string {
 func (*CMsgApplyStrangePart) ProtoMessage() {}
 
 func (x *CMsgApplyStrangePart) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[5]
+	mi := &file_cs2_item_subset_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -453,7 +633,7 @@ func (x *CMsgApplyStrangePart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CMsgApplyStrangePart.ProtoReflect.Descriptor instead.
 func (*CMsgApplyStrangePart) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{5}
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CMsgApplyStrangePart) GetStrangePartItemId() uint64 {
@@ -483,7 +663,7 @@ type CMsgUseItem struct {
 
 func (x *CMsgUseItem) Reset() {
 	*x = CMsgUseItem{}
-	mi := &file_cs2_item_subset_proto_msgTypes[6]
+	mi := &file_cs2_item_subset_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -495,7 +675,7 @@ func (x *CMsgUseItem) String() string {
 func (*CMsgUseItem) ProtoMessage() {}
 
 func (x *CMsgUseItem) ProtoReflect() protoreflect.Message {
-	mi := &file_cs2_item_subset_proto_msgTypes[6]
+	mi := &file_cs2_item_subset_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -508,7 +688,7 @@ func (x *CMsgUseItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CMsgUseItem.ProtoReflect.Descriptor instead.
 func (*CMsgUseItem) Descriptor() ([]byte, []int) {
-	return file_cs2_item_subset_proto_rawDescGZIP(), []int{6}
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CMsgUseItem) GetItemId() uint64 {
@@ -542,6 +722,84 @@ func (x *CMsgUseItem) GetDuel_ClassLock() uint32 {
 func (x *CMsgUseItem) GetInitiatorSteamId() uint64 {
 	if x != nil && x.InitiatorSteamId != nil {
 		return *x.InitiatorSteamId
+	}
+	return 0
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/base_gcmessages.proto.
+// https://github.com/SteamTracking/GameTracking-CS2/blob/master/Protobufs/base_gcmessages.proto
+type CMsgOpenCrate struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ToolItemId      *uint64                `protobuf:"varint,1,opt,name=tool_item_id,json=toolItemId" json:"tool_item_id,omitempty"`
+	SubjectItemId   *uint64                `protobuf:"varint,2,opt,name=subject_item_id,json=subjectItemId" json:"subject_item_id,omitempty"`
+	ForRental       *bool                  `protobuf:"varint,3,opt,name=for_rental,json=forRental" json:"for_rental,omitempty"`
+	PointsRemaining *uint32                `protobuf:"varint,4,opt,name=points_remaining,json=pointsRemaining" json:"points_remaining,omitempty"`
+	VolatileLimit   *uint32                `protobuf:"varint,5,opt,name=volatile_limit,json=volatileLimit" json:"volatile_limit,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CMsgOpenCrate) Reset() {
+	*x = CMsgOpenCrate{}
+	mi := &file_cs2_item_subset_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgOpenCrate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgOpenCrate) ProtoMessage() {}
+
+func (x *CMsgOpenCrate) ProtoReflect() protoreflect.Message {
+	mi := &file_cs2_item_subset_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgOpenCrate.ProtoReflect.Descriptor instead.
+func (*CMsgOpenCrate) Descriptor() ([]byte, []int) {
+	return file_cs2_item_subset_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CMsgOpenCrate) GetToolItemId() uint64 {
+	if x != nil && x.ToolItemId != nil {
+		return *x.ToolItemId
+	}
+	return 0
+}
+
+func (x *CMsgOpenCrate) GetSubjectItemId() uint64 {
+	if x != nil && x.SubjectItemId != nil {
+		return *x.SubjectItemId
+	}
+	return 0
+}
+
+func (x *CMsgOpenCrate) GetForRental() bool {
+	if x != nil && x.ForRental != nil {
+		return *x.ForRental
+	}
+	return false
+}
+
+func (x *CMsgOpenCrate) GetPointsRemaining() uint32 {
+	if x != nil && x.PointsRemaining != nil {
+		return *x.PointsRemaining
+	}
+	return 0
+}
+
+func (x *CMsgOpenCrate) GetVolatileLimit() uint32 {
+	if x != nil && x.VolatileLimit != nil {
+		return *x.VolatileLimit
 	}
 	return 0
 }
@@ -1699,21 +1957,7 @@ var File_cs2_item_subset_proto protoreflect.FileDescriptor
 
 const file_cs2_item_subset_proto_rawDesc = "" +
 	"\n" +
-	"\x15cs2_item_subset.proto\x12\acs2item\"\xc9\x03\n" +
-	"\x10CMsgApplySticker\x12&\n" +
-	"\x0fsticker_item_id\x18\x01 \x01(\x04R\rstickerItemId\x12 \n" +
-	"\fitem_item_id\x18\x02 \x01(\x04R\n" +
-	"itemItemId\x12!\n" +
-	"\fsticker_slot\x18\x03 \x01(\rR\vstickerSlot\x12'\n" +
-	"\x0fbaseitem_defidx\x18\x04 \x01(\rR\x0ebaseitemDefidx\x12!\n" +
-	"\fsticker_wear\x18\x05 \x01(\x02R\vstickerWear\x12)\n" +
-	"\x10sticker_rotation\x18\x06 \x01(\x02R\x0fstickerRotation\x12#\n" +
-	"\rsticker_scale\x18\a \x01(\x02R\fstickerScale\x12(\n" +
-	"\x10sticker_offset_x\x18\b \x01(\x02R\x0estickerOffsetX\x12(\n" +
-	"\x10sticker_offset_y\x18\t \x01(\x02R\x0estickerOffsetY\x12(\n" +
-	"\x10sticker_offset_z\x18\n" +
-	" \x01(\x02R\x0estickerOffsetZ\x12.\n" +
-	"\x13sticker_wear_target\x18\v \x01(\x02R\x11stickerWearTarget\"o\n" +
+	"\x15cs2_item_subset.proto\x12\acs2item\"o\n" +
 	"\x0fCMsgSetItemName\x12&\n" +
 	"\x0fsubject_item_id\x18\x01 \x01(\x04R\rsubjectItemId\x12 \n" +
 	"\ftool_item_id\x18\x02 \x01(\x04R\n" +
@@ -1737,7 +1981,15 @@ const file_cs2_item_subset_proto_rawDesc = "" +
 	"\x0ftarget_steam_id\x18\x02 \x01(\x06R\rtargetSteamId\x125\n" +
 	"\x17gift__potential_targets\x18\x03 \x03(\rR\x14giftPotentialTargets\x12'\n" +
 	"\x10duel__class_lock\x18\x04 \x01(\rR\rduelClassLock\x12,\n" +
-	"\x12initiator_steam_id\x18\x05 \x01(\x06R\x10initiatorSteamId\"1\n" +
+	"\x12initiator_steam_id\x18\x05 \x01(\x06R\x10initiatorSteamId\"\xca\x01\n" +
+	"\rCMsgOpenCrate\x12 \n" +
+	"\ftool_item_id\x18\x01 \x01(\x04R\n" +
+	"toolItemId\x12&\n" +
+	"\x0fsubject_item_id\x18\x02 \x01(\x04R\rsubjectItemId\x12\x1d\n" +
+	"\n" +
+	"for_rental\x18\x03 \x01(\bR\tforRental\x12)\n" +
+	"\x10points_remaining\x18\x04 \x01(\rR\x0fpointsRemaining\x12%\n" +
+	"\x0evolatile_limit\x18\x05 \x01(\rR\rvolatileLimit\"1\n" +
 	"\x14CMsgUseMultipleItems\x12\x19\n" +
 	"\bitem_ids\x18\x01 \x03(\x04R\aitemIds\"_\n" +
 	"\x13CMsgApplyToolToItem\x12 \n" +
@@ -1830,7 +2082,44 @@ const file_cs2_item_subset_proto_rawDesc = "" +
 	"\tdef_index\x18\x01 \x01(\rR\bdefIndex\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value\x12\x1f\n" +
 	"\vvalue_bytes\x18\x03 \x01(\fR\n" +
-	"valueBytes*\xd5\x01\n" +
+	"valueBytes*\x8d\x04\n" +
+	"\n" +
+	"EGCItemMsg\x12\x11\n" +
+	"\fk_EMsgGCBase\x10\xe8\a\x12\x1c\n" +
+	"\x17k_EMsgGCSetItemPosition\x10\xe9\a\x12\x12\n" +
+	"\rk_EMsgGCCraft\x10\xea\a\x12\x1a\n" +
+	"\x15k_EMsgGCCraftResponse\x10\xeb\a\x12\x13\n" +
+	"\x0ek_EMsgGCDelete\x10\xec\a\x12\x15\n" +
+	"\x10k_EMsgGCNameItem\x10\xee\a\x12 \n" +
+	"\x1bk_EMsgGCUnlockCrateResponse\x10\xf0\a\x12\x1b\n" +
+	"\x16k_EMsgGCUseItemRequest\x10\x81\b\x12\x1b\n" +
+	"\x16k_EMsgGCRemoveItemName\x10\x86\b\x12\x18\n" +
+	"\x13k_EMsgGCDeliverGift\x10\x8a\b\x12\x1d\n" +
+	"\x18k_EMsgGCApplyStrangePart\x10\xb1\b\x12\x1d\n" +
+	"\x18k_EMsgGCSetItemPositions\x10\xb5\b\x12\x19\n" +
+	"\x14k_EMsgGCStatTrakSwap\x10\xc0\b\x12*\n" +
+	"%k_EMsgGCItemCustomizationNotification\x10\xc2\b\x12\x1a\n" +
+	"\x15k_EMsgGCCasketItemAdd\x10\xc4\b\x12\x1e\n" +
+	"\x19k_EMsgGCCasketItemExtract\x10\xc5\b\x12#\n" +
+	"\x1ek_EMsgGCCasketItemLoadContents\x10\xc6\b\x12\x16\n" +
+	"\x11k_EMsgGCOpenCrate\x10\xe6\x13*\xba\x02\n" +
+	" EGCItemCustomizationNotification\x123\n" +
+	".k_EGCItemCustomizationNotification_UnlockCrate\x10\xef\a\x126\n" +
+	"1k_EGCItemCustomizationNotification_XRayItemReveal\x10\xf0\a\x125\n" +
+	"0k_EGCItemCustomizationNotification_XRayItemClaim\x10\xf1\a\x126\n" +
+	"1k_EGCItemCustomizationNotification_ExtractSticker\x10\x9e\b\x12:\n" +
+	"5k_EGCItemCustomizationNotification_EncapsulateSticker\x10\x9f\b*\xc1\x01\n" +
+	"\x10EGCBaseClientMsg\x12\x1a\n" +
+	"\x15k_EMsgGCClientWelcome\x10\xa4\x1f\x12\x18\n" +
+	"\x13k_EMsgGCClientHello\x10\xa6\x1f\x12#\n" +
+	"\x1ek_EMsgGCClientConnectionStatus\x10\xa9\x1f\x12\x1a\n" +
+	"\x15k_EMsgGCClientHelloR2\x10\xad\x1f\x12\x1a\n" +
+	"\x15k_EMsgGCClientHelloR3\x10\xae\x1f\x12\x1a\n" +
+	"\x15k_EMsgGCClientHelloR4\x10\xaf\x1f*m\n" +
+	"\n" +
+	"ECsgoGCMsg\x12.\n" +
+	")k_EMsgGCCStrike15_v2_GC2ClientGlobalStats\x10\xd5G\x12/\n" +
+	"*k_EMsgGCCStrike15_v2_ClientLogonFatalError\x10\xe3G*\xd5\x01\n" +
 	"\x12GCConnectionStatus\x12#\n" +
 	"\x1fGCConnectionStatus_HAVE_SESSION\x10\x00\x12$\n" +
 	" GCConnectionStatus_GC_GOING_DOWN\x10\x01\x12!\n" +
@@ -1850,44 +2139,48 @@ func file_cs2_item_subset_proto_rawDescGZIP() []byte {
 	return file_cs2_item_subset_proto_rawDescData
 }
 
-var file_cs2_item_subset_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_cs2_item_subset_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_cs2_item_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_cs2_item_subset_proto_goTypes = []any{
-	(GCConnectionStatus)(0),                        // 0: cs2item.GCConnectionStatus
-	(*CMsgApplySticker)(nil),                       // 1: cs2item.CMsgApplySticker
-	(*CMsgSetItemName)(nil),                        // 2: cs2item.CMsgSetItemName
-	(*CMsgRemoveItemName)(nil),                     // 3: cs2item.CMsgRemoveItemName
-	(*CMsgDeleteItem)(nil),                         // 4: cs2item.CMsgDeleteItem
-	(*CMsgApplyStatTrakSwap)(nil),                  // 5: cs2item.CMsgApplyStatTrakSwap
-	(*CMsgApplyStrangePart)(nil),                   // 6: cs2item.CMsgApplyStrangePart
-	(*CMsgUseItem)(nil),                            // 7: cs2item.CMsgUseItem
-	(*CMsgUseMultipleItems)(nil),                   // 8: cs2item.CMsgUseMultipleItems
-	(*CMsgApplyToolToItem)(nil),                    // 9: cs2item.CMsgApplyToolToItem
-	(*CMsgApplyToolToBaseItem)(nil),                // 10: cs2item.CMsgApplyToolToBaseItem
-	(*CMsgGiftItem)(nil),                           // 11: cs2item.CMsgGiftItem
-	(*CMsgCraftItems)(nil),                         // 12: cs2item.CMsgCraftItems
-	(*CMsgGCItemCustomizationNotification)(nil),    // 13: cs2item.CMsgGCItemCustomizationNotification
-	(*CMsgCasketItem)(nil),                         // 14: cs2item.CMsgCasketItem
-	(*CMsgSetItemPositions)(nil),                   // 15: cs2item.CMsgSetItemPositions
-	(*CMsgClientHello)(nil),                        // 16: cs2item.CMsgClientHello
-	(*CMsgClientWelcome)(nil),                      // 17: cs2item.CMsgClientWelcome
-	(*CMsgConnectionStatus)(nil),                   // 18: cs2item.CMsgConnectionStatus
-	(*CMsgGCCStrike15V2ClientLogonFatalError)(nil), // 19: cs2item.CMsgGCCStrike15V2ClientLogonFatalError
-	(*CMsgSOIDOwner)(nil),                          // 20: cs2item.CMsgSOIDOwner
-	(*CMsgSOCacheSubscribed)(nil),                  // 21: cs2item.CMsgSOCacheSubscribed
-	(*CSOEconItem)(nil),                            // 22: cs2item.CSOEconItem
-	(*CMsgSetItemPositions_ItemPosition)(nil),      // 23: cs2item.CMsgSetItemPositions.ItemPosition
-	(*CMsgSOCacheSubscribed_SubscribedType)(nil),   // 24: cs2item.CMsgSOCacheSubscribed.SubscribedType
-	(*CSOEconItem_Attribute)(nil),                  // 25: cs2item.CSOEconItem.Attribute
+	(EGCItemMsg)(0),                                // 0: cs2item.EGCItemMsg
+	(EGCItemCustomizationNotification)(0),          // 1: cs2item.EGCItemCustomizationNotification
+	(EGCBaseClientMsg)(0),                          // 2: cs2item.EGCBaseClientMsg
+	(ECsgoGCMsg)(0),                                // 3: cs2item.ECsgoGCMsg
+	(GCConnectionStatus)(0),                        // 4: cs2item.GCConnectionStatus
+	(*CMsgSetItemName)(nil),                        // 5: cs2item.CMsgSetItemName
+	(*CMsgRemoveItemName)(nil),                     // 6: cs2item.CMsgRemoveItemName
+	(*CMsgDeleteItem)(nil),                         // 7: cs2item.CMsgDeleteItem
+	(*CMsgApplyStatTrakSwap)(nil),                  // 8: cs2item.CMsgApplyStatTrakSwap
+	(*CMsgApplyStrangePart)(nil),                   // 9: cs2item.CMsgApplyStrangePart
+	(*CMsgUseItem)(nil),                            // 10: cs2item.CMsgUseItem
+	(*CMsgOpenCrate)(nil),                          // 11: cs2item.CMsgOpenCrate
+	(*CMsgUseMultipleItems)(nil),                   // 12: cs2item.CMsgUseMultipleItems
+	(*CMsgApplyToolToItem)(nil),                    // 13: cs2item.CMsgApplyToolToItem
+	(*CMsgApplyToolToBaseItem)(nil),                // 14: cs2item.CMsgApplyToolToBaseItem
+	(*CMsgGiftItem)(nil),                           // 15: cs2item.CMsgGiftItem
+	(*CMsgCraftItems)(nil),                         // 16: cs2item.CMsgCraftItems
+	(*CMsgGCItemCustomizationNotification)(nil),    // 17: cs2item.CMsgGCItemCustomizationNotification
+	(*CMsgCasketItem)(nil),                         // 18: cs2item.CMsgCasketItem
+	(*CMsgSetItemPositions)(nil),                   // 19: cs2item.CMsgSetItemPositions
+	(*CMsgClientHello)(nil),                        // 20: cs2item.CMsgClientHello
+	(*CMsgClientWelcome)(nil),                      // 21: cs2item.CMsgClientWelcome
+	(*CMsgConnectionStatus)(nil),                   // 22: cs2item.CMsgConnectionStatus
+	(*CMsgGCCStrike15V2ClientLogonFatalError)(nil), // 23: cs2item.CMsgGCCStrike15V2ClientLogonFatalError
+	(*CMsgSOIDOwner)(nil),                          // 24: cs2item.CMsgSOIDOwner
+	(*CMsgSOCacheSubscribed)(nil),                  // 25: cs2item.CMsgSOCacheSubscribed
+	(*CSOEconItem)(nil),                            // 26: cs2item.CSOEconItem
+	(*CMsgSetItemPositions_ItemPosition)(nil),      // 27: cs2item.CMsgSetItemPositions.ItemPosition
+	(*CMsgSOCacheSubscribed_SubscribedType)(nil),   // 28: cs2item.CMsgSOCacheSubscribed.SubscribedType
+	(*CSOEconItem_Attribute)(nil),                  // 29: cs2item.CSOEconItem.Attribute
 }
 var file_cs2_item_subset_proto_depIdxs = []int32{
-	23, // 0: cs2item.CMsgSetItemPositions.item_positions:type_name -> cs2item.CMsgSetItemPositions.ItemPosition
-	21, // 1: cs2item.CMsgClientWelcome.outofdate_subscribed_caches:type_name -> cs2item.CMsgSOCacheSubscribed
-	0,  // 2: cs2item.CMsgConnectionStatus.status:type_name -> cs2item.GCConnectionStatus
-	24, // 3: cs2item.CMsgSOCacheSubscribed.objects:type_name -> cs2item.CMsgSOCacheSubscribed.SubscribedType
-	20, // 4: cs2item.CMsgSOCacheSubscribed.owner_soid:type_name -> cs2item.CMsgSOIDOwner
-	25, // 5: cs2item.CSOEconItem.attribute:type_name -> cs2item.CSOEconItem.Attribute
-	22, // 6: cs2item.CSOEconItem.interior_item:type_name -> cs2item.CSOEconItem
+	27, // 0: cs2item.CMsgSetItemPositions.item_positions:type_name -> cs2item.CMsgSetItemPositions.ItemPosition
+	25, // 1: cs2item.CMsgClientWelcome.outofdate_subscribed_caches:type_name -> cs2item.CMsgSOCacheSubscribed
+	4,  // 2: cs2item.CMsgConnectionStatus.status:type_name -> cs2item.GCConnectionStatus
+	28, // 3: cs2item.CMsgSOCacheSubscribed.objects:type_name -> cs2item.CMsgSOCacheSubscribed.SubscribedType
+	24, // 4: cs2item.CMsgSOCacheSubscribed.owner_soid:type_name -> cs2item.CMsgSOIDOwner
+	29, // 5: cs2item.CSOEconItem.attribute:type_name -> cs2item.CSOEconItem.Attribute
+	26, // 6: cs2item.CSOEconItem.interior_item:type_name -> cs2item.CSOEconItem
 	7,  // [7:7] is the sub-list for method output_type
 	7,  // [7:7] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
@@ -1905,7 +2198,7 @@ func file_cs2_item_subset_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cs2_item_subset_proto_rawDesc), len(file_cs2_item_subset_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      5,
 			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   0,

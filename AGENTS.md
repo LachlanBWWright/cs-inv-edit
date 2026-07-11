@@ -1,0 +1,10 @@
+# Repository Guidance
+
+- Treat https://github.com/SteamTracking/Protobufs as the authoritative source for Steam and CS2 protobuf definitions, message IDs, and field numbers. Prefer the `csgo/` and `steam/` proto files there over npm package wrappers, stale generated code, examples, or inferred payload shapes.
+- For CS2-current protobufs and GC enums, use the `proto/vendor/gametracking-cs2` submodule before browsing GitHub. Its files may retain legacy names such as `csgo`, `cstrike15`, and `ECsgoGCMsg`; verify by repository path and commit recency rather than renaming them locally.
+- Use `proto/vendor/gametracking-cs2/Protobufs/base_gcmessages.proto` for shared GC economy messages such as `CMsgUseItem`, `CMsgOpenCrate`, `CMsgApplyStatTrakSwap`, `CMsgApplyStrangePart`, and `CSOEconItem`. Do not infer binary layouts when a message exists there.
+- When local protobuf subsets are needed, copy field numbers and message structure from SteamTracking exactly, then regenerate the local generated bindings. Do not hand-edit generated protobuf output.
+- Use live CS2 economy metadata for user-facing inventory names and classifications. Fetch current `items_game.txt` and `csgo_english.txt` data from the live GameTracking-CS2 mirror during metadata refresh instead of relying on bundled snapshots, mock names, stale fixtures, or inferred display strings.
+- Treat GC protobuf inventory as the authoritative owned-item source. Web/community inventory data may be used only as a metadata overlay for class descriptions, market names, and icon tokens; it must not replace the GC-owned item list.
+- Do not fabricate image URLs from `items_game.txt` `image_inventory` keys. Use live Steam description `icon_url` / `icon_url_large` tokens when available, or omit images with explicit diagnostics.
+- Keep repository documentation for CS2 item schema sources in `docs/cs2-items-game.md`, and update that document whenever item metadata, localization, image, market-overlay, or protobuf source locations change.

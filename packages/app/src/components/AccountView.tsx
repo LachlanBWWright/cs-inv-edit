@@ -38,6 +38,10 @@ export function AccountView(props: AccountViewProps) {
 
   const handleSteamGuard = async (e: Event) => {
     e.preventDefault();
+    if (!guardCode().trim()) {
+      setStatus("Enter a Steam Guard code, or approve the sign-in prompt on your phone.");
+      return;
+    }
     setLoading(true);
     setStatus("Verifying Steam Guard code...");
     try {
@@ -98,7 +102,7 @@ export function AccountView(props: AccountViewProps) {
 
           <Show when={props.connection?.state === "needs_steam_guard"}>
             <form class="space-y-4" onSubmit={handleSteamGuard}>
-              <Alert>Approve the Steam sign-in prompt on your phone, or enter a Steam Guard code below.</Alert>
+              <Alert>Approve the Steam sign-in prompt on your phone. This page will continue automatically, or you can enter a Steam Guard code below.</Alert>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-200">Steam Guard code</label>
                 <Input
@@ -108,7 +112,6 @@ export function AccountView(props: AccountViewProps) {
                   disabled={loading()}
                   placeholder="Enter code from email or mobile app"
                   autocomplete="one-time-code"
-                  required
                 />
               </div>
               <Button type="submit" class="w-full justify-center" disabled={loading()}>
