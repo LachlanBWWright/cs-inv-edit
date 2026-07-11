@@ -254,11 +254,23 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 }
 
 func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string) (MarketDescription, error) {
+	var errs []string
+	for _, query := range marketSearchQueries(marketName) {
+		desc, err := p.fetchMarketDescriptionQuery(ctx, marketName, query)
+		if err == nil {
+			return desc, nil
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", query, err))
+	}
+	return MarketDescription{}, fmt.Errorf(strings.Join(errs, "; "))
+}
+
+func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName string, query string) (MarketDescription, error) {
 	values := url.Values{}
 	values.Set("appid", "730")
 	values.Set("norender", "1")
 	values.Set("count", "10")
-	values.Set("query", marketName)
+	values.Set("query", query)
 	endpoint := "https://steamcommunity.com/market/search/render/?" + values.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -302,6 +314,27 @@ func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string
 		}, nil
 	}
 	return MarketDescription{}, fmt.Errorf("no exact market result")
+}
+
+func marketSearchQueries(marketName string) []string {
+	marketName = strings.TrimSpace(marketName)
+	queries := []string{marketName}
+	if before, after, ok := strings.Cut(marketName, "|"); ok && strings.EqualFold(strings.TrimSpace(before), "Sticker") {
+		stickerName := strings.TrimSpace(after)
+		if stickerName != "" && !containsStringFold(queries, stickerName) {
+			queries = append(queries, stickerName)
+		}
+	}
+	return queries
+}
+
+func containsStringFold(values []string, target string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(target)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Provider) fetchInventoryPage(ctx context.Context, steamID string, startAssetID string) (inventoryPage, error) {

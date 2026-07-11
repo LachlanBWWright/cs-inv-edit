@@ -61,6 +61,7 @@ If `enableStickerExtract` remains in the UI/settings model, leave it disabled an
 - Prefer generated protobuf encoders for all GC payloads with known message definitions.
 - Each operation should return explicit success/failure data in `operations.Receipt.Result` where useful.
 - Frontend UI should display backend GC errors and decoded response details near the relevant action, not as generic toasts.
+- Frontend inventory cards and item detail surfaces should use CS2 rarity-colored borders matching the in-game white-to-red rarity progression. Use live schema/Steam metadata rarity values; do not invent color classes from names.
 - Never return mock inventory items or fabricated names/images.
 
 ## CS2 Operation Mapping Checklist
@@ -76,6 +77,8 @@ For each operation, identify and document:
 - expected success response
 - expected failure response
 - frontend result fields to show
+- potential container contents and source loot list name, where the operation involves a container
+- rarity value and UI border color mapping
 
 Initial likely mappings to verify:
 
@@ -83,6 +86,10 @@ Initial likely mappings to verify:
   - `k_EMsgGCOpenCrate`
   - `CMsgOpenCrate` from `base_gcmessages.proto`
   - `k_EMsgGCUnlockCrateResponse`
+  - Container/capsule detail UI should show potential items found in the selected container before opening it.
+  - Potential contents must come from live `items_game.txt` loot list data and localization, joined to item metadata/images where available.
+  - Show potential contents with the same rarity border colors used by inventory items.
+  - For keyless capsules, treat the selected capsule/container as `subject_item_id`; only send a `tool_item_id` when a required key/tool item is selected.
 - Storage/casket mutations:
   - `k_EMsgGCCasketItemAdd`
   - `k_EMsgGCCasketItemExtract`
