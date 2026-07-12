@@ -15,13 +15,12 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult<{ status: string }>("https://example.test", "/health").match(
-      (value) => ({ ok: true, value }),
-      (error) => ({ ok: false, error }),
-    );
+    const result = await requestJsonResult<{ status: string }>("https://example.test", "/health");
 
-    expect(result.ok).toBe(true);
-    expect(result.value).toEqual({ status: "ok" });
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      expect(result.value).toEqual({ status: "ok" });
+    }
   });
 
   it("returns an error result for non-ok responses", async () => {
@@ -35,14 +34,13 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/health").match(
-      (value) => ({ ok: true, value }),
-      (error) => ({ ok: false, error }),
-    );
+    const result = await requestJsonResult("https://example.test", "/health");
 
-    expect(result.ok).toBe(false);
-    expect(result.error.message).toContain("503");
-    expect(result.error.message).toContain("Steam unavailable");
+    expect(result.isOk()).toBe(false);
+    if (result.isErr()) {
+      expect(result.error.message).toContain("503");
+      expect(result.error.message).toContain("Steam unavailable");
+    }
   });
 
   it("includes JSON error bodies for non-ok responses", async () => {
@@ -56,12 +54,11 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/steam/guard").match(
-      (value) => ({ ok: true, value }),
-      (error) => ({ ok: false, error }),
-    );
+    const result = await requestJsonResult("https://example.test", "/steam/guard");
 
-    expect(result.ok).toBe(false);
-    expect(result.error.message).toContain("Steam Guard failed");
+    expect(result.isOk()).toBe(false);
+    if (result.isErr()) {
+      expect(result.error.message).toContain("Steam Guard failed");
+    }
   });
 });

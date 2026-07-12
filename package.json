@@ -16,6 +16,7 @@
     "test:frontend": "vitest run",
     "test": "./scripts/test.sh",
     "lint": "eslint .",
+    "typecheck": "tsc -b packages/contracts packages/app",
     "run": "./scripts/run.sh",
     "check": "npm run lint && npm run build && npm run test",
     "test-backend": "./bin/cs2-backend",

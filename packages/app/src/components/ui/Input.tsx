@@ -1,5 +1,3 @@
-import type { JSX } from "solid-js";
-
 export interface InputProps {
   value?: string;
   class?: string;

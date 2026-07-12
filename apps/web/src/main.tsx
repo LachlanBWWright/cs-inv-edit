@@ -8,13 +8,15 @@ import { createWasmBackendClient } from "./wasmBackend.js";
 const backendBase = "http://127.0.0.1:7331";
 
 function toPromise<T>(result: ResultAsync<T, AppError>): Promise<T> {
-  return result.match(
-    (value) => value,
-    (error) => {
-      console.error(error.message, error.cause);
-      throw error;
-    },
-  );
+  return new Promise<T>((resolve, reject) => {
+    result.match(
+      (value) => resolve(value),
+      (error) => {
+        console.error(error.message, error.cause);
+        reject(error);
+      },
+    );
+  });
 }
 
 function createRequestResult<T>(path: string, init?: RequestInit) {

@@ -1,5 +1,4 @@
 import { For, Show } from "solid-js";
-import type { JSX } from "solid-js";
 import { Button } from "./Button.js";
 
 export interface ToastItem {

@@ -79,7 +79,7 @@ async function loadWasmRuntime() {
   if (!window.csInvEditWasmBackend) {
     const response = await fetch(wasmPath);
     if (!response.ok) {
-      throw new Error(`Unable to load ${wasmPath}: ${response.status}`);
+      return Promise.reject(new Error(`Unable to load ${wasmPath}: ${response.status}`));
     }
     const bytes = await response.arrayBuffer();
     const go = new window.Go();

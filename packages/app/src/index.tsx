@@ -1,23 +1,12 @@
-import { createEffect, createResource, createSignal, Show } from "solid-js";
+import { createEffect, createResource, createSignal } from "solid-js";
 import type { ConnectionStatus, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
-import { AccountView } from "./components/AccountView.js";
-import { InventoryView } from "./components/InventoryView.js";
-import { ItemManagementView } from "./components/ItemManagementView.js";
-import { NameTagsView } from "./components/NameTagsView.js";
-import { OperationsView } from "./components/OperationsView.js";
-import { SettingsView } from "./components/SettingsView.js";
-import { Sidebar } from "./components/Sidebar.js";
-import { StickersView } from "./components/StickersView.js";
-import { StorageView } from "./components/StorageView.js";
-import { ToolsView } from "./components/ToolsView.js";
-import { TradeUpView } from "./components/TradeUpView.js";
-import { Alert } from "./components/ui/Alert.js";
-import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
+import { AppView } from "./AppView.js";
 import { createOperationApi } from "./lib/api.js";
 export type { AppBackendClient } from "./lib/backend.js";
 export * from "./lib/result-http.js";
 
 import type { AppBackendClient } from "./lib/backend.js";
+import type { ToastItem } from "./components/ui/ToastViewport.js";
 
 export interface AppProps {
   backend: AppBackendClient;
@@ -162,7 +151,7 @@ export function App(props: AppProps) {
     } catch (error) {
       console.error("[app] operation failed", error);
       pushToast({ title: "Operation error", description: error instanceof Error ? error.message : "Unknown operation error", variant: "danger" });
-      throw error;
+      return Promise.reject(error);
     }
   };
 
@@ -175,7 +164,7 @@ export function App(props: AppProps) {
     } catch (error) {
       console.error("[app] refresh failed", error);
       pushToast({ title: "Refresh failed", description: error instanceof Error ? error.message : "Unable to refresh state", variant: "danger" });
-      throw error;
+      return Promise.reject(error);
     } finally {
       setStatusMessage("");
     }
@@ -227,126 +216,97 @@ export function App(props: AppProps) {
   };
 
   return (
-    <main class="min-h-screen bg-app text-slate-50 lg:grid lg:grid-cols-[280px_1fr]">
-      <Sidebar view={view()} setView={setView} platform={props.platform} health={health()} connection={connection()} inventory={inventory()} onSwitchAccount={() => void handleSwitchAccount()} onRefreshInventory={() => void refreshAll()} />
-
-      <section class="p-5 sm:p-7">
-        <Show when={statusMessage()}>
-          <Alert class="mb-5">{statusMessage()}</Alert>
-        </Show>
-
-        <Show when={view() === "account"}>
-          <AccountView
-            connection={connection()}
-            onConnect={async (input) => {
-              try {
-                if (props.backend.connectSteam) {
-                  console.info("[app] connecting Steam account", input);
-                  const res = await props.backend.connectSteam(input);
-                  console.info("[app] connect result", res);
-                  logSteamDiagnostics("connect", res);
-                  if (res.state === "error") throw new Error(res.detail || "Connection failed");
-                  if (res.state === "connected") {
-                    setView("inventory");
-                  }
-                  await syncAccountState(res);
-                } else {
-                  await syncAccountState();
-                }
-              } catch (error) {
-                console.error("[app] connect failed", error);
-                pushToast({ title: "Sign-in failed", description: error instanceof Error ? error.message : "Unable to sign in to Steam", variant: "danger" });
-                throw error;
-              }
-            }}
-            onSubmitSteamGuard={async (input) => {
-              try {
-                if (props.backend.submitSteamGuard) {
-                  console.info("[app] submitting Steam Guard code");
-                  const res = await props.backend.submitSteamGuard(input);
-                  console.info("[app] Steam Guard result", res);
-                  logSteamDiagnostics("steam guard", res);
-                  if (res.state === "error") throw new Error(res.detail || "Steam Guard failed");
-                  if (res.state === "connected") {
-                    setView("inventory");
-                  }
-                  await syncAccountState(res);
-                } else {
-                  await syncAccountState();
-                }
-              } catch (error) {
-                console.error("[app] steam guard failed", error);
-                pushToast({ title: "Steam Guard failed", description: error instanceof Error ? error.message : "Unable to verify the code", variant: "danger" });
-                throw error;
-              }
-            }}
-            onDisconnect={async () => {
-              try {
-                console.info("[app] disconnecting Steam account");
-                if (props.backend.disconnectSteam) await props.backend.disconnectSteam();
-                await refetchConnection();
-                setView("account");
-                pushToast({ title: "Account disconnected", description: "The session has been cleared.", variant: "warning" });
-              } catch (error) {
-                console.error("[app] disconnect failed", error);
-                pushToast({ title: "Disconnect failed", description: error instanceof Error ? error.message : "Unable to disconnect", variant: "danger" });
-                throw error;
-              }
-            }}
-            onToast={pushToast}
-          />
-        </Show>
-        <Show when={view() === "inventory"}>
-          <InventoryView
-            inventory={inventory()}
-            selectedItemId={selectedItemId()}
-            setSelectedItemId={setSelectedItemId}
-            connection={connection()}
-            settings={settings()}
-            onRefresh={() => void refreshAll()}
-            onRename={(input: { subjectItemId: string; toolItemId: string; name: string }) => settleOperation(operationApi.applyNameTag(input))}
-            onRemoveName={(input: { itemId: string }) => settleOperation(operationApi.removeNameTag(input))}
-            onOpenContainer={(input: { itemId: string }) => settleOperation(props.backend.submitOperation("containers.open", input))}
-            onToast={pushToast}
-          />
-        </Show>
-        <Show when={view() === "storage"}>
-          <StorageView inventory={inventory()} onSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))} onRefresh={() => void refreshAll()} />
-        </Show>
-        <Show when={view() === "tradeups"}>
-          <TradeUpView inventory={inventory()} onSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))} />
-        </Show>
-        <Show when={view() === "stickers"}>
-          <StickersView inventory={inventory()} onSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))} />
-        </Show>
-        <Show when={view() === "nametags"}>
-          <NameTagsView inventory={inventory()} onApply={(input) => settleOperation(operationApi.applyNameTag(input))} onRemove={(input) => settleOperation(operationApi.removeNameTag(input))} />
-        </Show>
-        <Show when={view() === "tools"}>
-          <ToolsView
-            onApplyStatTrakSwap={(input) => settleOperation(operationApi.applyStatTrakSwap(input))}
-            onApplyStrangePart={(input) => settleOperation(operationApi.applyStrangePart(input))}
-            onApplyToolToItem={(input) => settleOperation(operationApi.applyToolToItem(input))}
-            onApplyToolToBaseItem={(input) => settleOperation(operationApi.applyToolToBaseItem(input))}
-          />
-        </Show>
-        <Show when={view() === "item-management"}>
-          <ItemManagementView
-            onDeleteItem={(input) => settleOperation(operationApi.deleteItem(input))}
-            onUseItem={(input) => settleOperation(operationApi.useItem(input))}
-            onUseMultipleItems={(input) => settleOperation(operationApi.useMultipleItems(input))}
-            onGiftItem={(input) => settleOperation(operationApi.giftItem(input))}
-          />
-        </Show>
-        <Show when={view() === "operations"}>
-          <OperationsView receipts={receipts()} events={events()} />
-        </Show>
-        <Show when={view() === "settings"}>
-          <SettingsView settings={settings()} onRefresh={() => void refreshAll()} onSave={saveSettings} onToast={pushToast} />
-        </Show>
-      </section>
-
-      <ToastViewport toasts={toasts()} onDismiss={dismissToast} />
-    </main>
+    <AppView
+      view={view()}
+      setView={setView}
+      selectedItemId={selectedItemId()}
+      setSelectedItemId={setSelectedItemId}
+      statusMessage={statusMessage()}
+      health={health()}
+      connection={connection()}
+      inventory={inventory()}
+      settings={settings()}
+      receipts={receipts()}
+      events={events()}
+      toasts={toasts()}
+      platform={props.platform}
+      onSwitchAccount={() => void handleSwitchAccount()}
+      onRefreshInventory={() => void refreshAll()}
+      onDismissToast={dismissToast}
+      onConnect={async (input) => {
+        try {
+          if (props.backend.connectSteam) {
+            console.info("[app] connecting Steam account", input);
+            const res = await props.backend.connectSteam(input);
+            console.info("[app] connect result", res);
+            logSteamDiagnostics("connect", res);
+            if (res.state === "error") return Promise.reject(new Error(res.detail || "Connection failed"));
+            if (res.state === "connected") {
+              setView("inventory");
+            }
+            await syncAccountState(res);
+          } else {
+            await syncAccountState();
+          }
+        } catch (error) {
+          console.error("[app] connect failed", error);
+          pushToast({ title: "Sign-in failed", description: error instanceof Error ? error.message : "Unable to sign in to Steam", variant: "danger" });
+          return Promise.reject(error);
+        }
+      }}
+      onSubmitSteamGuard={async (input) => {
+        try {
+          if (props.backend.submitSteamGuard) {
+            console.info("[app] submitting Steam Guard code");
+            const res = await props.backend.submitSteamGuard(input);
+            console.info("[app] Steam Guard result", res);
+            logSteamDiagnostics("steam guard", res);
+            if (res.state === "error") return Promise.reject(new Error(res.detail || "Steam Guard failed"));
+            if (res.state === "connected") {
+              setView("inventory");
+            }
+            await syncAccountState(res);
+          } else {
+            await syncAccountState();
+          }
+        } catch (error) {
+          console.error("[app] steam guard failed", error);
+          pushToast({ title: "Steam Guard failed", description: error instanceof Error ? error.message : "Unable to verify the code", variant: "danger" });
+          return Promise.reject(error);
+        }
+      }}
+      onDisconnect={async () => {
+        try {
+          console.info("[app] disconnecting Steam account");
+          if (props.backend.disconnectSteam) await props.backend.disconnectSteam();
+          await refetchConnection();
+          setView("account");
+          pushToast({ title: "Account disconnected", description: "The session has been cleared.", variant: "warning" });
+        } catch (error) {
+          console.error("[app] disconnect failed", error);
+          pushToast({ title: "Disconnect failed", description: error instanceof Error ? error.message : "Unable to disconnect", variant: "danger" });
+          return Promise.reject(error);
+        }
+      }}
+      onToast={pushToast}
+      onInventoryRefresh={() => void refreshAll()}
+      onInventoryRename={(input) => settleOperation(operationApi.applyNameTag(input))}
+      onRemoveName={(input) => settleOperation(operationApi.removeNameTag(input))}
+      onOpenContainer={(input) => settleOperation(props.backend.submitOperation("containers.open", input))}
+      onStorageSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))}
+      onTradeUpSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))}
+      onStickerSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))}
+      onNameTagApply={(input) => settleOperation(operationApi.applyNameTag(input))}
+      onNameTagRemove={(input) => settleOperation(operationApi.removeNameTag(input))}
+      onToolApplyStatTrakSwap={(input) => settleOperation(operationApi.applyStatTrakSwap(input))}
+      onToolApplyStrangePart={(input) => settleOperation(operationApi.applyStrangePart(input))}
+      onToolApplyToolToItem={(input) => settleOperation(operationApi.applyToolToItem(input))}
+      onToolApplyToolToBaseItem={(input) => settleOperation(operationApi.applyToolToBaseItem(input))}
+      onItemDelete={(input) => settleOperation(operationApi.deleteItem(input))}
+      onItemUse={(input) => settleOperation(operationApi.useItem(input))}
+      onItemUseMultiple={(input) => settleOperation(operationApi.useMultipleItems(input))}
+      onItemGift={(input) => settleOperation(operationApi.giftItem(input))}
+      onSaveSettings={saveSettings}
+    />
   );
 }
