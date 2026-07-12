@@ -208,8 +208,6 @@ export function App(props: AppProps) {
 
   const operationApi = createOperationApi(props.backend);
 
-  const submitOperation = (type: string, input?: unknown) => props.backend.submitOperation(type, input);
-
   const saveSettings = async (next: SettingsData) => {
     console.info("[app] saving settings", next);
     await props.backend.submitOperation("settings", next);
@@ -313,13 +311,13 @@ export function App(props: AppProps) {
           />
         </Show>
         <Show when={view() === "storage"}>
-          <StorageView inventory={inventory()} onSubmit={(type, input) => settleOperation(submitOperation(type, input))} onRefresh={() => void refreshAll()} />
+          <StorageView inventory={inventory()} onSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))} onRefresh={() => void refreshAll()} />
         </Show>
         <Show when={view() === "tradeups"}>
-          <TradeUpView inventory={inventory()} onSubmit={(type, input) => settleOperation(submitOperation(type, input))} />
+          <TradeUpView inventory={inventory()} onSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))} />
         </Show>
         <Show when={view() === "stickers"}>
-          <StickersView inventory={inventory()} onSubmit={(type, input) => settleOperation(submitOperation(type, input))} />
+          <StickersView inventory={inventory()} onSubmit={(type, input) => settleOperation(props.backend.submitOperation(type, input))} />
         </Show>
         <Show when={view() === "nametags"}>
           <NameTagsView inventory={inventory()} onApply={(input) => settleOperation(operationApi.applyNameTag(input))} onRemove={(input) => settleOperation(operationApi.removeNameTag(input))} />
