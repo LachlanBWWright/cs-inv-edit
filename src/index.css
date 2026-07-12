@@ -20,6 +20,15 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #020617;
+  background-image: radial-gradient(circle at top left, rgba(56, 189, 248, 0.2), transparent 24%), linear-gradient(135deg, #020617 0%, #0f172a 45%, #020617 100%);
+  color: #f8fafc;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 a {

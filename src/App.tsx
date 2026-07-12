@@ -273,6 +273,64 @@ function App() {
     return 'border-sky-400/30 bg-sky-500/10 text-sky-100'
   })
 
+  const workflowCards = createMemo(() => {
+    const data = dashboard()
+
+    if (data === undefined) {
+      return []
+    }
+
+    const readyCount = data.inventory.filter((item) => item.readiness === 'Ready').length
+    const blockedCount = data.inventory.filter((item) => item.readiness === 'Blocked').length
+    const totalCapacity = data.storageUnits.reduce((sum, unit) => sum + unit.capacity, 0)
+    const occupiedCapacity = data.storageUnits.reduce((sum, unit) => sum + unit.occupied, 0)
+    const queueCount = tradeUpQueue().length
+
+    return [
+      {
+        label: 'Selected item',
+        value: selectedItem()?.name ?? 'Awaiting choice',
+        detail: selectedItem() === undefined ? 'Pick an inventory card to inspect its context.' : `${selectedItem()?.finish ?? 'Item'} · ${selectedItem()?.wearLabel ?? 'Wear pending'}`,
+      },
+      {
+        label: 'Trade-up queue',
+        value: `${queueCount}/10`,
+        detail: queueCount === 10 ? 'Basket is full and ready for review.' : `${10 - queueCount} slot${queueCount === 9 ? '' : 's'} left to reach the review basket.`,
+      },
+      {
+        label: 'Storage pressure',
+        value: `${Math.round((occupiedCapacity / totalCapacity) * 100)}%`,
+        detail: `${occupiedCapacity}/${totalCapacity} slots occupied across the route map.`,
+      },
+      {
+        label: 'Ready actions',
+        value: `${readyCount}`,
+        detail: `${blockedCount} item${blockedCount === 1 ? '' : 's'} need extra review before routing.`,
+      },
+    ]
+  })
+
+  const nextBestAction = createMemo(() => {
+    if (selectedItem() !== undefined) {
+      return {
+        title: `Inspect ${selectedItem()?.name ?? 'the selected item'} in the focused panel`,
+        detail: 'The detail rail now acts as a decision surface, surfacing wear, sticker count, and route state before you commit to a review or move.',
+      }
+    }
+
+    if (tradeUpQueue().length > 0) {
+      return {
+        title: 'Stage the queued basket for a review pass',
+        detail: 'Continue grouping the current selection until the trade-up review card shows one coherent collection and rarity profile.',
+      }
+    }
+
+    return {
+      title: 'Select an inventory card to start the review flow',
+      detail: 'The interface is designed to keep the most important actions visible from the first interaction, so the handoff between inspection and action stays effortless.',
+    }
+  })
+
   return (
     <div class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.22),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#0f172a_48%,_#020617_100%)] text-slate-100">
       <header class="sticky top-0 z-30 border-b border-white/10 bg-slate-950/85 backdrop-blur-xl">
@@ -351,6 +409,55 @@ function App() {
               </For>
             </div>
           </aside>
+        </section>
+
+        <section class="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <article class={`${panel} relative overflow-hidden`}>
+            <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.14),_transparent_36%)]" />
+            <div class="relative">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Workflow overview</p>
+                  <h2 class="mt-2 text-2xl font-semibold text-white">A review-first command center for every operation</h2>
+                </div>
+                <span class="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-100">
+                  {platformLabel}
+                </span>
+              </div>
+              <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <For each={workflowCards()}>
+                  {(card) => (
+                    <div class="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">{card.label}</p>
+                      <p class="mt-3 text-xl font-semibold text-white">{card.value}</p>
+                      <p class="mt-2 text-sm text-slate-400">{card.detail}</p>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </article>
+
+          <article class={`${panel}`}>
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Next best action</p>
+                <h2 class="mt-2 text-xl font-semibold text-white">What the interface wants you to inspect next</h2>
+              </div>
+              <span class="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+                Guided review
+              </span>
+            </div>
+            <div class="mt-5 rounded-3xl border border-white/10 bg-slate-950/70 p-4">
+              <p class="text-sm font-medium text-white">{nextBestAction().title}</p>
+              <p class="mt-2 text-sm leading-6 text-slate-300">{nextBestAction().detail}</p>
+            </div>
+            <ul class="mt-4 space-y-2 text-sm text-slate-300">
+              <li class="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">Use the inventory cards to select an item and surface its readiness state before any plan is queued.</li>
+              <li class="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">Keep the trade-up basket at 10 slots for a compact review surface, then stage the plan once the collection is coherent.</li>
+              <li class="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">Treat storage pressure as a first-class signal so high-value assets stay visible and deliberate.</li>
+            </ul>
+          </article>
         </section>
 
         <section class="mt-6 grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
