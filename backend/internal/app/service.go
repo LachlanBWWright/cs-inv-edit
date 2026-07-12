@@ -341,6 +341,20 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	}
 	receipt.State = state
 	receipt.Message = message
+	if receipt.Result == nil {
+		if mapping, ok := protocol.OperationMessageMapping(opType); ok {
+			receipt.Result = map[string]any{
+				"operation":     mapping.Operation,
+				"requestEmsg":   mapping.RequestEMsg,
+				"requestBody":   mapping.RequestBody,
+				"responseEMsgs": mapping.ResponseEMsgs,
+				"source":        mapping.Source,
+				"status":        mapping.Status,
+				"featureFlag":   mapping.FeatureFlag,
+				"notes":         mapping.Notes,
+			}
+		}
+	}
 	fmt.Printf("[backend] operation=%s state=%s message=%s\n", opType, state, message)
 	s.operations = append(s.operations, receipt)
 	s.events = append(s.events, operations.NewEvent(receipt, state, message))

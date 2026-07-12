@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"testing"
+
+	"cs-inv-edit/backend/internal/protocol"
+)
 
 func TestSubmitOperationBlocksNameTagsByDefault(t *testing.T) {
 	service := NewService()
@@ -22,6 +26,31 @@ func TestSubmitOperationAllowsNameTagsWhenEnabled(t *testing.T) {
 	receipt := service.SubmitOperation("nametags.apply", map[string]any{})
 	if receipt.State != "awaiting_gc_confirmation" {
 		t.Fatalf("expected awaiting_gc_confirmation, got %q", receipt.State)
+	}
+}
+
+func TestSubmitOperationAttachesGametrackingMessageMetadata(t *testing.T) {
+	service := NewService()
+	service.SubmitOperation("settings", map[string]any{
+		"validationMode": false,
+		"featureFlags": map[string]any{
+			"enableNameTags": true,
+		},
+	})
+
+	receipt := service.SubmitOperation("nametags.apply", map[string]any{})
+	result, ok := receipt.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected receipt result map, got %T", receipt.Result)
+	}
+	if got := result["requestBody"]; got != "CMsgSetItemName" {
+		t.Fatalf("expected requestBody CMsgSetItemName, got %#v", got)
+	}
+	if got := result["featureFlag"]; got != "enableNameTags" {
+		t.Fatalf("expected featureFlag enableNameTags, got %#v", got)
+	}
+	if got, ok := result["requestEmsg"].(uint32); !ok || got != protocol.EMsgSetItemName {
+		t.Fatalf("expected requestEmsg %d, got %#v", protocol.EMsgSetItemName, result["requestEmsg"])
 	}
 }
 
