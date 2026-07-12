@@ -14,7 +14,7 @@ export interface SidebarProps {
   onRefreshInventory: () => void;
 }
 
-const views = ["account", "inventory", "operations", "settings"] as const;
+const views = ["account", "inventory", "storage", "tradeups", "stickers", "nametags", "tools", "item-management", "operations", "settings"] as const;
 
 function formatViewName(item: string) {
   return item.replace(/-/g, " ").replace(/(^\w|\s+\w)/g, (value) => value.toUpperCase());

@@ -2,9 +2,15 @@ import { createEffect, createResource, createSignal, Show } from "solid-js";
 import type { ConnectionStatus, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 import { AccountView } from "./components/AccountView.js";
 import { InventoryView } from "./components/InventoryView.js";
+import { ItemManagementView } from "./components/ItemManagementView.js";
+import { NameTagsView } from "./components/NameTagsView.js";
 import { OperationsView } from "./components/OperationsView.js";
 import { SettingsView } from "./components/SettingsView.js";
 import { Sidebar } from "./components/Sidebar.js";
+import { StickersView } from "./components/StickersView.js";
+import { StorageView } from "./components/StorageView.js";
+import { ToolsView } from "./components/ToolsView.js";
+import { TradeUpView } from "./components/TradeUpView.js";
 import { Alert } from "./components/ui/Alert.js";
 import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
 import { createOperationApi } from "./lib/api.js";
@@ -202,6 +208,8 @@ export function App(props: AppProps) {
 
   const operationApi = createOperationApi(props.backend);
 
+  const submitOperation = (type: string, input?: unknown) => props.backend.submitOperation(type, input);
+
   const saveSettings = async (next: SettingsData) => {
     console.info("[app] saving settings", next);
     await props.backend.submitOperation("settings", next);
@@ -302,6 +310,34 @@ export function App(props: AppProps) {
             onRemoveName={(input: { itemId: string }) => settleOperation(operationApi.removeNameTag(input))}
             onOpenContainer={(input: { itemId: string }) => settleOperation(props.backend.submitOperation("containers.open", input))}
             onToast={pushToast}
+          />
+        </Show>
+        <Show when={view() === "storage"}>
+          <StorageView inventory={inventory()} onSubmit={(type, input) => settleOperation(submitOperation(type, input))} onRefresh={() => void refreshAll()} />
+        </Show>
+        <Show when={view() === "tradeups"}>
+          <TradeUpView inventory={inventory()} onSubmit={(type, input) => settleOperation(submitOperation(type, input))} />
+        </Show>
+        <Show when={view() === "stickers"}>
+          <StickersView inventory={inventory()} onSubmit={(type, input) => settleOperation(submitOperation(type, input))} />
+        </Show>
+        <Show when={view() === "nametags"}>
+          <NameTagsView inventory={inventory()} onApply={(input) => settleOperation(operationApi.applyNameTag(input))} onRemove={(input) => settleOperation(operationApi.removeNameTag(input))} />
+        </Show>
+        <Show when={view() === "tools"}>
+          <ToolsView
+            onApplyStatTrakSwap={(input) => settleOperation(operationApi.applyStatTrakSwap(input))}
+            onApplyStrangePart={(input) => settleOperation(operationApi.applyStrangePart(input))}
+            onApplyToolToItem={(input) => settleOperation(operationApi.applyToolToItem(input))}
+            onApplyToolToBaseItem={(input) => settleOperation(operationApi.applyToolToBaseItem(input))}
+          />
+        </Show>
+        <Show when={view() === "item-management"}>
+          <ItemManagementView
+            onDeleteItem={(input) => settleOperation(operationApi.deleteItem(input))}
+            onUseItem={(input) => settleOperation(operationApi.useItem(input))}
+            onUseMultipleItems={(input) => settleOperation(operationApi.useMultipleItems(input))}
+            onGiftItem={(input) => settleOperation(operationApi.giftItem(input))}
           />
         </Show>
         <Show when={view() === "operations"}>

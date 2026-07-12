@@ -36,3 +36,6 @@ release/
 *.test
 *.prof
 *.coverprofile
+
+# WebAssembly backend build outputs
+apps/web/public/wasm/

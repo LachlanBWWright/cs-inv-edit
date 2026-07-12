@@ -39,8 +39,12 @@ case "$target" in
   desktop)
     npm run dev:desktop
     ;;
+  wasm-web)
+    npm run build:wasm-backend
+    npm run start-vite -w @cs-inv-edit/web
+    ;;
   *)
-    echo "Usage: $0 [web|desktop]" >&2
+    echo "Usage: $0 [web|desktop|wasm-web]" >&2
     exit 1
     ;;
 esac
