@@ -13,6 +13,12 @@ declare global {
   }
 }
 
+const wasmAssetBasePath = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/`;
+const wasmAssetPaths = {
+  wasm: `${wasmAssetBasePath}wasm/cs2-backend.wasm`,
+  loader: `${wasmAssetBasePath}wasm/wasm_exec.js`,
+} as const;
+
 const defaultFeatureFlags: FeatureFlags = {
   enableStorageMutations: true,
   enableContainerOpening: true,
@@ -63,8 +69,8 @@ function createEvents(): OperationEvent[] {
 }
 
 async function loadWasmRuntime() {
-  const wasmPath = "/wasm/cs2-backend.wasm";
-  const loaderPath = "/wasm/wasm_exec.js";
+  const wasmPath = wasmAssetPaths.wasm;
+  const loaderPath = wasmAssetPaths.loader;
 
   if (!document.querySelector(`script[src="${loaderPath}"]`)) {
     await new Promise<void>((resolve, reject) => {

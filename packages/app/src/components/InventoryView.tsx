@@ -202,6 +202,9 @@ export function InventoryView(props: InventoryViewProps) {
     }
   };
 
+  const selected = selectedItem();
+  const selectedLabel = selected ? `${selected.kind} ${selected.name} ${selected.marketName ?? ""}`.toLowerCase() : "";
+
   return (
     <InventoryViewContent
       inventory={props.inventory}
@@ -210,7 +213,7 @@ export function InventoryView(props: InventoryViewProps) {
       query={query()}
       kindFilter={kindFilter()}
       filteredItems={filteredItems()}
-      selectedItem={selectedItem()}
+      selectedItem={selected}
       selectedItemKey={selectedItemKey()}
       statusMessage={statusMessage()}
       containerStatusMessage={containerStatusMessage()}
@@ -223,8 +226,8 @@ export function InventoryView(props: InventoryViewProps) {
       inventoryLoading={inventoryLoading()}
       connected={connected()}
       nameTagTools={nameTagTools()}
-      canOpenContainer={!!selectedItem() && (selectedItem()!.kind === "container" || `${selectedItem()!.kind} ${selectedItem()!.name} ${selectedItem()!.marketName ?? ""}`.toLowerCase().includes("container") || `${selectedItem()!.kind} ${selectedItem()!.name} ${selectedItem()!.marketName ?? ""}`.toLowerCase().includes("capsule") || `${selectedItem()!.kind} ${selectedItem()!.name} ${selectedItem()!.marketName ?? ""}`.toLowerCase().includes("case"))}
-      canUseNameTagOn={!!selectedItem() && selectedItem()!.kind === "weapon_skin" && nameTagTools().length > 0}
+      canOpenContainer={!!selected && (selected.kind === "container" || selectedLabel.includes("container") || selectedLabel.includes("capsule") || selectedLabel.includes("case"))}
+      canUseNameTagOn={!!selected && selected.kind === "weapon_skin" && nameTagTools().length > 0}
       onRefresh={props.onRefresh}
       onQueryChange={setQuery}
       onKindFilterChange={setKindFilter}

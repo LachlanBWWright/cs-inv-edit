@@ -3,6 +3,7 @@ package econ
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -262,7 +263,7 @@ func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string
 		}
 		errs = append(errs, fmt.Sprintf("%s: %v", query, err))
 	}
-	return MarketDescription{}, fmt.Errorf("%s", strings.Join(errs, "; "))
+	return MarketDescription{}, errors.New(strings.Join(errs, "; "))
 }
 
 func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName string, query string) (MarketDescription, error) {

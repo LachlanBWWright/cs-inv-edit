@@ -6,6 +6,7 @@ import "@cs-inv-edit/app/styles.css";
 import { createWasmBackendClient } from "./wasmBackend.js";
 
 const backendBase = "http://127.0.0.1:7331";
+const backendMode = new URLSearchParams(window.location.search).get("backend");
 
 function toPromise<T>(result: ResultAsync<T, AppError>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -53,6 +54,6 @@ function createHttpBackendClient(): AppBackendClient {
   };
 }
 
-const backend = new URLSearchParams(window.location.search).get("backend") === "wasm" ? createWasmBackendClient() : createHttpBackendClient();
+const backend = backendMode === "wasm" ? createWasmBackendClient() : createHttpBackendClient();
 
 render(() => <App backend={backend} platform="web" />, document.getElementById("root")!);
