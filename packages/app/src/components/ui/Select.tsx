@@ -5,6 +5,7 @@ export interface SelectProps {
   value?: string;
   class?: string;
   onChange?: (event: Event) => void;
+  onInput?: (event: InputEvent) => void;
 }
 
 function cn(...values: Array<string | false | undefined>) {
@@ -13,7 +14,7 @@ function cn(...values: Array<string | false | undefined>) {
 
 export function Select(props: SelectProps) {
   return (
-    <select class={cn("rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30", props.class)} value={props.value} onChange={props.onChange}>
+    <select class={cn("rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30", props.class)} value={props.value} onChange={(event) => props.onChange?.(event)} onInput={(event) => props.onInput?.(event)}>
       {props.children}
     </select>
   );

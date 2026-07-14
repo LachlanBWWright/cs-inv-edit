@@ -6,19 +6,26 @@ describe("rarityBorderClass", () => {
     expect(rarityBorderClass("Consumer Grade")).toContain("rarity-common");
     expect(rarityBorderClass("Base Grade")).toContain("rarity-common");
     expect(rarityBorderClass("Industrial Grade")).toContain("rarity-uncommon");
+    expect(rarityBorderClass("Medium Grade")).toContain("rarity-uncommon");
     expect(rarityBorderClass("Mil-Spec")).toContain("rarity-rare");
     expect(rarityBorderClass("High Grade")).toContain("rarity-rare");
+    expect(rarityBorderClass("Distinguished")).toContain("rarity-rare");
     expect(rarityBorderClass("Restricted")).toContain("rarity-mythical");
     expect(rarityBorderClass("Remarkable")).toContain("rarity-mythical");
+    expect(rarityBorderClass("Exceptional")).toContain("rarity-mythical");
     expect(rarityBorderClass("Classified")).toContain("rarity-legendary");
     expect(rarityBorderClass("Exotic")).toContain("rarity-legendary");
+    expect(rarityBorderClass("Superior")).toContain("rarity-legendary");
     expect(rarityBorderClass("Covert")).toContain("rarity-ancient");
     expect(rarityBorderClass("Extraordinary")).toContain("rarity-ancient");
+    expect(rarityBorderClass("Master")).toContain("rarity-ancient");
     expect(rarityBorderClass("Rare Special (★)")).toContain("rarity-exceedingly-rare");
     expect(rarityBorderClass("Rare Special Item")).toContain("rarity-exceedingly-rare");
     expect(rarityBorderClass("Knife")).toContain("rarity-exceedingly-rare");
     expect(rarityBorderClass("Gloves")).toContain("rarity-exceedingly-rare");
+    expect(rarityBorderClass("unusual")).toContain("rarity-exceedingly-rare");
     expect(rarityBorderClass("Contraband (Discontinued)")).toContain("rarity-immortal");
+    expect(rarityBorderClass("Clandestine")).toContain("rarity-immortal");
   });
 
   it("normalizes casing and surrounding whitespace", () => {

@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Match, Show, Switch } from "solid-js";
 import type {
   ApplyStatTrakSwapRequest,
   ArmoryRedeemRequest,
@@ -17,31 +17,28 @@ import type {
   RemoveItemNameRequest,
   SetItemNameRequest,
   SettingsData,
+  SteamAccountProfile,
   UseItemRequest,
   UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
 import { AccountView } from "./components/AccountView.js";
 import { ArmoryView } from "./components/ArmoryView.js";
 import { InventoryView } from "./components/InventoryView.js";
-import { ItemManagementView } from "./components/ItemManagementView.js";
-import { NameTagsView } from "./components/NameTagsView.js";
-import { OperationsView } from "./components/OperationsView.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { StickersView } from "./components/StickersView.js";
-import { StorageView } from "./components/StorageView.js";
-import { ToolsView } from "./components/ToolsView.js";
-import { TradeUpView } from "./components/TradeUpView.js";
 import { Alert } from "./components/ui/Alert.js";
 import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
+import type { AppScreen } from "./view.js";
 
 export interface AppViewProps {
-  view: string;
-  setView: (view: string) => void;
+  view: AppScreen;
+  setView: (view: AppScreen) => void;
   selectedItemId: string | undefined;
   setSelectedItemId: (itemId: string | undefined) => void;
   statusMessage: string;
   health: HealthStatus | undefined;
   connection: ConnectionStatus | undefined;
+  accounts: SteamAccountProfile[];
+  accountUsername: string;
   inventory: InventorySnapshot | undefined;
   armory: ArmorySnapshot | undefined;
   settings: SettingsData | undefined;
@@ -55,7 +52,10 @@ export interface AppViewProps {
   events: OperationEvent[] | undefined;
   toasts: ToastItem[];
   platform: "desktop" | "web";
-  onSwitchAccount: () => void;
+  onAddAccount: () => void;
+  onSignInAccount: (account: SteamAccountProfile) => void;
+  onSignOutAccount: (account: SteamAccountProfile) => void;
+  onDeleteAccount: (account: SteamAccountProfile) => void;
   onRefreshInventory: () => void;
   onDismissToast: (id: string) => void;
   onConnect: (input: { username?: string; password?: string }) => Promise<void>;
@@ -93,6 +93,7 @@ export function AppView(props: AppViewProps) {
         platform={props.platform}
         health={props.health}
         connection={props.connection}
+        accounts={props.accounts}
         inventory={props.inventory}
         settings={props.settings}
         query={props.query}
@@ -101,7 +102,10 @@ export function AppView(props: AppViewProps) {
         setKindFilter={props.setKindFilter}
         compactMode={props.compactMode}
         setCompactMode={props.setCompactMode}
-        onSwitchAccount={props.onSwitchAccount}
+        onAddAccount={props.onAddAccount}
+        onSignInAccount={props.onSignInAccount}
+        onSignOutAccount={props.onSignOutAccount}
+        onDeleteAccount={props.onDeleteAccount}
         onRefreshInventory={props.onRefreshInventory}
         onOpenAccount={() => props.setView("account")}
         onSaveSettings={props.onSaveSettings}
@@ -112,16 +116,18 @@ export function AppView(props: AppViewProps) {
           <Alert class="mb-5">{props.statusMessage}</Alert>
         </Show>
 
-        <Show when={props.view === "account"}>
+        <Switch>
+        <Match when={props.view === "account"}>
           <AccountView
             connection={props.connection}
+            initialUsername={props.accountUsername}
             onConnect={props.onConnect}
             onSubmitSteamGuard={props.onSubmitSteamGuard}
             onDisconnect={props.onDisconnect}
             onToast={props.onToast}
           />
-        </Show>
-        <Show when={props.view === "inventory"}>
+        </Match>
+        <Match when={props.view === "inventory"}>
           <InventoryView
             inventory={props.inventory}
             selectedItemId={props.selectedItemId}
@@ -140,39 +146,9 @@ export function AppView(props: AppViewProps) {
             onOpenContainer={props.onOpenContainer}
             onToast={props.onToast}
           />
-        </Show>
-        <Show when={props.view === "armory"}><ArmoryView armory={props.armory} onRefresh={props.onArmoryRefresh} onRedeem={props.onArmoryRedeem} /></Show>
-        <Show when={props.view === "storage"}>
-          <StorageView inventory={props.inventory} onSubmit={props.onStorageSubmit} onRefresh={props.onInventoryRefresh} />
-        </Show>
-        <Show when={props.view === "tradeups"}>
-          <TradeUpView inventory={props.inventory} onSubmit={props.onTradeUpSubmit} />
-        </Show>
-        <Show when={props.view === "stickers"}>
-          <StickersView inventory={props.inventory} onSubmit={props.onStickerSubmit} />
-        </Show>
-        <Show when={props.view === "nametags"}>
-          <NameTagsView inventory={props.inventory} onApply={props.onNameTagApply} onRemove={props.onNameTagRemove} />
-        </Show>
-        <Show when={props.view === "tools"}>
-          <ToolsView
-            onApplyStatTrakSwap={props.onToolApplyStatTrakSwap}
-            onApplyStrangePart={props.onToolApplyStrangePart}
-            onApplyToolToItem={props.onToolApplyToolToItem}
-            onApplyToolToBaseItem={props.onToolApplyToolToBaseItem}
-          />
-        </Show>
-        <Show when={props.view === "item-management"}>
-          <ItemManagementView
-            onDeleteItem={props.onItemDelete}
-            onUseItem={props.onItemUse}
-            onUseMultipleItems={props.onItemUseMultiple}
-            onGiftItem={props.onItemGift}
-          />
-        </Show>
-        <Show when={props.view === "operations"}>
-          <OperationsView receipts={props.receipts} events={props.events} />
-        </Show>
+        </Match>
+        <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onRedeem={props.onArmoryRedeem} /></Match>
+        </Switch>
       </section>
 
       <ToastViewport toasts={props.toasts} onDismiss={props.onDismissToast} />

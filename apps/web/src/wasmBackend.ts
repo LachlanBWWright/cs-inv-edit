@@ -1,7 +1,7 @@
 import type { AppBackendClient } from "@cs-inv-edit/app";
 import { createAppError } from "@cs-inv-edit/app";
 import { ResultAsync, okAsync } from "neverthrow";
-import type { ConnectionStatus, FeatureFlags, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
+import { healthStatusSchema, type ConnectionStatus, type FeatureFlags, type HealthStatus, type InventorySnapshot, type OperationEvent, type OperationReceipt, type SettingsData } from "@cs-inv-edit/contracts";
 
 declare global {
   interface Window {
@@ -108,7 +108,9 @@ export function createWasmBackendClient(): AppBackendClient {
       const runtime = window.csInvEditWasmBackend;
       const raw = runtime?.health?.();
       if (raw) {
-        return JSON.parse(raw) as HealthStatus;
+        const parsed = healthStatusSchema.safeParse(JSON.parse(raw));
+        if (!parsed.success) throw new Error(`Invalid WASM health payload: ${parsed.error.message}`);
+        return parsed.data;
       }
       return { status: "ok", service: "cs2-wasm-backend", version: "0.0.0", time: new Date().toISOString() };
     }),

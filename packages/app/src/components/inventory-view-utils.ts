@@ -31,7 +31,6 @@ export function itemSubtitle(item: InventoryItemDto) {
     item.customName ? item.marketName : undefined,
     item.collection,
     item.exterior,
-    item.rarity,
     itemKindLabel(item.kind),
   ];
   return candidates.find((value) => value && value !== title) ?? "";
@@ -62,37 +61,43 @@ export function rarityBorderClass(rarity: string | undefined) {
   const normalizedRarity = rarity?.trim().toLowerCase().replace(/\s+/g, " ");
 
   switch (normalizedRarity) {
-    // Backend `common`: Common / Consumer Grade / Base Grade — white.
+    // Backend `common`: Consumer Grade / Base Grade — white (#B0C3D9).
     case "common":
     case "consumer grade":
     case "base grade":
       return "rarity-outline rarity-common";
-    // Backend `uncommon`: Uncommon / Industrial Grade — baby blue.
+    // Backend `uncommon`: Industrial Grade / Medium Grade — baby blue (#5E98D9).
     case "uncommon":
     case "industrial grade":
+    case "medium grade":
       return "rarity-outline rarity-uncommon";
-    // Backend `rare`: Rare / Mil-Spec / High Grade — navy blue.
+    // Backend `rare`: Mil-Spec / High Grade / Distinguished agents — blue (#4B69FF).
     case "rare":
     case "mil-spec":
     case "mil-spec grade":
     case "high grade":
+    case "distinguished":
       return "rarity-outline rarity-rare";
-    // Backend `mythical`: Mythical / Restricted / Remarkable — purple.
+    // Backend `mythical`: Restricted / Remarkable / Exceptional agents — purple (#8847FF).
     case "mythical":
     case "restricted":
     case "remarkable":
+    case "exceptional":
       return "rarity-outline rarity-mythical";
-    // Backend `legendary`: Legendary / Classified / Exotic — hot pink.
+    // Backend `legendary`: Classified / Exotic / Superior agents — hot pink (#D32CE6).
     case "legendary":
     case "classified":
     case "exotic":
+    case "superior":
       return "rarity-outline rarity-legendary";
-    // Backend `ancient`: Ancient / Covert / Extraordinary — red.
+    // Backend `ancient`: Covert / Extraordinary / Master agents — red (#EB4B4B).
     case "ancient":
     case "covert":
     case "extraordinary":
+    case "master":
       return "rarity-outline rarity-ancient";
-    // Rare Special items (including knives and gloves) — gold.
+    // Backend `unusual` and Rare Special items (knives/gloves) — gold (#E4AE39).
+    case "unusual":
     case "rare special":
     case "rare special (★)":
     case "rare special grade":
@@ -100,11 +105,16 @@ export function rarityBorderClass(rarity: string | undefined) {
     case "knife":
     case "gloves":
       return "rarity-outline rarity-exceedingly-rare";
-    // Backend `immortal`: Immortal / discontinued Contraband — rose gold.
+    // Backend `immortal`: Contraband (plus legacy Clandestine/Exceptional) — gold-orange (#E4AE33).
     case "immortal":
     case "contraband":
     case "contraband (discontinued)":
+    case "clandestine":
       return "rarity-outline rarity-immortal";
+    // Backend `default` and stock items use the neutral outline.
+    case "default":
+    case "stock":
+    case "standard":
     default:
       return "rarity-outline";
   }

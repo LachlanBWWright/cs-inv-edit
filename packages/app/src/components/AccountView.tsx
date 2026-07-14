@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
 import type { ConnectionStatus } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
@@ -8,6 +8,7 @@ import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
+  initialUsername?: string;
   onConnect: (input: { username?: string; password?: string }) => Promise<void>;
   onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
   onDisconnect: () => Promise<void>;
@@ -20,6 +21,11 @@ export function AccountView(props: AccountViewProps) {
   const [guardCode, setGuardCode] = createSignal("");
   const [status, setStatus] = createSignal("");
   const [loading, setLoading] = createSignal(false);
+
+  createEffect(() => {
+    setUsername(props.initialUsername ?? "");
+    setPassword("");
+  });
 
   const handleConnect = async (e: Event) => {
     e.preventDefault();
@@ -72,7 +78,9 @@ export function AccountView(props: AccountViewProps) {
           <div class="flex flex-col gap-2">
             <h2 class="text-2xl font-semibold text-slate-50">Steam inventory access</h2>
             <p class="text-sm text-slate-400">
-              Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account.
+              {props.connection?.state === "needs_steam_guard"
+                ? "Approve the sign-in on your phone, or enter a Steam Guard code below."
+                : "Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account."}
             </p>
           </div>
         </CardHeader>
@@ -97,7 +105,16 @@ export function AccountView(props: AccountViewProps) {
 
           <Show when={props.connection?.state === "needs_steam_guard"}>
             <form class="space-y-4" onSubmit={handleSteamGuard}>
-              <Alert>Approve the Steam sign-in prompt on your phone. This page will continue automatically, or you can enter a Steam Guard code below.</Alert>
+              <div class="flex items-center gap-3 rounded-2xl border border-sky-400/20 bg-sky-400/10 px-4 py-3" role="status" aria-live="polite">
+                <span class="relative flex h-3 w-3 shrink-0" aria-hidden="true">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-300 opacity-75" />
+                  <span class="relative inline-flex h-3 w-3 rounded-full bg-sky-400" />
+                </span>
+                <div>
+                  <p class="text-sm font-medium text-sky-100">Checking for approval on your phone</p>
+                  <p class="mt-0.5 text-xs text-sky-200/80">This page will continue automatically when you approve the Steam sign-in.</p>
+                </div>
+              </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-200">Steam Guard code</label>
                 <Input

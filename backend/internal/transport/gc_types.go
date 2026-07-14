@@ -140,6 +140,7 @@ type GCArmorySnapshot struct {
 	ItemIDs        []uint64
 	Offers         []GCArmoryOffer
 	Diagnostics    []string
+	XpShopTypeID   int32
 }
 
 type GCClient interface {

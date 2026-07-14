@@ -1,9 +1,12 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
+	"cs-inv-edit/backend/internal/econ"
 	"cs-inv-edit/backend/internal/protocol"
+	"cs-inv-edit/backend/internal/transport"
 )
 
 func TestSubmitOperationBlocksNameTagsByDefault(t *testing.T) {
@@ -84,8 +87,72 @@ func TestRefreshInventoryRequiresConnection(t *testing.T) {
 func TestArmoryReadEnabledAndPurchasesDisabledByDefault(t *testing.T) {
 	service := NewService()
 	settings := service.Settings()
-	if !settings.FeatureFlags.EnableArmoryRead { t.Fatal("expected Armory reads enabled by default") }
-	if settings.FeatureFlags.EnableArmoryRedemption { t.Fatal("expected Armory purchases disabled by default") }
+	if !settings.FeatureFlags.EnableArmoryRead {
+		t.Fatal("expected Armory reads enabled by default")
+	}
+	if settings.FeatureFlags.EnableArmoryRedemption {
+		t.Fatal("expected Armory purchases disabled by default")
+	}
 	receipt := service.RedeemArmory(map[string]any{})
-	if receipt.State != "blocked_by_feature_flag" { t.Fatalf("expected blocked purchase, got %q", receipt.State) }
+	if receipt.State != "blocked_by_feature_flag" {
+		t.Fatalf("expected blocked purchase, got %q", receipt.State)
+	}
+}
+
+func TestDescriptionForGCItemDoesNotAssociateByName(t *testing.T) {
+	description := econ.InventoryDescription{Name: "Loyalty Badge", MarketHashName: "Loyalty Badge", IconURL: "https://example.invalid/icon", Tradable: false}
+	descriptions := map[string]econ.InventoryDescription{"name:loyalty badge": description}
+	got, ok := descriptionForGCItem(descriptions, transport.GCInventoryItem{ID: 123}, econ.Metadata{Name: "Loyalty Badge", MarketName: "Loyalty Badge"})
+	if ok {
+		t.Fatalf("name-only description was associated with GC item: %#v", got)
+	}
+}
+
+func TestInstanceMarketNameAddsExteriorForExactSkinIconLookup(t *testing.T) {
+	wear := 0.02760651
+	item := transport.GCInventoryItem{PaintWear: &wear}
+	got := instanceMarketName("R8 Revolver | Blaze", item)
+	if got != "R8 Revolver | Blaze (Factory New)" {
+		t.Fatalf("instance market name = %q", got)
+	}
+	if exterior := paintExterior(&wear); exterior != "Factory New" {
+		t.Fatalf("exterior = %q", exterior)
+	}
+}
+
+func TestInventoryItemDiagnosticsIdentifiesSchemaOnlyGCItem(t *testing.T) {
+	diagnostics := inventoryItemDiagnostics(
+		transport.GCInventoryItem{ID: 123, OriginalID: 99, DefIndex: 36, Inventory: 7, Quantity: 0, Quality: 4, Rarity: 2, PaintKit: 0},
+		econ.Metadata{Name: "P250", MarketName: "P250"},
+		false,
+		false,
+		nil,
+		nil,
+	)
+	joined := strings.Join(diagnostics, "\n")
+	for _, want := range []string{"schema-only", "phantom or misclassified", "id=123", "original_id=99", "defindex=36", "quantity=0", `name="P250"`, "GC attributes: none decoded", "Steam market overlay: not used"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("diagnostics %q do not contain %q", joined, want)
+		}
+	}
+}
+
+func TestInventoryItemDiagnosticsDescribeMatchedDescription(t *testing.T) {
+	got := strings.Join(inventoryItemDiagnostics(transport.GCInventoryItem{ID: 123, DefIndex: 36}, econ.Metadata{Name: "P250"}, true, false, nil, nil), "\n")
+	if !strings.Contains(got, "GC identity:") || !strings.Contains(got, "matched by GC asset id or original id") {
+		t.Fatalf("matched item diagnostics = %q", got)
+	}
+}
+
+func TestRevealAnimationsDefaultIndependently(t *testing.T) {
+	settings := NewService().Settings()
+	if settings.Animations.Container != "slot-machine" {
+		t.Fatalf("container animation = %q", settings.Animations.Container)
+	}
+	if settings.Animations.TradeUp != "slot-machine" {
+		t.Fatalf("trade-up animation = %q", settings.Animations.TradeUp)
+	}
+	if settings.Animations.Armory != "slot-machine" {
+		t.Fatalf("Armory animation = %q", settings.Animations.Armory)
+	}
 }

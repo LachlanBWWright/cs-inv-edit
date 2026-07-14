@@ -1,7 +1,7 @@
 import { createEffect, createResource, createSignal } from "solid-js";
 import { errAsync } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
-import type { ConnectionStatus, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
+import { steamAccountProfilesSchema, type ConnectionStatus, type OperationReceipt, type SettingsData, type SteamAccountProfile } from "@cs-inv-edit/contracts";
 import { AppView } from "./AppView.js";
 import { createOperationApi } from "./lib/api.js";
 export type { AppBackendClient } from "./lib/backend.js";
@@ -11,20 +11,34 @@ import type { AppBackendClient } from "./lib/backend.js";
 import type { ToastItem } from "./components/ui/ToastViewport.js";
 import { appErrorMessage, fromAppPromise } from "./lib/result.js";
 import type { AppError } from "./lib/result-http.js";
+import type { AppScreen } from "./view.js";
 
 export interface AppProps {
   backend: AppBackendClient;
   platform: "desktop" | "web";
 }
 
+const accountStorageKey = "cs-inv-edit.steam-accounts.v1";
+
+function loadSteamAccounts(): SteamAccountProfile[] {
+  try {
+    const parsed = steamAccountProfilesSchema.safeParse(JSON.parse(window.localStorage.getItem(accountStorageKey) ?? "[]"));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
+}
+
 export function App(props: AppProps) {
-  const [view, setView] = createSignal("inventory");
+  const [view, setView] = createSignal<AppScreen>("inventory");
   const [selectedItemId, setSelectedItemId] = createSignal<string | undefined>();
   const [query, setQuery] = createSignal("");
   const [kindFilter, setKindFilter] = createSignal<"all" | import("@cs-inv-edit/contracts").InventoryItemDto["kind"]>("all");
   const [compactMode, setCompactMode] = createSignal<"icons" | "concise" | "detailed">("concise");
   const [statusMessage, setStatusMessage] = createSignal<string>("");
   const [toasts, setToasts] = createSignal<ToastItem[]>([]);
+  const [accounts, setAccounts] = createSignal<SteamAccountProfile[]>(loadSteamAccounts());
+  const [accountUsername, setAccountUsername] = createSignal("");
 
   const resourceValue = <T,>(result: ResultAsync<T, AppError>) => result.match((value) => value, (error) => { console.error(error.message, error.cause); return undefined; });
   const [health] = createResource(() => resourceValue(props.backend.health()));
@@ -54,6 +68,38 @@ export function App(props: AppProps) {
 
   createEffect(() => {
     logSteamDiagnostics("status", connection());
+  });
+
+  createEffect(() => {
+    const snapshot = armory();
+    if (snapshot) console.info("[armory] validated snapshot", snapshot);
+  });
+
+  createEffect(() => {
+    window.localStorage.setItem(accountStorageKey, JSON.stringify(accounts()));
+  });
+
+  createEffect(() => {
+    const status = connection();
+    if (!status) return;
+    if (status.state !== "connected" || !status.accountName) {
+      setAccounts((current) => current.map((account) => ({ ...account, signedIn: false })));
+      return;
+    }
+    setAccounts((current) => {
+      const next = current.map((account) => ({ ...account, signedIn: false }));
+      const index = next.findIndex((account) => account.accountName.toLowerCase() === status.accountName!.toLowerCase());
+      const profile: SteamAccountProfile = {
+        accountName: status.accountName!,
+        steamId: status.steamId,
+        avatarUrl: status.avatarUrl,
+        signedIn: true,
+        lastSignedInAt: new Date().toISOString(),
+      };
+      if (index >= 0) next[index] = { ...next[index], ...profile };
+      else next.unshift(profile);
+      return next;
+    });
   });
 
   let steamGuardPollTimer: number | undefined;
@@ -104,7 +150,9 @@ export function App(props: AppProps) {
   };
 
   createEffect(() => {
-    if (connection() && connection()?.state !== "connected" && view() !== "settings") {
+    // Inventory authentication opens the account view by default, but Armory has
+    // its own disconnected state and must remain directly navigable from Mode.
+    if (connection() && connection()?.state !== "connected" && view() !== "armory") {
       setView("account");
     }
   });
@@ -206,15 +254,44 @@ export function App(props: AppProps) {
     pushToast({ title: "Settings updated", description: "The latest backend settings are saved.", variant: "success" });
   };
 
-  const handleSwitchAccount = async () => {
-    setSelectedItemId(undefined);
-    console.info("[app] switching account");
-    if (props.backend.disconnectSteam) {
+  const addAccount = async () => {
+    if (connection()?.state === "connected" && props.backend.disconnectSteam) {
       await props.backend.disconnectSteam();
+      await refetchConnection();
     }
-    await refetchConnection();
+    setSelectedItemId(undefined);
+    setAccountUsername("");
     setView("account");
-    pushToast({ title: "Account disconnected", description: "You can sign in with a different Steam account.", variant: "warning" });
+  };
+
+  const signInAccount = async (account: SteamAccountProfile) => {
+    if (connection()?.state === "connected" && props.backend.disconnectSteam) {
+      await props.backend.disconnectSteam();
+      await refetchConnection();
+    }
+    setSelectedItemId(undefined);
+    setAccountUsername(account.accountName);
+    setView("account");
+  };
+
+  const signOutAccount = async (account: SteamAccountProfile) => {
+    if (account.signedIn && props.backend.disconnectSteam) {
+      await props.backend.disconnectSteam();
+      await refetchConnection();
+    }
+    setAccounts((current) => current.map((candidate) => candidate.accountName === account.accountName ? { ...candidate, signedIn: false } : candidate));
+    setSelectedItemId(undefined);
+    pushToast({ title: "Account signed out", description: account.accountName, variant: "warning" });
+  };
+
+  const deleteAccount = async (account: SteamAccountProfile) => {
+    if (account.signedIn && props.backend.disconnectSteam) {
+      await props.backend.disconnectSteam();
+      await refetchConnection();
+    }
+    setAccounts((current) => current.filter((candidate) => candidate.accountName !== account.accountName));
+    setSelectedItemId(undefined);
+    pushToast({ title: "Saved account deleted", description: `${account.accountName} was removed from this device.`, variant: "warning" });
   };
 
   return (
@@ -226,6 +303,8 @@ export function App(props: AppProps) {
       statusMessage={statusMessage()}
       health={health()}
       connection={connection()}
+      accounts={accounts()}
+      accountUsername={accountUsername()}
       inventory={inventory()}
       armory={armory()}
       settings={settings()}
@@ -239,10 +318,14 @@ export function App(props: AppProps) {
       events={events()}
       toasts={toasts()}
       platform={props.platform}
-      onSwitchAccount={() => void handleSwitchAccount()}
+      onAddAccount={() => void addAccount()}
+      onSignInAccount={(account) => void signInAccount(account)}
+      onSignOutAccount={(account) => void signOutAccount(account)}
+      onDeleteAccount={(account) => void deleteAccount(account)}
       onRefreshInventory={() => void refreshAll()}
       onDismissToast={dismissToast}
       onConnect={async (input) => {
+        setAccountUsername(input.username ?? "");
         const result: ResultAsync<ConnectionStatus, AppError> = props.backend.connectSteam
           ? props.backend.connectSteam(input)
           : errAsync({ message: "Steam connection unavailable" });

@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
+import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
 import { itemDisplayName, itemKey, itemKindLabel, resolveSelectedInventoryItem } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 
@@ -30,6 +31,12 @@ export function InventoryView(props: InventoryViewProps) {
   const [statusMessage, setStatusMessage] = createSignal("");
   const [containerStatusMessage, setContainerStatusMessage] = createSignal("");
   const [pending, setPending] = createSignal(false);
+  const [reveal, setReveal] = createSignal<{ result: RevealItem; candidates: RevealItem[]; complete: () => void }>();
+
+  const playReveal = (result: RevealItem, candidates: RevealItem[]) => {
+    if ((props.settings?.animations?.container ?? "slot-machine") === "none") return Promise.resolve();
+    return new Promise<void>((resolve) => setReveal({ result, candidates, complete: resolve }));
+  };
 
   const filteredItems = () => {
     const q = props.query.toLowerCase();
@@ -152,7 +159,7 @@ export function InventoryView(props: InventoryViewProps) {
     }
     setPending(true);
     setContainerStatusMessage("Sending open request to CS2...");
-    await fromAppPromise(props.onOpenContainer({ itemId: item.id }), "Failed to open container").match((receipt) => {
+    await fromAppPromise(props.onOpenContainer({ itemId: item.id }), "Failed to open container").match(async (receipt) => {
       if (typeof receipt === "object" && receipt && "state" in receipt && receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation") {
         const message = "message" in receipt && typeof receipt.message === "string" ? receipt.message : "Container open request was not accepted.";
         const responseBody =
@@ -170,6 +177,12 @@ export function InventoryView(props: InventoryViewProps) {
           : typeof receipt === "object" && receipt && "message" in receipt && typeof receipt.message === "string"
             ? receipt.message
             : "Container opened and inventory was reconciled.";
+        if (openedItem) {
+          await playReveal(
+            { name: itemDisplayName(openedItem), imageUrl: openedItem.imageUrl, rarity: openedItem.rarity },
+            (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, rarity: candidate.rarity })),
+          );
+        }
         setContainerStatusMessage(message);
         if (openedItem?.id) {
           props.setSelectedItemId(openedItem.id);
@@ -179,10 +192,12 @@ export function InventoryView(props: InventoryViewProps) {
     setPending(false);
   };
 
-  const selected = selectedItem();
-  const selectedLabel = selected ? `${selected.kind} ${selected.name} ${selected.marketName ?? ""}`.toLowerCase() : "";
+  const selectedLabel = () => {
+    const selected = selectedItem();
+    return selected ? `${selected.kind} ${selected.name} ${selected.marketName ?? ""}`.toLowerCase() : "";
+  };
 
-  return (
+  return (<>
     <InventoryViewContent
       inventory={props.inventory}
       connection={props.connection}
@@ -190,7 +205,7 @@ export function InventoryView(props: InventoryViewProps) {
       query={props.query}
       kindFilter={props.kindFilter}
       filteredItems={filteredItems()}
-      selectedItem={selected}
+      selectedItem={selectedItem()}
       selectedItemKey={selectedItemKey()}
       statusMessage={statusMessage()}
       containerStatusMessage={containerStatusMessage()}
@@ -203,8 +218,8 @@ export function InventoryView(props: InventoryViewProps) {
       inventoryLoading={inventoryLoading()}
       connected={connected()}
       nameTagTools={nameTagTools()}
-      canOpenContainer={!!selected && (selected.kind === "container" || selectedLabel.includes("container") || selectedLabel.includes("capsule") || selectedLabel.includes("case"))}
-      canUseNameTagOn={!!selected && selected.kind === "weapon_skin" && nameTagTools().length > 0}
+      canOpenContainer={!!selectedItem() && (selectedItem()?.kind === "container" || selectedLabel().includes("container") || selectedLabel().includes("capsule") || selectedLabel().includes("case"))}
+      canUseNameTagOn={selectedItem()?.kind === "weapon_skin" && nameTagTools().length > 0}
       onRefresh={props.onRefresh}
       onQueryChange={props.setQuery}
       onKindFilterChange={props.setKindFilter}
@@ -219,5 +234,6 @@ export function InventoryView(props: InventoryViewProps) {
       onDraftNameChange={setDraftName}
       onSelectedToolChange={setSelectedToolId}
     />
-  );
+    <RevealAnimation open={!!reveal()} mode={props.settings?.animations?.container ?? "slot-machine"} title="Container opening" candidates={reveal()?.candidates ?? []} result={reveal()?.result ?? { name: "Item" }} onComplete={() => { const current = reveal(); setReveal(undefined); current?.complete(); }} />
+  </>);
 }

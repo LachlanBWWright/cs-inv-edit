@@ -61,6 +61,8 @@ The upstream paths still use legacy names such as `csgo`, `cstrike15`, and `ECsg
 - `item_name` localization tokens such as `#SFUI_WPNHUD_AK47`.
 - `item_type_name`, `item_class`, `item_rarity`, and tool/capability metadata.
 - `paint_kits`, including paint kit localization tokens such as `description_tag`.
+- `item_sets`, which link weapon/finish pairs to named collections.
+- `client_loot_lists` and each container's `loot_list_name`, which describe possible container contents (including nested loot lists).
 - Logical inventory image keys such as `econ/weapons/base_weapons/weapon_ak47`.
 
 ## What It Does Not Provide
@@ -81,6 +83,8 @@ The upstream paths still use legacy names such as `csgo`, `cstrike15`, and `ECsg
 7. Resolve localization tokens.
 8. Join by `def_index`.
 9. If the GC item has paint kit attribute `6`, join it to `paint_kits`.
+10. Join the resulting `[paint_kit]weapon` key to `item_sets` for collection membership and contents.
+11. For containers, recursively resolve `loot_list_name` through `client_loot_lists`; this is descriptive metadata and does not predict an opening result.
 
 ## Important Attribute IDs
 
@@ -103,6 +107,19 @@ The GC-owned item list remains authoritative. The web response is metadata only.
 2. `assets[].classid` + `assets[].instanceid` to `descriptions[]`.
 3. Description fields such as `market_hash_name`, `icon_url`, and `icon_url_large` overlay the schema-derived metadata.
 
+If the Steam asset ID does not match either the GC item ID or original ID, the
+overlay may fall back to an exact, case-insensitive display/market-name match
+only when that name identifies one unique Steam description. Ambiguous names
+are deliberately left unmatched. This is particularly important for
+non-marketable collectible badges, whose valid CDN icon token is available in
+the Steam description but not through market search.
+
+Permanent definition-level non-tradability is read from the fully merged
+`items_game` `capabilities.can_trade = 0` value. Instance-level tradability and
+temporary `Tradable After` timestamps continue to come from the Steam inventory
+description overlay; a positive schema capability never overrides an instance
+trade lock.
+
 If this request fails, inventory should still render with schema-derived names and include a diagnostic that Steam inventory description metadata was unavailable.
 
 ## Images
@@ -120,3 +137,20 @@ If no Steam description metadata is available, omit `imageUrl` rather than retur
 ## Failure Policy
 
 If live schema fetch or parsing fails, inventory refresh should fail with an explicit backend error. It should not silently fall back to fake display names like `CS2 item #970`.
+
+# Armory catalogue
+
+The universal Armory catalogue is read from the live `items_game.txt` current
+`seasonaloperations` entry whose `redeemable_goods` value is `xpshop`, matching
+Panorama's `MissionsAPI.GetSeasonalOperationRedeemableGoodsCount/Schema` path.
+The GC `XpShop` SOCache object (`CSOAccountXpShop`) supplies only
+account-specific generation, star balance, and XP tracks. `XpShopBids` objects
+are active user bids and are not the universal offer catalogue.
+The object may be embedded in `ClientWelcome.outofdate_subscribed_caches` or
+arrive immediately afterward in `k_ESOMsg_CacheSubscribed` (message 24); the
+Armory refresh waits for both protocol-defined delivery paths.
+The numeric SO type is not assumed to be stable. Candidate objects are accepted
+only when their wire fields exactly match fields 1–3 of `CSOAccountXpShop`, all
+values fit their authoritative uint32 types, `generation_time` is present, and
+the candidate is unique. Inventory type 1 and multi-object cache types are
+excluded before decoding.

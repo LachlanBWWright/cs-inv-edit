@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -100,9 +101,23 @@ func (s *Service) RefreshArmory() operations.Receipt {
 	}
 	s.armory.Status = "loading"
 	s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	state, err := s.gcClient.RequestArmory(ctx)
+	gcCtx, cancelGC := context.WithTimeout(context.Background(), 10*time.Second)
+	state, err := s.gcClient.RequestArmory(gcCtx)
+	cancelGC()
+	var catalog []econ.ArmoryOffer
+	if err == nil {
+		metadataCtx, cancelMetadata := context.WithTimeout(context.Background(), 20*time.Second)
+		metadata, metadataErr := s.econProvider.Load(metadataCtx)
+		cancelMetadata()
+		if metadataErr != nil {
+			err = fmt.Errorf("load live CS2 Armory catalogue: %w", metadataErr)
+		} else {
+			catalog = metadata.ArmoryOffers()
+			if len(catalog) == 0 {
+				err = fmt.Errorf("live CS2 items_game contained no xpshop redeemable goods")
+			}
+		}
+	}
 	s.mu.Lock()
 	if err != nil {
 		s.armory = domain.ArmorySnapshot{Status: "error", Message: err.Error(), RefreshedAt: now(), ItemIDs: []string{}, Offers: []domain.ArmoryOffer{}}
@@ -111,7 +126,7 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	s.armory = armoryFromGC(state)
+	s.armory = armoryFromGC(state, catalog)
 	s.mu.Unlock()
 	receipt.State, receipt.Message = "completed", "Armory star balance refreshed"
 	s.addEvent(receipt, receipt.State, receipt.Message)
@@ -649,13 +664,13 @@ func emptyArmory() domain.ArmorySnapshot {
 	return domain.ArmorySnapshot{RefreshedAt: now(), Status: "requires_connection", ItemIDs: []string{}, Offers: []domain.ArmoryOffer{}}
 }
 
-func armoryFromGC(state transport.GCArmorySnapshot) domain.ArmorySnapshot {
-	result := domain.ArmorySnapshot{Balance: state.Balance, GenerationTime: state.GenerationTime, RefreshedAt: now(), Status: "ready", ItemIDs: make([]string, len(state.ItemIDs)), Offers: make([]domain.ArmoryOffer, len(state.Offers)), Diagnostics: append([]string(nil), state.Diagnostics...)}
+func armoryFromGC(state transport.GCArmorySnapshot, catalog []econ.ArmoryOffer) domain.ArmorySnapshot {
+	result := domain.ArmorySnapshot{Balance: state.Balance, GenerationTime: state.GenerationTime, RefreshedAt: now(), Status: "ready", ItemIDs: []string{}, Offers: make([]domain.ArmoryOffer, len(catalog)), Diagnostics: append([]string(nil), state.Diagnostics...)}
 	for i, id := range state.ItemIDs {
 		result.ItemIDs[i] = strconv.FormatUint(id, 10)
 	}
-	for i, offer := range state.Offers {
-		result.Offers[i] = domain.ArmoryOffer{CampaignID: offer.CampaignID, RedeemID: offer.RedeemID, ExpectedCost: offer.ExpectedCost, GenerationTime: offer.GenerationTime}
+	for i, offer := range catalog {
+		result.Offers[i] = domain.ArmoryOffer{CampaignID: offer.CampaignID, RedeemID: offer.RedeemID, ExpectedCost: offer.ExpectedCost, GenerationTime: state.GenerationTime, ItemName: offer.ItemName, Name: offer.Name, Category: offer.Category, Items: domainRelatedItems(offer.Items)}
 	}
 	return result
 }
@@ -701,11 +716,12 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 		}
 		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
 		descriptionMatched := false
-		if description, ok := descriptionForGCItem(descriptions, item); ok {
+		if description, ok := descriptionForGCItem(descriptions, item, itemMetadata); ok {
 			itemMetadata = itemMetadata.WithInventoryDescription(description)
 			descriptionMatched = true
 			descriptionMatches++
 		}
+		itemMetadata.MarketName = instanceMarketName(itemMetadata.MarketName, item)
 		pendingItems = append(pendingItems, pendingItem{item: item, metadata: itemMetadata, descriptionMatched: descriptionMatched})
 		if itemMetadata.MarketName != "" {
 			marketNames = append(marketNames, itemMetadata.MarketName)
@@ -742,7 +758,14 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 			MarketPrice:        itemMetadata.MarketPrice.SellPriceText,
 			MarketSalePrice:    itemMetadata.MarketPrice.SalePriceText,
 			MarketSellListings: ptrInt(itemMetadata.MarketPrice.SellListings),
+			AppliedItems:       domainAppliedItems(metadata.AppliedItems(item.DefIndex, item.Attributes), itemMetadata.AppliedItemImages),
+			// CEconItem quality 9 is Strange/StatTrak and 12 is Tournament/Souvenir.
+			IsStatTrak:    item.Quality == 9 || strings.HasPrefix(itemMetadata.MarketName, "StatTrak™"),
+			IsSouvenir:    item.Quality == 12 || strings.HasPrefix(itemMetadata.MarketName, "Souvenir"),
+			Tradable:      itemMetadata.Tradable,
+			TradableAfter: itemMetadata.TradableAfter,
 		}
+		inventoryItem.Exterior = paintExterior(item.PaintWear)
 		if itemMetadata.MarketPrice.SellListings == 0 {
 			inventoryItem.MarketSellListings = nil
 		}
@@ -753,6 +776,7 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 			inventoryItem.CustomName = item.CustomName
 			inventoryItem.HasCustomName = true
 		}
+		inventoryItem.Diagnostics = inventoryItemDiagnostics(item, itemMetadata, pending.descriptionMatched, marketDescriptionUsed, descriptionErr, marketErr)
 		if includeDebug {
 			inventoryItem.Debug = debugForGCItem(item, pending.descriptionMatched, marketDescriptionUsed)
 		}
@@ -766,6 +790,40 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 	}, nil
 }
 
+func instanceMarketName(marketName string, item transport.GCInventoryItem) string {
+	if item.PaintWear == nil || !strings.Contains(marketName, " | ") {
+		return marketName
+	}
+	if item.Quality == 9 && !strings.HasPrefix(marketName, "StatTrak™ ") {
+		marketName = "StatTrak™ " + marketName
+	} else if item.Quality == 12 && !strings.HasPrefix(marketName, "Souvenir ") {
+		marketName = "Souvenir " + marketName
+	}
+	exterior := paintExterior(item.PaintWear)
+	if exterior != "" && !strings.HasSuffix(marketName, ")") {
+		marketName += " (" + exterior + ")"
+	}
+	return marketName
+}
+
+func paintExterior(wear *float64) string {
+	if wear == nil {
+		return ""
+	}
+	switch {
+	case *wear < 0.07:
+		return "Factory New"
+	case *wear < 0.15:
+		return "Minimal Wear"
+	case *wear < 0.38:
+		return "Field-Tested"
+	case *wear < 0.45:
+		return "Well-Worn"
+	default:
+		return "Battle-Scarred"
+	}
+}
+
 func domainRelatedItems(items []econ.RelatedItem) []domain.RelatedItem {
 	out := make([]domain.RelatedItem, 0, len(items))
 	for _, item := range items {
@@ -774,7 +832,24 @@ func domainRelatedItems(items []econ.RelatedItem) []domain.RelatedItem {
 	return out
 }
 
-func descriptionForGCItem(descriptions map[string]econ.InventoryDescription, item transport.GCInventoryItem) (econ.InventoryDescription, bool) {
+func domainAppliedItems(items []econ.AppliedItem, images []string) []domain.AppliedItem {
+	out := make([]domain.AppliedItem, 0, len(items))
+	for _, item := range items {
+		slot, id := item.Slot, item.ID
+		imageURL := ""
+		if len(images) > len(out) {
+			imageURL = images[len(out)]
+		}
+		var slotPointer *uint32
+		if item.Kind != "charm" {
+			slotPointer = &slot
+		}
+		out = append(out, domain.AppliedItem{Kind: item.Kind, Slot: slotPointer, ID: &id, Name: item.Name, ImageURL: imageURL})
+	}
+	return out
+}
+
+func descriptionForGCItem(descriptions map[string]econ.InventoryDescription, item transport.GCInventoryItem, metadata econ.Metadata) (econ.InventoryDescription, bool) {
 	if len(descriptions) == 0 {
 		return econ.InventoryDescription{}, false
 	}
@@ -810,14 +885,75 @@ func debugForGCItem(item transport.GCInventoryItem, descriptionMatched bool, mar
 	}
 }
 
+func inventoryItemDiagnostics(item transport.GCInventoryItem, metadata econ.Metadata, descriptionMatched bool, marketDescriptionUsed bool, descriptionErr error, marketErr error) []string {
+	diagnostics := []string{fmt.Sprintf(
+		"GC identity: id=%d, original_id=%d, defindex=%d, inventory=%d, quantity=%d, quality=%d, rarity=%d, paint_kit=%d",
+		item.ID, item.OriginalID, item.DefIndex, item.Inventory, item.Quantity, item.Quality, item.Rarity, item.PaintKit,
+	)}
+	if item.PaintWear != nil {
+		diagnostics = append(diagnostics, fmt.Sprintf("GC instance: paint_wear=%.10f, custom_name=%q", *item.PaintWear, item.CustomName))
+	} else {
+		diagnostics = append(diagnostics, fmt.Sprintf("GC instance: paint_wear=unset, custom_name=%q", item.CustomName))
+	}
+	attributeIDs := make([]int, 0, len(item.Attributes))
+	for id := range item.Attributes {
+		attributeIDs = append(attributeIDs, int(id))
+	}
+	sort.Ints(attributeIDs)
+	if len(attributeIDs) == 0 {
+		diagnostics = append(diagnostics, "GC attributes: none decoded")
+	} else {
+		attributes := make([]string, 0, len(attributeIDs))
+		for _, id := range attributeIDs {
+			attributes = append(attributes, fmt.Sprintf("%d=%d (0x%08x)", id, item.Attributes[uint32(id)], item.Attributes[uint32(id)]))
+		}
+		diagnostics = append(diagnostics, "GC attributes: "+strings.Join(attributes, ", "))
+	}
+	diagnostics = append(diagnostics, fmt.Sprintf(
+		"Schema result: name=%q, market_name=%q, kind=%q, rarity=%q, tool_type=%q, collection=%q, tradable=%s, name_tag_tool=%t",
+		metadata.Name, metadata.MarketName, metadata.Kind, metadata.Rarity, metadata.ToolType, metadata.Collection, optionalBool(metadata.Tradable), metadata.IsNameTagTool,
+	))
+	diagnostics = append(diagnostics, fmt.Sprintf(
+		"Schema relationships: collection_items=%d, container_items=%d; applied_item_images=%d",
+		len(metadata.CollectionItems), len(metadata.ContainerItems), len(metadata.AppliedItemImages),
+	))
+	if descriptionErr != nil {
+		diagnostics = append(diagnostics, fmt.Sprintf("Steam inventory description: unavailable: %v", descriptionErr))
+	} else if descriptionMatched {
+		diagnostics = append(diagnostics, "Steam inventory description: matched by GC asset id or original id")
+	} else {
+		diagnostics = append(diagnostics, "Steam inventory description: no match; displayed identity is schema-only and may be phantom or misclassified")
+	}
+	marketStatus := "not used"
+	if marketDescriptionUsed {
+		marketStatus = "used"
+	}
+	if marketErr != nil {
+		marketStatus = fmt.Sprintf("unavailable: %v", marketErr)
+	}
+	diagnostics = append(diagnostics, fmt.Sprintf("Steam market overlay: %s; image_url=%q", marketStatus, metadata.ImageURL))
+	diagnostics = append(diagnostics, fmt.Sprintf(
+		"Market result: sell_price=%d, sell_price_text=%q, sale_price_text=%q, sell_listings=%d, tradable_after=%q",
+		metadata.MarketPrice.SellPrice, metadata.MarketPrice.SellPriceText, metadata.MarketPrice.SalePriceText, metadata.MarketPrice.SellListings, metadata.TradableAfter,
+	))
+	return diagnostics
+}
+
+func optionalBool(value *bool) string {
+	if value == nil {
+		return "unset"
+	}
+	return strconv.FormatBool(*value)
+}
+
 func inventoryMetadataDiagnostics(descriptionErr error, marketErr error, descriptionCount int, descriptionMatches int, itemCount int) []string {
 	var diagnostics []string
 	if descriptionErr != nil {
 		diagnostics = append(diagnostics, fmt.Sprintf("Steam inventory description metadata unavailable: %v", descriptionErr))
 	} else if itemCount > 0 && descriptionMatches == 0 {
-		diagnostics = append(diagnostics, fmt.Sprintf("Steam inventory description metadata returned %d descriptions but matched 0/%d GC items by id/original_id", descriptionCount, itemCount))
+		diagnostics = append(diagnostics, fmt.Sprintf("Steam inventory description metadata returned %d descriptions but matched 0/%d GC items by asset id or original id", descriptionCount, itemCount))
 	} else if itemCount > 0 && descriptionMatches < itemCount {
-		diagnostics = append(diagnostics, fmt.Sprintf("Steam inventory description metadata matched %d/%d GC items by id/original_id", descriptionMatches, itemCount))
+		diagnostics = append(diagnostics, fmt.Sprintf("Steam inventory description metadata matched %d/%d GC items by asset id or original id", descriptionMatches, itemCount))
 	}
 	if marketErr != nil {
 		diagnostics = append(diagnostics, fmt.Sprintf("Steam market metadata unavailable: %v", marketErr))
@@ -1153,6 +1289,7 @@ func defaultSettings() domain.Settings {
 		BackendURL:             "http://127.0.0.1:7331",
 		ValidationMode:         true,
 		SacrificialAccountMode: true,
+		Animations:             domain.AnimationSettings{Container: "slot-machine", TradeUp: "slot-machine", Armory: "slot-machine"},
 		FeatureFlags: domain.FeatureFlags{
 			EnableStorageMutations: true,
 			EnableContainerOpening: true,
@@ -1179,14 +1316,16 @@ func cloneInventory(inventory domain.InventorySnapshot) domain.InventorySnapshot
 }
 
 func cloneArmory(armory domain.ArmorySnapshot) domain.ArmorySnapshot {
-	armory.ItemIDs = append([]string(nil), armory.ItemIDs...)
-	armory.Offers = append([]domain.ArmoryOffer(nil), armory.Offers...)
+	// Keep API collections as [] instead of null so clients can safely render
+	// empty Armory snapshots, including partially initialized GC state.
+	armory.ItemIDs = append([]string{}, armory.ItemIDs...)
+	armory.Offers = append([]domain.ArmoryOffer{}, armory.Offers...)
 	armory.Diagnostics = append([]string(nil), armory.Diagnostics...)
 	return armory
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {
-	return domain.Settings{BackendURL: settings.BackendURL, ValidationMode: settings.ValidationMode, SacrificialAccountMode: settings.SacrificialAccountMode, FeatureFlags: settings.FeatureFlags}
+	return domain.Settings{BackendURL: settings.BackendURL, ValidationMode: settings.ValidationMode, SacrificialAccountMode: settings.SacrificialAccountMode, FeatureFlags: settings.FeatureFlags, Animations: settings.Animations}
 }
 
 func ptrUint32(value uint32) *uint32 { return &value }

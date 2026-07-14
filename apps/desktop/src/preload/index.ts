@@ -1,38 +1,46 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { ResultAsync, err, ok } from "neverthrow";
 import type { AppError } from "@cs-inv-edit/app";
+import { backendSchemas } from "@cs-inv-edit/contracts";
+import type { SafeParseSchema } from "@cs-inv-edit/app";
 
 type IpcResult<T> = { ok: true; value: T } | { ok: false; error: AppError };
 
-const invokeResult = <T>(channel: string, ...args: unknown[]) =>
-  ResultAsync.fromPromise(ipcRenderer.invoke(channel, ...args) as Promise<IpcResult<T>>, (cause) => ({ message: `Electron IPC failed for ${channel}`, cause }))
-    .andThen((result) => result.ok ? ok(result.value) : err(result.error));
+const invokeResult = <T>(schema: SafeParseSchema<T>, channel: string, ...args: unknown[]) =>
+  ResultAsync.fromPromise(ipcRenderer.invoke(channel, ...args) as Promise<unknown>, (cause) => ({ message: `Electron IPC failed for ${channel}`, cause }))
+    .andThen((payload) => {
+      if (!payload || typeof payload !== "object" || !("ok" in payload)) return err({ message: `Invalid Electron IPC envelope for ${channel}`, cause: payload });
+      const result = payload as IpcResult<unknown>;
+      if (!result.ok) return err(result.error);
+      const parsed = schema.safeParse(result.value);
+      return parsed.success ? ok(parsed.data) : err({ message: `Invalid Electron IPC payload for ${channel}`, cause: parsed.error });
+    });
 
 const api = {
-  health: () => invokeResult("backend:health"),
-  inventory: () => invokeResult("backend:inventory"),
-  refreshInventory: () => invokeResult("backend:refreshInventory"),
-  armory: () => invokeResult("backend:armory"),
-  refreshArmory: () => invokeResult("backend:refreshArmory"),
-  redeemArmory: (input: unknown) => invokeResult("backend:redeemArmory", input),
-  submitOperation: (type: string, input?: unknown) => invokeResult("backend:submitOperation", type, input),
-  operations: () => invokeResult("backend:operations"),
-  events: () => invokeResult("backend:events"),
-  settings: () => invokeResult("backend:settings"),
-  steamStatus: () => invokeResult("backend:steamStatus"),
-  connectSteam: (input?: unknown) => invokeResult("backend:connectSteam", input),
-  submitSteamGuard: (input?: unknown) => invokeResult("backend:submitSteamGuard", input),
-  disconnectSteam: () => invokeResult("backend:disconnectSteam"),
-  applyNameTag: (input: unknown) => invokeResult("backend:applyNameTag", input),
-  removeNameTag: (input: unknown) => invokeResult("backend:removeNameTag", input),
-  deleteItem: (input: unknown) => invokeResult("backend:deleteItem", input),
-  applyStatTrakSwap: (input: unknown) => invokeResult("backend:applyStatTrakSwap", input),
-  applyStrangePart: (input: unknown) => invokeResult("backend:applyStrangePart", input),
-  useItem: (input: unknown) => invokeResult("backend:useItem", input),
-  useMultipleItems: (input: unknown) => invokeResult("backend:useMultipleItems", input),
-  applyToolToItem: (input: unknown) => invokeResult("backend:applyToolToItem", input),
-  applyToolToBaseItem: (input: unknown) => invokeResult("backend:applyToolToBaseItem", input),
-  giftItem: (input: unknown) => invokeResult("backend:giftItem", input),
+  health: () => invokeResult(backendSchemas.health, "backend:health"),
+  inventory: () => invokeResult(backendSchemas.inventory, "backend:inventory"),
+  refreshInventory: () => invokeResult(backendSchemas.receipt, "backend:refreshInventory"),
+  armory: () => invokeResult(backendSchemas.armory, "backend:armory"),
+  refreshArmory: () => invokeResult(backendSchemas.receipt, "backend:refreshArmory"),
+  redeemArmory: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:redeemArmory", input),
+  submitOperation: (type: string, input?: unknown) => invokeResult(backendSchemas.receipt, "backend:submitOperation", type, input),
+  operations: () => invokeResult(backendSchemas.receipts, "backend:operations"),
+  events: () => invokeResult(backendSchemas.events, "backend:events"),
+  settings: () => invokeResult(backendSchemas.settings, "backend:settings"),
+  steamStatus: () => invokeResult(backendSchemas.connection, "backend:steamStatus"),
+  connectSteam: (input?: unknown) => invokeResult(backendSchemas.connection, "backend:connectSteam", input),
+  submitSteamGuard: (input?: unknown) => invokeResult(backendSchemas.connection, "backend:submitSteamGuard", input),
+  disconnectSteam: () => invokeResult(backendSchemas.connection, "backend:disconnectSteam"),
+  applyNameTag: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:applyNameTag", input),
+  removeNameTag: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:removeNameTag", input),
+  deleteItem: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:deleteItem", input),
+  applyStatTrakSwap: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:applyStatTrakSwap", input),
+  applyStrangePart: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:applyStrangePart", input),
+  useItem: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:useItem", input),
+  useMultipleItems: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:useMultipleItems", input),
+  applyToolToItem: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:applyToolToItem", input),
+  applyToolToBaseItem: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:applyToolToBaseItem", input),
+  giftItem: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:giftItem", input),
 };
 
 contextBridge.exposeInMainWorld("cs2", api);

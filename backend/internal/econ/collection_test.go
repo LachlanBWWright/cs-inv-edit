@@ -42,3 +42,17 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
 		t.Fatalf("container contents = %#v", container.ContainerItems)
 	}
 }
+
+func TestAppliedItemImagesUsesSteamDescriptionImages(t *testing.T) {
+	images := appliedItemImages([]inventoryDescriptionLine{{Value: `<center><img src="https://steamcdn.example/apps/730/icons/econ/stickers/kawaii.png"><br>Sticker: Kawaii Killer</center>`}})
+	if len(images) != 1 || images[0] != "https://steamcdn.example/apps/730/icons/econ/stickers/kawaii.png" {
+		t.Fatalf("applied item images = %#v", images)
+	}
+}
+
+func TestTradableAfterParsesSteamDescriptionTimestamp(t *testing.T) {
+	got := tradableAfter([]inventoryDescriptionLine{{Value: "Tradable After Jul 21, 2026 (7:00:00) GMT"}})
+	if got != "2026-07-21T07:00:00Z" {
+		t.Fatalf("tradable after = %q", got)
+	}
+}

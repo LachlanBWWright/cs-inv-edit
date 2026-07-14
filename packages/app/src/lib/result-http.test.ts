@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requestJsonResult } from "./result-http";
+import { z } from "zod";
+
+const healthTestSchema = z.object({ status: z.string() });
 
 describe("requestJsonResult", () => {
   afterEach(() => {
@@ -15,7 +18,7 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult<{ status: string }>("https://example.test", "/health");
+    const result = await requestJsonResult("https://example.test", "/health", healthTestSchema);
 
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
@@ -34,7 +37,7 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/health");
+    const result = await requestJsonResult("https://example.test", "/health", healthTestSchema);
 
     expect(result.isOk()).toBe(false);
     if (result.isErr()) {
@@ -54,11 +57,18 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/steam/guard");
+    const result = await requestJsonResult("https://example.test", "/steam/guard", healthTestSchema);
 
     expect(result.isOk()).toBe(false);
     if (result.isErr()) {
       expect(result.error.message).toContain("Steam Guard failed");
     }
+  });
+
+  it("returns an error when successful JSON fails runtime validation", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ status: null }) }));
+    const result = await requestJsonResult("https://example.test", "/health", healthTestSchema);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.message).toContain("Invalid response payload");
   });
 });

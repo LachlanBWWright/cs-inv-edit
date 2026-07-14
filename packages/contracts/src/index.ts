@@ -1,4 +1,5 @@
 export type ConnectionState = "disconnected" | "connecting" | "awaiting_guard" | "needs_steam_guard" | "connected" | "error";
+export * from "./schemas.js";
 
 export interface HealthStatus {
   status: "ok" | "error";
@@ -11,6 +12,14 @@ export interface StickerDto {
   slot?: number;
   stickerId?: number;
   wear?: number;
+}
+
+export interface AppliedItemDto {
+  kind: "sticker" | "charm" | "patch";
+  slot?: number;
+  id?: number;
+  name: string;
+  imageUrl?: string;
 }
 
 export interface InventoryItemDto {
@@ -35,7 +44,13 @@ export interface InventoryItemDto {
   storageLocation?: string;
   toolType?: string;
   stickers?: StickerDto[];
+  appliedItems?: AppliedItemDto[];
+  isStatTrak?: boolean;
+  isSouvenir?: boolean;
+  tradable?: boolean;
+  tradableAfter?: string;
   unsupportedFields?: string[];
+  diagnostics?: string[];
   hasCustomName?: boolean;
   isNameTagTool?: boolean;
   debug?: ItemDebugDto;
@@ -75,6 +90,10 @@ export interface ArmoryOfferDto {
   redeemId: number;
   expectedCost: number;
   generationTime: number;
+  itemName?: string;
+  name?: string;
+  category?: string;
+  items?: RelatedItemDto[];
 }
 
 export interface ArmorySnapshot {
@@ -105,10 +124,18 @@ export interface ConnectionStatus {
   diagnostics?: string[];
 }
 
+export interface SteamAccountProfile {
+  accountName: string;
+  steamId?: string;
+  avatarUrl?: string;
+  signedIn: boolean;
+  lastSignedInAt: string;
+}
+
 export interface OperationReceipt {
   operationId: string;
   type: string;
-  state: "queued" | "validating" | "encoded" | "sent" | "awaiting_gc_confirmation" | "reconciling_inventory" | "completed" | "failed" | "blocked_by_feature_flag" | "requires_validation";
+  state: "queued" | "validating" | "encoded" | "sent" | "awaiting_gc_confirmation" | "reconciling_inventory" | "completed" | "failed" | "blocked_by_feature_flag" | "requires_validation" | "requires_connection";
   createdAt: string;
   message?: string;
   result?: OperationResult;
@@ -158,6 +185,15 @@ export interface SettingsData {
   validationMode: boolean;
   sacrificialAccountMode: boolean;
   featureFlags: FeatureFlags;
+  animations: AnimationSettings;
+}
+
+export type RevealAnimationMode = "none" | "countdown" | "slot-machine";
+
+export interface AnimationSettings {
+  container: RevealAnimationMode;
+  tradeUp: RevealAnimationMode;
+  armory: RevealAnimationMode;
 }
 
 export interface TradeUpPreview {

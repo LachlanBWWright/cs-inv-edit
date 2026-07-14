@@ -15,6 +15,14 @@ type Sticker struct {
 	Wear      *float64 `json:"wear,omitempty"`
 }
 
+type AppliedItem struct {
+	Kind     string  `json:"kind"`
+	Slot     *uint32 `json:"slot,omitempty"`
+	ID       *uint32 `json:"id,omitempty"`
+	Name     string  `json:"name"`
+	ImageURL string  `json:"imageUrl,omitempty"`
+}
+
 type InventoryItem struct {
 	ID                 string        `json:"id"`
 	Name               string        `json:"name"`
@@ -28,6 +36,11 @@ type InventoryItem struct {
 	Defindex           *uint32       `json:"defindex,omitempty"`
 	PaintWear          *float64      `json:"paintWear,omitempty"`
 	Stickers           []Sticker     `json:"stickers,omitempty"`
+	AppliedItems       []AppliedItem `json:"appliedItems,omitempty"`
+	IsStatTrak         bool          `json:"isStatTrak,omitempty"`
+	IsSouvenir         bool          `json:"isSouvenir,omitempty"`
+	Tradable           *bool         `json:"tradable,omitempty"`
+	TradableAfter      string        `json:"tradableAfter,omitempty"`
 	StorageCount       *uint32       `json:"storageCount,omitempty"`
 	CasketID           *string       `json:"casketId,omitempty"`
 	Collection         string        `json:"collection,omitempty"`
@@ -38,6 +51,7 @@ type InventoryItem struct {
 	StorageLocation    string        `json:"storageLocation,omitempty"`
 	ToolType           string        `json:"toolType,omitempty"`
 	UnsupportedFields  []string      `json:"unsupportedFields,omitempty"`
+	Diagnostics        []string      `json:"diagnostics,omitempty"`
 	HasCustomName      bool          `json:"hasCustomName,omitempty"`
 	IsNameTagTool      bool          `json:"isNameTagTool,omitempty"`
 	Debug              *ItemDebug    `json:"debug,omitempty"`
@@ -59,10 +73,14 @@ type InventorySnapshot struct {
 }
 
 type ArmoryOffer struct {
-	CampaignID     uint32 `json:"campaignId"`
-	RedeemID       uint32 `json:"redeemId"`
-	ExpectedCost   uint32 `json:"expectedCost"`
-	GenerationTime uint32 `json:"generationTime"`
+	CampaignID     uint32        `json:"campaignId"`
+	RedeemID       uint32        `json:"redeemId"`
+	ExpectedCost   uint32        `json:"expectedCost"`
+	GenerationTime uint32        `json:"generationTime"`
+	ItemName       string        `json:"itemName,omitempty"`
+	Name           string        `json:"name,omitempty"`
+	Category       string        `json:"category,omitempty"`
+	Items          []RelatedItem `json:"items,omitempty"`
 }
 
 type ArmorySnapshot struct {
@@ -108,8 +126,15 @@ type ItemDebug struct {
 }
 
 type Settings struct {
-	BackendURL             string       `json:"backendUrl"`
-	ValidationMode         bool         `json:"validationMode"`
-	SacrificialAccountMode bool         `json:"sacrificialAccountMode"`
-	FeatureFlags           FeatureFlags `json:"featureFlags"`
+	BackendURL             string            `json:"backendUrl"`
+	ValidationMode         bool              `json:"validationMode"`
+	SacrificialAccountMode bool              `json:"sacrificialAccountMode"`
+	FeatureFlags           FeatureFlags      `json:"featureFlags"`
+	Animations             AnimationSettings `json:"animations"`
+}
+
+type AnimationSettings struct {
+	Container string `json:"container"`
+	TradeUp   string `json:"tradeUp"`
+	Armory    string `json:"armory"`
 }

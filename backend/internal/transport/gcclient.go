@@ -55,7 +55,7 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- connectSteamCM(conn, diagnostics)
+		errCh <- connectSteamCMWithRetry(conn, diagnostics, 3, 750*time.Millisecond)
 	}()
 
 	select {
@@ -154,6 +154,24 @@ func connectSteamCM(conn *steamcm.SteamConnection, diagnostics steamCMDiagnostic
 	return conn.Connect()
 }
 
+func connectSteamCMWithRetry(conn *steamcm.SteamConnection, diagnostics steamCMDiagnostics, attempts int, delay time.Duration) error {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := connectSteamCM(conn, diagnostics); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < attempts {
+			time.Sleep(delay)
+		}
+	}
+	return fmt.Errorf("steam cm transport startup failed after %d attempts: %w", attempts, lastErr)
+}
+
 func diagnoseSteamCM() (steamCMDiagnostics, error) {
 	lines := []string{"steam cm directory lookup started"}
 	servers := steamcm.NewServers()
@@ -164,8 +182,20 @@ func diagnoseSteamCM() (steamCMDiagnostics, error) {
 	records := servers.Records()
 	lines = append(lines, fmt.Sprintf("steam cm directory returned %d candidate records", len(records)))
 	if len(records) == 0 {
-		wrapped := fmt.Errorf("steam cm directory returned no connectable servers")
-		return steamCMDiagnostics{RecordCount: len(records), TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		lines = append(lines, "steam cm directory returned no connectable servers; trying DNS fallback")
+		addresses, err := net.LookupHost("cm0.steampowered.com")
+		if err != nil {
+			wrapped := fmt.Errorf("steam cm DNS fallback failed: %w", err)
+			return steamCMDiagnostics{RecordCount: 0, TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		}
+		for _, address := range addresses {
+			records = append(records, &steamcm.ServerRecord{Host: address, Port: 27017})
+		}
+		lines = append(lines, fmt.Sprintf("steam cm DNS fallback returned %d candidate records", len(records)))
+		if len(records) == 0 {
+			wrapped := fmt.Errorf("steam cm directory and DNS fallback returned no connectable servers")
+			return steamCMDiagnostics{RecordCount: 0, TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		}
 	}
 
 	var lastErr error

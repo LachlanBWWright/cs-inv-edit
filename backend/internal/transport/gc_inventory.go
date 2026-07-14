@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 	"github.com/Lucino772/envelop/pkg/steam/steammsg"
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -175,14 +177,107 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 	}
 }
 
-func (s *SteamGCClient) RequestArmory(_ context.Context) (GCArmorySnapshot, error) {
+func (s *SteamGCClient) RequestArmory(ctx context.Context) (GCArmorySnapshot, error) {
 	s.mu.Lock()
 	body := append([]byte(nil), s.lastWelcome...)
 	s.mu.Unlock()
 	if len(body) == 0 {
 		return GCArmorySnapshot{}, fmt.Errorf("CS2 GC Armory state is unavailable until ClientWelcome is received")
 	}
-	return decodeArmoryFromClientWelcome(body)
+	result, err := decodeArmoryFromClientWelcome(body)
+	if err != nil {
+		return GCArmorySnapshot{}, err
+	}
+	log.Printf("[armory] ClientWelcome decoded generation=%d balance=%d; waiting for CacheSubscribed if generation is zero", result.GenerationTime, result.Balance)
+	quiet := time.NewTimer(750 * time.Millisecond)
+	if result.GenerationTime == 0 {
+		if !quiet.Stop() {
+			<-quiet.C
+		}
+	}
+	defer quiet.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[armory] collection context ended: %v", ctx.Err())
+			if result.GenerationTime == 0 {
+				return GCArmorySnapshot{}, fmt.Errorf("timed out waiting for an unambiguous authoritative XpShop SOCache after ClientWelcome: %w", ctx.Err())
+			}
+			return result, nil
+		case <-quiet.C:
+			log.Printf("[armory] final generation=%d balance=%d item_ids=%d bids=%d", result.GenerationTime, result.Balance, len(result.ItemIDs), len(result.Offers))
+			return result, nil
+		case event := <-s.events:
+			message, ok := event.Payload.(GCMessage)
+			if !ok || event.Type != "gc.message" || message.AppID != protocol.AppIDCS2 {
+				continue
+			}
+			matched, decodeErr := decodeArmorySOMessage(&result, message)
+			log.Printf("[armory] post-welcome GC message emsg=%d bytes=%d armory_match=%t decode_error=%v", message.EMsg, len(message.Body), matched, decodeErr)
+			if decodeErr != nil {
+				return GCArmorySnapshot{}, decodeErr
+			}
+			if matched && result.GenerationTime != 0 {
+				resetTimer(quiet, 750*time.Millisecond)
+			}
+		}
+	}
+}
+
+func decodeArmorySOMessage(result *GCArmorySnapshot, message GCMessage) (bool, error) {
+	if message.EMsg == protocol.EMsgGCCStrike15V2GC2ClientNotifyXPShop {
+		var notification cs2pb.CMsgGCCStrike15V2GC2ClientNotifyXPShop
+		if err := proto.Unmarshal(message.Body, &notification); err != nil {
+			return false, err
+		}
+		state := notification.GetPostmatch()
+		if state == nil {
+			state = notification.GetPrematch()
+		}
+		if state == nil {
+			return false, nil
+		}
+		applyXpShopState(result, state)
+		return true, nil
+	}
+	switch message.EMsg {
+	case protocol.EMsgSOCacheSubscribed:
+		var subscribed cs2pb.CMsgSOCacheSubscribed
+		if err := proto.Unmarshal(message.Body, &subscribed); err != nil {
+			return false, err
+		}
+		log.Printf("[armory] CacheSubscribed objects=%d version=%d", len(subscribed.GetObjects()), subscribed.GetVersion())
+		return decodeXpShopSubscribedCache(result, &subscribed)
+	case protocol.EMsgSOCreate, protocol.EMsgSOUpdate:
+		var single cs2pb.CMsgSOSingleObject
+		if err := proto.Unmarshal(message.Body, &single); err != nil {
+			return false, err
+		}
+		log.Printf("[armory] single SO emsg=%d type_id=%d object_bytes=%d version=%d", message.EMsg, single.GetTypeId(), len(single.GetObjectData()), single.GetVersion())
+		// A keyless XP Shop state and a single bid have indistinguishable fields
+		// 1-3 when the bid omits optional field 4. Incremental messages can update
+		// only a type already identified from a complete subscribed cache.
+		if result.XpShopTypeID == 0 || single.GetTypeId() != result.XpShopTypeID {
+			return false, nil
+		}
+		return decodeIncrementalArmoryObject(result, single.GetTypeId(), single.GetObjectData()), nil
+	case protocol.EMsgSOUpdateMultiple:
+		var multiple cs2pb.CMsgSOMultipleObjects
+		if err := proto.Unmarshal(message.Body, &multiple); err != nil {
+			return false, err
+		}
+		matched := false
+		log.Printf("[armory] multiple SO objects=%d version=%d", len(multiple.GetObjectsModified()), multiple.GetVersion())
+		for _, object := range multiple.GetObjectsModified() {
+			log.Printf("[armory] multiple SO type_id=%d object_bytes=%d", object.GetTypeId(), len(object.GetObjectData()))
+			if result.XpShopTypeID != 0 && object.GetTypeId() == result.XpShopTypeID && decodeIncrementalArmoryObject(result, object.GetTypeId(), object.GetObjectData()) {
+				matched = true
+			}
+		}
+		return matched, nil
+	default:
+		return false, nil
+	}
 }
 
 func decodeArmoryFromClientWelcome(body []byte) (GCArmorySnapshot, error) {
@@ -193,32 +288,115 @@ func decodeArmoryFromClientWelcome(body []byte) (GCArmorySnapshot, error) {
 	var result GCArmorySnapshot
 	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
 		for _, objectType := range cache.GetObjects() {
-			if objectType.GetTypeId() == 1 { // CSOEconItem, the owned-item list.
+			log.Printf("[armory] welcome SO type_id=%d objects=%d", objectType.GetTypeId(), len(objectType.GetObjectData()))
+			if objectType.GetTypeId() == 1 || len(objectType.GetObjectData()) != 1 {
 				continue
 			}
 			for _, objectData := range objectType.GetObjectData() {
-				var store cs2pb.CSOAccountItemPersonalStore
-				if err := proto.Unmarshal(objectData, &store); err == nil && store.GetGenerationTime() > 0 && len(store.GetItems()) > 0 {
-					if store.GetGenerationTime() >= result.GenerationTime {
-						result.GenerationTime = store.GetGenerationTime()
-						result.Balance = store.GetRedeemableBalance()
-						result.ItemIDs = append([]uint64(nil), store.GetItems()...)
-					}
+				state, valid, reason := decodeXpShopCandidate(objectData)
+				log.Printf("[armory] welcome candidate type_id=%d valid=%t reason=%s", objectType.GetTypeId(), valid, reason)
+				if !valid {
+					continue
 				}
-				var bid cs2pb.CSOAccountXpShopBids
-				if err := proto.Unmarshal(objectData, &bid); err == nil && bid.GetCampaignId() > 0 && bid.GetRedeemId() > 0 && bid.GetExpectedCost() > 0 && bid.GetGenerationTime() > 0 {
-					result.Offers = append(result.Offers, GCArmoryOffer{CampaignID: bid.GetCampaignId(), RedeemID: bid.GetRedeemId(), ExpectedCost: bid.GetExpectedCost(), GenerationTime: bid.GetGenerationTime()})
+				if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.GetTypeId() {
+					return GCArmorySnapshot{}, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
 				}
+				result.XpShopTypeID = objectType.GetTypeId()
+				applyXpShopState(&result, state)
 			}
 		}
 	}
-	if result.GenerationTime == 0 {
-		return GCArmorySnapshot{}, fmt.Errorf("CS2 ClientWelcome contained no authoritative Armory personal-store object")
-	}
-	if len(result.Offers) == 0 {
-		result.Diagnostics = append(result.Diagnostics, "Armory balance loaded, but no purchasable bid objects were present in the GC cache")
-	}
 	return result, nil
+}
+
+func decodeXpShopSubscribedCache(result *GCArmorySnapshot, subscribed *cs2pb.CMsgSOCacheSubscribed) (bool, error) {
+	for _, objectType := range subscribed.GetObjects() {
+		log.Printf("[armory] subscribed SO type_id=%d objects=%d", objectType.GetTypeId(), len(objectType.GetObjectData()))
+		if objectType.GetTypeId() == 1 || len(objectType.GetObjectData()) != 1 {
+			continue
+		}
+		for _, objectData := range objectType.GetObjectData() {
+			state, valid, reason := decodeXpShopCandidate(objectData)
+			log.Printf("[armory] subscribed candidate type_id=%d valid=%t reason=%s", objectType.GetTypeId(), valid, reason)
+			if !valid {
+				continue
+			}
+			if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.GetTypeId() {
+				return false, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+			}
+			result.XpShopTypeID = objectType.GetTypeId()
+			applyXpShopState(result, state)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func decodeIncrementalArmoryObject(result *GCArmorySnapshot, typeID int32, data []byte) bool {
+	state, valid, reason := decodeXpShopCandidate(data)
+	log.Printf("[armory] incremental candidate type_id=%d valid=%t reason=%s", typeID, valid, reason)
+	if !valid {
+		return false
+	}
+	result.XpShopTypeID = typeID
+	applyXpShopState(result, state)
+	return true
+}
+
+func decodeXpShopCandidate(data []byte) (*cs2pb.CSOAccountXpShop, bool, string) {
+	remaining := data
+	for len(remaining) > 0 {
+		number, wireType, n := protowire.ConsumeTag(remaining)
+		if n < 0 {
+			return nil, false, "invalid protobuf tag"
+		}
+		remaining = remaining[n:]
+		if number < 1 || number > 3 {
+			return nil, false, fmt.Sprintf("unexpected field %d", number)
+		}
+		if wireType == protowire.VarintType {
+			value, consumed := protowire.ConsumeVarint(remaining)
+			if consumed < 0 || value > math.MaxUint32 {
+				return nil, false, fmt.Sprintf("field %d is not uint32", number)
+			}
+			remaining = remaining[consumed:]
+			continue
+		}
+		if number == 3 && wireType == protowire.BytesType {
+			packed, consumed := protowire.ConsumeBytes(remaining)
+			if consumed < 0 {
+				return nil, false, "invalid packed xp_tracks"
+			}
+			for len(packed) > 0 {
+				value, width := protowire.ConsumeVarint(packed)
+				if width < 0 || value > math.MaxUint32 {
+					return nil, false, "packed xp_track is not uint32"
+				}
+				packed = packed[width:]
+			}
+			remaining = remaining[consumed:]
+			continue
+		}
+		return nil, false, fmt.Sprintf("field %d has wire type %d", number, wireType)
+	}
+	var state cs2pb.CSOAccountXpShop
+	if err := proto.Unmarshal(data, &state); err != nil {
+		return nil, false, err.Error()
+	}
+	if state.GenerationTime == nil {
+		return nil, false, "generation_time field is absent"
+	}
+	if state.GetRedeemableBalance() > 1_000_000 {
+		return nil, false, fmt.Sprintf("balance %d outside XP Shop range", state.GetRedeemableBalance())
+	}
+	return &state, true, "exact CSOAccountXpShop fields and uint32 widths"
+}
+
+func applyXpShopState(result *GCArmorySnapshot, state *cs2pb.CSOAccountXpShop) {
+	result.GenerationTime = state.GetGenerationTime()
+	result.Balance = state.GetRedeemableBalance()
+	result.ItemIDs = nil
+	log.Printf("[armory] XpShop state generation=%d balance=%d tracks=%v", result.GenerationTime, result.Balance, state.GetXpTracks())
 }
 
 func decodeCS2ClientLogonFatalError(body []byte) error {
@@ -359,6 +537,9 @@ func decodeInventoryFromClientWelcome(body []byte) ([]GCInventoryItem, error) {
 	var decodeErrors int
 	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
 		for _, objectType := range cache.GetObjects() {
+			if objectType.GetTypeId() != 1 { // CSOEconItem is the authoritative owned-item SO type.
+				continue
+			}
 			for _, objectData := range objectType.GetObjectData() {
 				var econ cs2pb.CSOEconItem
 				if err := proto.Unmarshal(objectData, &econ); err != nil {
@@ -409,7 +590,21 @@ func econAttributes(item *cs2pb.CSOEconItem) map[uint32]uint32 {
 func econPaintKit(item *cs2pb.CSOEconItem) uint32 {
 	for _, attribute := range item.GetAttribute() {
 		if attribute.GetDefIndex() == 6 {
-			return attribute.GetValue()
+			value := attribute.GetValue()
+			if value == 0 && len(attribute.GetValueBytes()) >= 4 {
+				value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+			}
+			// Economy attribute 6 is typed as a float in the item schema even
+			// though paint-kit IDs are integral. GC value/value_bytes therefore
+			// carries IEEE-754 bits rather than a directly encoded integer.
+			// Retain support for already-normalized fixtures and clients.
+			if value > 1<<24 {
+				decoded := math.Float32frombits(value)
+				if decoded >= 0 && decoded <= 1<<24 && decoded == float32(uint32(decoded)) {
+					return uint32(decoded)
+				}
+			}
+			return value
 		}
 	}
 	return 0

@@ -2,6 +2,39 @@ package econ
 
 import "testing"
 
+func TestInventoryDescriptionDoesNotDiscardSchemaWeaponFinish(t *testing.T) {
+	metadata := Metadata{
+		Name:       "R8 Revolver",
+		MarketName: "R8 Revolver | Blaze",
+		Kind:       "weapon_skin",
+	}
+
+	got := metadata.WithInventoryDescription(InventoryDescription{
+		Name:           "R8 Revolver",
+		MarketHashName: "R8 Revolver",
+	})
+
+	if got.MarketName != "R8 Revolver | Blaze" {
+		t.Fatalf("market name = %q, want schema-derived finish", got.MarketName)
+	}
+}
+
+func TestInventoryDescriptionCanRefineWeaponFinish(t *testing.T) {
+	metadata := Metadata{
+		Name:       "R8 Revolver",
+		MarketName: "R8 Revolver | Blaze",
+		Kind:       "weapon_skin",
+	}
+
+	got := metadata.WithInventoryDescription(InventoryDescription{
+		MarketHashName: "StatTrak™ R8 Revolver | Blaze (Factory New)",
+	})
+
+	if got.MarketName != "StatTrak™ R8 Revolver | Blaze (Factory New)" {
+		t.Fatalf("market name = %q", got.MarketName)
+	}
+}
+
 func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 	itemsRoot, err := parseKeyValues(`
 "items_game"
@@ -13,6 +46,7 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 			"name" "Fortius Quo Fidelius"
 			"item_name" "#CSGO_CollectibleCoin_FortiusQuoFidelius"
 			"item_rarity" "ancient"
+			"capabilities" { "can_trade" "0" }
 		}
 	}
 	"items"
@@ -86,6 +120,7 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		{
 			"name" "kawaiikiller"
 			"item_name" "#StickerKit_comm02_kawaiikiller"
+			"item_rarity" "rare"
 		}
 		"43"
 		{
@@ -159,6 +194,9 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 			t.Fatalf("defindex %d resolved unknown kind: %#v", defIndex, got)
 		}
 	}
+	if tradable := schema.Metadata(970, 0, nil).Tradable; tradable == nil || *tradable {
+		t.Fatalf("Loyalty Badge tradable = %#v, want explicit false from items_game capabilities", tradable)
+	}
 	capsule := schema.Metadata(4599, 0, nil)
 	if capsule.Kind != "container" {
 		t.Fatalf("sticker capsule kind = %q, want container; metadata=%#v", capsule.Kind, capsule)
@@ -191,5 +229,11 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		if got.Name != tt.wantName || got.MarketName != tt.wantMarket {
 			t.Fatalf("%s metadata = %#v, want name=%q market=%q", tt.name, got, tt.wantName, tt.wantMarket)
 		}
+		if tt.name == "sticker" && got.Rarity != "rare" {
+			t.Fatalf("sticker rarity = %q, want rare (High Grade/blue)", got.Rarity)
+		}
+	}
+	if got := schema.AppliedItems(1209, map[uint32]uint32{113: 42}); len(got) != 0 {
+		t.Fatalf("generic sticker applied items = %#v, want none", got)
 	}
 }

@@ -1,18 +1,30 @@
 import { createSignal, For, Show } from "solid-js";
-import type { InventorySnapshot, OperationReceipt } from "@cs-inv-edit/contracts";
+import type { InventorySnapshot, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 import { formatState } from "../lib/format.js";
 import { rarityBorderClass } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
 
 export interface TradeUpViewProps {
   inventory: InventorySnapshot | undefined;
   onSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
+  settings: SettingsData | undefined;
 }
 
 export function TradeUpView(props: TradeUpViewProps) {
   const [selected, setSelected] = createSignal<string[]>([]);
   const [recipe, setRecipe] = createSignal<number>(0);
   const [status, setStatus] = createSignal<string>("");
+  const [reveal, setReveal] = createSignal<{ result: RevealItem; candidates: RevealItem[]; complete: () => void }>();
+
+  const playReveal = (receipt: OperationReceipt) => {
+    if ((props.settings?.animations?.tradeUp ?? "slot-machine") === "none" || (receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation")) return Promise.resolve();
+    const selectedItems = (props.inventory?.items ?? []).filter((item) => selected().includes(item.id));
+    const candidates = selectedItems.flatMap((item) => item.collectionItems ?? []).map((item) => ({ name: item.marketName || item.name, rarity: item.rarity }));
+    const opened = receipt.result?.openedItem;
+    const result = opened ? { name: opened.marketName || opened.name, imageUrl: opened.imageUrl, rarity: opened.rarity } : { name: receipt.message || "Trade-up submitted" };
+    return new Promise<void>((resolve) => setReveal({ result, candidates, complete: resolve }));
+  };
 
   const toggleSelection = (itemId: string) => {
     setSelected((current) => {
@@ -28,13 +40,15 @@ export function TradeUpView(props: TradeUpViewProps) {
   };
 
   const runExecute = async () => {
-    await fromAppPromise(props.onSubmit("tradeups.execute", { recipe: recipe(), itemIds: selected() }), "Trade-up execution failed").match((receipt) => {
+    await fromAppPromise(props.onSubmit("tradeups.execute", { recipe: recipe(), itemIds: selected() }), "Trade-up execution failed").match(async (receipt) => {
+      await playReveal(receipt);
       setStatus(`Execution receipt: ${receipt.operationId} (${formatState(receipt.state)})`);
     }, (error) => setStatus(appErrorMessage(error, "Execution failed")));
   };
 
   return (
     <div class="space-y-5">
+      <RevealAnimation open={!!reveal()} mode={props.settings?.animations?.tradeUp ?? "slot-machine"} title="Trade-up contract" candidates={reveal()?.candidates ?? []} result={reveal()?.result ?? { name: "Trade-up result" }} onComplete={() => { const current = reveal(); setReveal(undefined); current?.complete(); }} />
       <header>
         <h2 class="text-3xl font-semibold text-slate-100">Trade-ups</h2>
         <p class="mt-2 max-w-2xl text-sm text-slate-400">Select 10 items, preview a recipe placeholder, and require backend validation before execution.</p>

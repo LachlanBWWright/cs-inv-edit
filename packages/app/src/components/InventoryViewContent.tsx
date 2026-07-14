@@ -3,6 +3,9 @@ import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsDat
 import { InventoryDetailsPanel } from "./InventoryDetailsPanel.js";
 import { Alert } from "./ui/Alert.js";
 import { itemDisplayName, itemInitials, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
+import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
+import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
+import { TradeLockIndicator } from "./TradeLockIndicator.js";
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -63,7 +66,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
 
   const itemCardClass = (item: InventoryItemDto) => {
     const isSelected = props.selectedItem?.id === item.id;
-    return `group min-h-24 cursor-pointer overflow-hidden rounded-2xl border-2 p-3 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "bg-cyan-500/10 ring-1 ring-cyan-400/40" : "bg-slate-900/70 hover:bg-slate-800/90"}`;
+    return `group relative min-h-24 cursor-pointer overflow-hidden rounded-2xl border-2 p-3 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "bg-cyan-500/10 ring-2 ring-cyan-300" : "bg-slate-900/70 hover:bg-slate-800/90"}`;
   };
 
   const compactLayout = () => {
@@ -78,7 +81,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
 
   const compactSummary = (item: InventoryItemDto) => {
     if (props.compactMode === "icons") {
-      return <div class="text-center"><div class="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-950/80 text-sm font-semibold text-slate-500"><span>{itemInitials(item)}</span></div><p class="text-xs font-medium text-slate-200">{itemDisplayName(item)}</p></div>;
+      return <div class="text-center"><div class="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-950/80 text-sm font-semibold text-slate-500"><span>{itemInitials(item)}</span></div><p class="text-xs font-medium text-slate-200">{itemDisplayName(item)}</p><ItemInstanceDecorations item={item} showFloat /></div>;
     }
     if (props.compactMode === "detailed") {
       return (
@@ -97,13 +100,14 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
             <Show when={item.storageLocation}>
               <div class="flex justify-between gap-3"><dt>Storage</dt><dd>{item.storageLocation}</dd></div>
             </Show>
-            <Show when={item.paintWear !== undefined}>
-              <div class="flex justify-between gap-3"><dt>Wear</dt><dd>{item.paintWear}</dd></div>
+            <Show when={hasSkinWearFloat(item)}>
+              <div class="flex justify-between gap-3"><dt>Float</dt><dd class="font-mono">{formatFloat(item.paintWear!)}</dd></div>
             </Show>
             <Show when={item.marketPrice}>
               <div class="flex justify-between gap-3"><dt>Market</dt><dd>{item.marketPrice}</dd></div>
             </Show>
           </dl>
+          <ItemInstanceDecorations item={item} />
         </div>
       );
     }
@@ -113,6 +117,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         <Show when={itemSubtitle(item)}>
           <p class="mt-1 text-sm text-slate-400">{itemSubtitle(item)}</p>
         </Show>
+        <ItemInstanceDecorations item={item} showFloat />
       </div>
     );
   };
@@ -162,8 +167,10 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
                     <button
                       type="button"
                       class={`cursor-pointer rounded-2xl border-2 p-3 text-left transition duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`}
-                      onClick={() => props.onSelectItem(item)}
+                      aria-pressed={props.selectedItem?.id === item.id}
+                      onClick={(event) => { event.stopPropagation(); props.onSelectItem(item); }}
                     >
+                      <TradeLockIndicator item={item} />
                       <div class={compactLayout()}>
                         <ItemIcon item={item} />
                         {compactSummary(item)}

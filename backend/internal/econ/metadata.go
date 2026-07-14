@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -23,23 +25,33 @@ type Provider struct {
 }
 
 type Metadata struct {
-	Name            string
-	MarketName      string
-	Kind            string
-	Rarity          string
-	ImageURL        string
-	MarketPrice     MarketPrice
-	ToolType        string
-	IsNameTagTool   bool
-	Collection      string
-	CollectionItems []RelatedItem
-	ContainerItems  []RelatedItem
+	Name              string
+	MarketName        string
+	Kind              string
+	Rarity            string
+	ImageURL          string
+	MarketPrice       MarketPrice
+	ToolType          string
+	IsNameTagTool     bool
+	Collection        string
+	CollectionItems   []RelatedItem
+	ContainerItems    []RelatedItem
+	AppliedItemImages []string
+	Tradable          *bool
+	TradableAfter     string
 }
 
 type RelatedItem struct {
 	Name       string
 	MarketName string
 	Rarity     string
+}
+
+type AppliedItem struct {
+	Kind string
+	Slot uint32
+	ID   uint32
+	Name string
 }
 
 type MarketPrice struct {
@@ -50,17 +62,19 @@ type MarketPrice struct {
 }
 
 type InventoryDescription struct {
-	AssetID        string
-	ClassID        string
-	InstanceID     string
-	Name           string
-	MarketName     string
-	MarketHashName string
-	IconURL        string
-	IconURLLarge   string
-	Type           string
-	Tradable       bool
-	Marketable     bool
+	AssetID           string
+	ClassID           string
+	InstanceID        string
+	Name              string
+	MarketName        string
+	MarketHashName    string
+	IconURL           string
+	IconURLLarge      string
+	Type              string
+	Tradable          bool
+	Marketable        bool
+	AppliedItemImages []string
+	TradableAfter     string
 }
 
 type MarketDescription struct {
@@ -84,6 +98,17 @@ type Schema struct {
 	collections      map[string]collectionDefinition
 	collectionByItem map[string]string
 	lootLists        map[string][]string
+	armoryOffers     []ArmoryOffer
+}
+
+type ArmoryOffer struct {
+	CampaignID   uint32
+	RedeemID     uint32
+	ExpectedCost uint32
+	ItemName     string
+	Name         string
+	Category     string
+	Items        []RelatedItem
 }
 
 type collectionDefinition struct {
@@ -114,6 +139,7 @@ type stickerKitDefinition struct {
 	Name     string
 	ItemName string
 	Material string
+	Rarity   string
 }
 
 type musicDefinition struct {
@@ -164,10 +190,59 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		lootLists:        make(map[string][]string),
 	}
 	schema.parseItems(itemsRoot)
+	schema.armoryOffers = parseArmoryOffers(itemsText, schema)
 	if len(schema.items) == 0 {
 		return nil, fmt.Errorf("CS2 items_game schema contained no item definitions")
 	}
 	return schema, nil
+}
+
+func (s *Schema) ArmoryOffers() []ArmoryOffer {
+	return append([]ArmoryOffer(nil), s.armoryOffers...)
+}
+
+var armoryGoodsPattern = regexp.MustCompile(`(?s)"operational_point_redeemable"\s*\{([^{}]*)\}`)
+
+func parseArmoryOffers(itemsText string, schema *Schema) []ArmoryOffer {
+	marker := regexp.MustCompile(`(?i)"redeemable_goods"\s+"xpshop"`).FindStringIndex(itemsText)
+	if marker == nil {
+		return nil
+	}
+	campaignID := uint64(0)
+	prefix := itemsText[:marker[0]]
+	if operationStart := strings.LastIndex(prefix, `"seasonaloperations"`); operationStart >= 0 {
+		match := regexp.MustCompile(`"([0-9]+)"\s*\{`).FindStringSubmatch(prefix[operationStart:])
+		if len(match) == 2 {
+			campaignID, _ = strconv.ParseUint(match[1], 10, 32)
+		}
+	}
+	if campaignID == 0 {
+		return nil
+	}
+	section := itemsText[marker[1]:]
+	if end := strings.Index(section, `"pro_event_results"`); end >= 0 {
+		section = section[:end]
+	}
+	matches := armoryGoodsPattern.FindAllStringSubmatch(section, -1)
+	offers := make([]ArmoryOffer, 0, len(matches))
+	for redeemID, match := range matches {
+		object, err := parseKeyValues(match[1])
+		if err != nil {
+			continue
+		}
+		cost, err := strconv.ParseUint(object.string("points"), 10, 32)
+		if err != nil || cost == 0 {
+			continue
+		}
+		itemName := object.string("item_name")
+		name := schema.localize(object.string("callout"))
+		if name == "" {
+			name = humanizeIdentifier(strings.TrimPrefix(itemName, "lootlist:"))
+		}
+		lootListName := strings.TrimPrefix(itemName, "lootlist:")
+		offers = append(offers, ArmoryOffer{CampaignID: uint32(campaignID), RedeemID: uint32(redeemID), ExpectedCost: uint32(cost), ItemName: itemName, Name: name, Category: object.string("ui_order"), Items: schema.lootListItems(lootListName, nil)})
+	}
+	return offers
 }
 
 func (p *Provider) fetch(ctx context.Context, url string) (string, error) {
@@ -208,16 +283,18 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 		for _, desc := range page.Descriptions {
 			key := desc.ClassID + "_" + desc.InstanceID
 			descriptions[key] = InventoryDescription{
-				ClassID:        desc.ClassID,
-				InstanceID:     desc.InstanceID,
-				Name:           desc.Name,
-				MarketName:     desc.MarketName,
-				MarketHashName: desc.MarketHashName,
-				IconURL:        steamIconURL(desc.IconURL),
-				IconURLLarge:   steamIconURL(desc.IconURLLarge),
-				Type:           desc.Type,
-				Tradable:       desc.Tradable != 0,
-				Marketable:     desc.Marketable != 0,
+				ClassID:           desc.ClassID,
+				InstanceID:        desc.InstanceID,
+				Name:              desc.Name,
+				MarketName:        desc.MarketName,
+				MarketHashName:    desc.MarketHashName,
+				IconURL:           steamIconURL(desc.IconURL),
+				IconURLLarge:      steamIconURL(desc.IconURLLarge),
+				Type:              desc.Type,
+				Tradable:          desc.Tradable != 0,
+				Marketable:        desc.Marketable != 0,
+				AppliedItemImages: appliedItemImages(desc.Descriptions),
+				TradableAfter:     tradableAfter(desc.Descriptions),
 			}
 		}
 		for _, asset := range page.Assets {
@@ -228,12 +305,38 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 			}
 			desc.AssetID = asset.AssetID
 			out[asset.AssetID] = desc
+			for _, name := range []string{desc.MarketHashName, desc.MarketName, desc.Name} {
+				if key := inventoryDescriptionNameKey(name); key != "" {
+					if _, ambiguous := out["ambiguous:"+key]; ambiguous {
+						continue
+					}
+					if existing, present := out[key]; !present || sameInventoryDescription(existing, desc) {
+						out[key] = desc
+					} else {
+						// Ambiguous names must never be used as a fallback join.
+						delete(out, key)
+						out["ambiguous:"+key] = InventoryDescription{}
+					}
+				}
+			}
 		}
 		if !page.MoreItems.Bool() || page.LastAssetID == "" {
 			return out, nil
 		}
 		startAssetID = page.LastAssetID
 	}
+}
+
+func inventoryDescriptionNameKey(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return ""
+	}
+	return "name:" + name
+}
+
+func sameInventoryDescription(a InventoryDescription, b InventoryDescription) bool {
+	return a.ClassID == b.ClassID && a.InstanceID == b.InstanceID
 }
 
 func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []string) (map[string]MarketDescription, error) {
@@ -420,6 +523,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		}
 	}
 	if sticker := s.matchStickerKit(attributes); sticker != nil && isGenericGraffitiItem(item, name) {
+		rarity = firstNonEmpty(sticker.Rarity, rarity)
 		graffitiName := s.localize(sticker.ItemName)
 		if graffitiName == "" {
 			graffitiName = humanizeIdentifier(sticker.Name)
@@ -435,6 +539,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		}
 	}
 	if sticker := s.matchStickerKit(attributes); sticker != nil && isGenericStickerItem(item, name) {
+		rarity = firstNonEmpty(sticker.Rarity, rarity)
 		stickerName := s.localize(sticker.ItemName)
 		if stickerName == "" {
 			stickerName = humanizeIdentifier(sticker.Name)
@@ -477,17 +582,68 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		Collection:      s.collectionNameFor(item.Name, paintKit),
 		CollectionItems: s.collectionItemsFor(item.Name, paintKit),
 		ContainerItems:  s.lootListItems(item.LootList, nil),
+		Tradable:        schemaTradable(item),
 	}
 }
 
+func schemaTradable(item itemDefinition) *bool {
+	// items_game capabilities are authoritative for definitions that can never
+	// be traded. A positive capability does not override an instance trade lock.
+	if value := strings.TrimSpace(item.Capabilities["can_trade"]); value == "0" {
+		tradable := false
+		return &tradable
+	}
+	return nil
+}
+
+func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []AppliedItem {
+	item := s.items[defIndex]
+	itemName := s.localize(item.ItemName)
+	// Attribute 113 identifies the sticker item itself on generic sticker
+	// definitions; it is only an applied slot on weapons and agents.
+	if isGenericStickerItem(item, itemName) || isGenericGraffitiItem(item, itemName) {
+		return nil
+	}
+	isAgent := strings.Contains(strings.ToLower(item.Prefab+" "+item.ItemClass+" "+item.Name), "customplayer")
+	out := make([]AppliedItem, 0, 7)
+	for slot := uint32(0); slot < 6; slot++ {
+		id := attributes[113+slot*4]
+		if id == 0 {
+			continue
+		}
+		sticker, ok := s.stickerKits[id]
+		name := fmt.Sprintf("Sticker #%d", id)
+		if ok {
+			name = firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name), name)
+		}
+		kind := "sticker"
+		if isAgent {
+			kind = "patch"
+		}
+		out = append(out, AppliedItem{Kind: kind, Slot: slot, ID: id, Name: name})
+	}
+	if id := attributes[299]; id != 0 && !isGenericKeychainItem(item, itemName) {
+		keychain, ok := s.keychains[id]
+		name := fmt.Sprintf("Charm #%d", id)
+		if ok {
+			name = firstNonEmpty(s.localize(keychain.ItemName), humanizeIdentifier(keychain.Name), name)
+		}
+		out = append(out, AppliedItem{Kind: "charm", ID: id, Name: name})
+	}
+	return out
+}
+
 func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
+	m.AppliedItemImages = append([]string(nil), desc.AppliedItemImages...)
+	tradable := desc.Tradable
+	m.Tradable = &tradable
+	m.TradableAfter = desc.TradableAfter
 	if desc.Name != "" {
 		m.Name = desc.Name
 	}
-	if desc.MarketHashName != "" {
-		m.MarketName = desc.MarketHashName
-	} else if desc.MarketName != "" {
-		m.MarketName = desc.MarketName
+	marketName := firstNonEmpty(desc.MarketHashName, desc.MarketName)
+	if marketName != "" && !wouldDiscardWeaponFinish(m, marketName) {
+		m.MarketName = marketName
 	}
 	if desc.IconURLLarge != "" {
 		m.ImageURL = desc.IconURLLarge
@@ -498,6 +654,16 @@ func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
 		m.Kind = kindFromSteamType(desc.Type)
 	}
 	return m
+}
+
+// Steam occasionally returns an asset description containing only the base
+// weapon name. The GC paint kit plus items_game schema still identifies the
+// actual finish in that case, so keep the richer schema-derived market name.
+// This also lets the subsequent market-description lookup fetch the skin icon.
+func wouldDiscardWeaponFinish(metadata Metadata, replacement string) bool {
+	return metadata.Kind == "weapon_skin" &&
+		strings.Contains(metadata.MarketName, " | ") &&
+		!strings.Contains(replacement, " | ")
 }
 
 func (m Metadata) WithMarketDescription(desc MarketDescription) Metadata {
@@ -567,6 +733,7 @@ func (s *Schema) parseItems(root kvObject) {
 			Name:     sticker.string("name"),
 			ItemName: sticker.string("item_name"),
 			Material: sticker.string("sticker_material"),
+			Rarity:   sticker.string("item_rarity"),
 		}
 	}
 	for key, node := range itemsGame.object("music_definitions") {
@@ -930,16 +1097,56 @@ type inventoryAsset struct {
 }
 
 type inventoryDescription struct {
-	ClassID        string `json:"classid"`
-	InstanceID     string `json:"instanceid"`
-	Name           string `json:"name"`
-	MarketName     string `json:"market_name"`
-	MarketHashName string `json:"market_hash_name"`
-	IconURL        string `json:"icon_url"`
-	IconURLLarge   string `json:"icon_url_large"`
-	Type           string `json:"type"`
-	Tradable       int    `json:"tradable"`
-	Marketable     int    `json:"marketable"`
+	ClassID        string                     `json:"classid"`
+	InstanceID     string                     `json:"instanceid"`
+	Name           string                     `json:"name"`
+	MarketName     string                     `json:"market_name"`
+	MarketHashName string                     `json:"market_hash_name"`
+	IconURL        string                     `json:"icon_url"`
+	IconURLLarge   string                     `json:"icon_url_large"`
+	Type           string                     `json:"type"`
+	Tradable       int                        `json:"tradable"`
+	Marketable     int                        `json:"marketable"`
+	Descriptions   []inventoryDescriptionLine `json:"descriptions"`
+}
+
+type inventoryDescriptionLine struct {
+	Value string `json:"value"`
+}
+
+var descriptionImagePattern = regexp.MustCompile(`(?i)<img[^>]+src=["']([^"']+)["']`)
+
+func appliedItemImages(lines []inventoryDescriptionLine) []string {
+	var images []string
+	for _, line := range lines {
+		for _, match := range descriptionImagePattern.FindAllStringSubmatch(line.Value, -1) {
+			if len(match) < 2 {
+				continue
+			}
+			imageURL := html.UnescapeString(match[1])
+			lower := strings.ToLower(imageURL)
+			if strings.HasPrefix(lower, "https://") && (strings.Contains(lower, "/stickers/") || strings.Contains(lower, "/patches/") || strings.Contains(lower, "/keychains/") || strings.Contains(lower, "/economy/image/")) {
+				images = append(images, imageURL)
+			}
+		}
+	}
+	return images
+}
+
+var tradableAfterPattern = regexp.MustCompile(`(?i)Tradable After\s+([A-Za-z]{3}\s+\d{1,2},\s+\d{4}\s+\(\d{1,2}:\d{2}:\d{2}\)\s+GMT)`)
+
+func tradableAfter(lines []inventoryDescriptionLine) string {
+	for _, line := range lines {
+		match := tradableAfterPattern.FindStringSubmatch(line.Value)
+		if len(match) < 2 {
+			continue
+		}
+		value := strings.NewReplacer("(", "", ")", "").Replace(match[1])
+		if parsed, err := time.Parse("Jan 2, 2006 15:04:05 MST", value); err == nil {
+			return parsed.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
 }
 
 type flexibleBool bool

@@ -1,4 +1,7 @@
-import { err, Result, ResultAsync } from "neverthrow";
+import { err, ok, Result, ResultAsync } from "neverthrow";
+export interface SafeParseSchema<T> {
+  safeParse(value: unknown): { success: true; data: T } | { success: false; error: unknown };
+}
 
 export interface AppError {
   message: string;
@@ -10,7 +13,7 @@ export function createAppError(message: string, status?: number, cause?: unknown
   return { message, status, cause };
 }
 
-export function requestJsonResult<T>(baseUrl: string, path: string, init?: RequestInit): ResultAsync<T, AppError> {
+export function requestJsonResult<T>(baseUrl: string, path: string, schema: SafeParseSchema<T>, init?: RequestInit): ResultAsync<T, AppError> {
   const target = `${baseUrl}${path}`;
 
   return ResultAsync.fromPromise(fetch(target, init), (error) => createAppError(`Request failed for ${target}`, undefined, error)).andThen((response) => {
@@ -20,7 +23,13 @@ export function requestJsonResult<T>(baseUrl: string, path: string, init?: Reque
         .andThen((body) => err(createAppError(errorMessageFromResponse(response, body), response.status)));
     }
 
-    return ResultAsync.fromPromise(response.json() as Promise<T>, (error) => createAppError(`Failed to parse JSON for ${target}`, response.status, error));
+    return ResultAsync.fromPromise(response.json() as Promise<unknown>, (error) => createAppError(`Failed to parse JSON for ${target}`, response.status, error))
+      .andThen((payload) => {
+        const parsed = schema.safeParse(payload);
+        return parsed.success
+          ? ok(parsed.data)
+          : err(createAppError(`Invalid response payload for ${target}`, response.status, parsed.error));
+      });
   });
 }
 
@@ -39,8 +48,8 @@ function errorMessageFromResponse(response: Response, body: string): string {
   }, () => `${fallback}: ${trimmed}`);
 }
 
-export function postJsonResult<T>(baseUrl: string, path: string, input?: unknown): ResultAsync<T, AppError> {
-  return requestJsonResult<T>(baseUrl, path, {
+export function postJsonResult<T>(baseUrl: string, path: string, schema: SafeParseSchema<T>, input?: unknown): ResultAsync<T, AppError> {
+  return requestJsonResult<T>(baseUrl, path, schema, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input ?? {}),

@@ -5,6 +5,8 @@ import { Input } from "./ui/Input.js";
 import { Select } from "./ui/Select.js";
 import { Dialog } from "./ui/Dialog.js";
 import { itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
+import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
+import { formatFloat } from "./item-instance-utils.js";
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -59,6 +61,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                 <Show when={itemSubtitle(selected)}>
                   <p class="mt-1 text-sm text-slate-400">{itemSubtitle(selected)}</p>
                 </Show>
+                <ItemInstanceDecorations item={selected} showFloat />
               </div>
 
               <div class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-3 text-sm text-slate-300">
@@ -67,12 +70,6 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                     <div>
                       <p class="text-xs uppercase tracking-wide text-slate-500">Type</p>
                       <p class="mt-1 font-medium text-slate-100">{itemKindLabel(selected.kind)}</p>
-                    </div>
-                  </Show>
-                  <Show when={selected.rarity}>
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-slate-500">Rarity</p>
-                      <p class="mt-1 font-medium text-slate-100">{selected.rarity}</p>
                     </div>
                   </Show>
                   <Show when={selected.collection}>
@@ -96,7 +93,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                   <Show when={selected.paintWear !== undefined}>
                     <div>
                       <p class="text-xs uppercase tracking-wide text-slate-500">Wear</p>
-                      <p class="mt-1 font-medium text-slate-100">{selected.paintWear}</p>
+                      <p class="mt-1 font-mono font-medium text-slate-100">{formatFloat(selected.paintWear!)}</p>
                     </div>
                   </Show>
                   <Show when={selected.marketPrice}>
@@ -182,6 +179,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                   <Show when={selected.unsupportedFields?.length}>
                     <p>Unsupported fields: {selected.unsupportedFields?.join(", ")}</p>
                   </Show>
+                  <For each={selected.diagnostics}>{(diagnostic) => <p class="text-amber-300">{diagnostic}</p>}</For>
                   <Show when={props.inventoryDebugEnabled && selected.debug}>
                     {(debug) => (
                       <div class="space-y-1 border-t border-slate-800 pt-2">
@@ -214,7 +212,6 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
           <For each={contentsDialog()?.items ?? []}>{(item) => (
             <div class={`rounded-xl border-2 bg-slate-900/80 p-3 ${rarityBorderClass(item.rarity)}`}>
               <p class="font-medium text-slate-100">{item.marketName || item.name}</p>
-              <Show when={item.rarity}><p class="mt-1 text-xs capitalize text-slate-400">{item.rarity}</p></Show>
             </div>
           )}</For>
         </div>

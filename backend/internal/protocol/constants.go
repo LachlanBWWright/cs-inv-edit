@@ -2,6 +2,14 @@ package protocol
 
 import cs2pb "cs-inv-edit/backend/internal/proto/generated"
 
+// SteamTracking/GameTracking-CS2 Protobufs/gcsystemmsgs.proto, enum ESOMsg.
+const (
+	EMsgSOCreate          uint32 = 21
+	EMsgSOUpdate          uint32 = 22
+	EMsgSOCacheSubscribed uint32 = 24
+	EMsgSOUpdateMultiple  uint32 = 26
+)
+
 const AppIDCS2 = 730
 
 const (
@@ -38,4 +46,5 @@ const (
 	EMsgGCCStrike15V2GC2ClientGlobalStats      = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_GC2ClientGlobalStats)
 	EMsgGCCStrike15V2ClientLogonFatalError     = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_ClientLogonFatalError)
 	EMsgGCCStrike15V2ClientRedeemMissionReward = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_ClientRedeemMissionReward)
+	EMsgGCCStrike15V2GC2ClientNotifyXPShop     = uint32(9221)
 )
