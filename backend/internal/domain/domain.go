@@ -16,29 +16,37 @@ type Sticker struct {
 }
 
 type InventoryItem struct {
-	ID                 string     `json:"id"`
-	Name               string     `json:"name"`
-	MarketName         string     `json:"marketName,omitempty"`
-	MarketPrice        string     `json:"marketPrice,omitempty"`
-	MarketSalePrice    string     `json:"marketSalePrice,omitempty"`
-	MarketSellListings *int       `json:"marketSellListings,omitempty"`
-	CustomName         string     `json:"customName,omitempty"`
-	ImageURL           string     `json:"imageUrl,omitempty"`
-	Kind               string     `json:"kind"`
-	Defindex           *uint32    `json:"defindex,omitempty"`
-	PaintWear          *float64   `json:"paintWear,omitempty"`
-	Stickers           []Sticker  `json:"stickers,omitempty"`
-	StorageCount       *uint32    `json:"storageCount,omitempty"`
-	CasketID           *string    `json:"casketId,omitempty"`
-	Collection         string     `json:"collection,omitempty"`
-	Exterior           string     `json:"exterior,omitempty"`
-	Rarity             string     `json:"rarity,omitempty"`
-	StorageLocation    string     `json:"storageLocation,omitempty"`
-	ToolType           string     `json:"toolType,omitempty"`
-	UnsupportedFields  []string   `json:"unsupportedFields,omitempty"`
-	HasCustomName      bool       `json:"hasCustomName,omitempty"`
-	IsNameTagTool      bool       `json:"isNameTagTool,omitempty"`
-	Debug              *ItemDebug `json:"debug,omitempty"`
+	ID                 string        `json:"id"`
+	Name               string        `json:"name"`
+	MarketName         string        `json:"marketName,omitempty"`
+	MarketPrice        string        `json:"marketPrice,omitempty"`
+	MarketSalePrice    string        `json:"marketSalePrice,omitempty"`
+	MarketSellListings *int          `json:"marketSellListings,omitempty"`
+	CustomName         string        `json:"customName,omitempty"`
+	ImageURL           string        `json:"imageUrl,omitempty"`
+	Kind               string        `json:"kind"`
+	Defindex           *uint32       `json:"defindex,omitempty"`
+	PaintWear          *float64      `json:"paintWear,omitempty"`
+	Stickers           []Sticker     `json:"stickers,omitempty"`
+	StorageCount       *uint32       `json:"storageCount,omitempty"`
+	CasketID           *string       `json:"casketId,omitempty"`
+	Collection         string        `json:"collection,omitempty"`
+	CollectionItems    []RelatedItem `json:"collectionItems,omitempty"`
+	ContainerItems     []RelatedItem `json:"containerItems,omitempty"`
+	Exterior           string        `json:"exterior,omitempty"`
+	Rarity             string        `json:"rarity,omitempty"`
+	StorageLocation    string        `json:"storageLocation,omitempty"`
+	ToolType           string        `json:"toolType,omitempty"`
+	UnsupportedFields  []string      `json:"unsupportedFields,omitempty"`
+	HasCustomName      bool          `json:"hasCustomName,omitempty"`
+	IsNameTagTool      bool          `json:"isNameTagTool,omitempty"`
+	Debug              *ItemDebug    `json:"debug,omitempty"`
+}
+
+type RelatedItem struct {
+	Name       string `json:"name"`
+	MarketName string `json:"marketName,omitempty"`
+	Rarity     string `json:"rarity,omitempty"`
 }
 
 type InventorySnapshot struct {
@@ -48,6 +56,24 @@ type InventorySnapshot struct {
 	Message     string          `json:"message,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	Diagnostics []string        `json:"diagnostics,omitempty"`
+}
+
+type ArmoryOffer struct {
+	CampaignID     uint32 `json:"campaignId"`
+	RedeemID       uint32 `json:"redeemId"`
+	ExpectedCost   uint32 `json:"expectedCost"`
+	GenerationTime uint32 `json:"generationTime"`
+}
+
+type ArmorySnapshot struct {
+	Balance        uint32        `json:"balance"`
+	GenerationTime uint32        `json:"generationTime"`
+	ItemIDs        []string      `json:"itemIds"`
+	Offers         []ArmoryOffer `json:"offers"`
+	RefreshedAt    string        `json:"refreshedAt"`
+	Status         string        `json:"status"`
+	Message        string        `json:"message,omitempty"`
+	Diagnostics    []string      `json:"diagnostics,omitempty"`
 }
 
 type FeatureFlags struct {
@@ -63,6 +89,8 @@ type FeatureFlags struct {
 	EnableItemUse          bool `json:"enableItemUse"`
 	EnableToolApplication  bool `json:"enableToolApplication"`
 	EnableGifting          bool `json:"enableGifting"`
+	EnableArmoryRead       bool `json:"enableArmoryRead"`
+	EnableArmoryRedemption bool `json:"enableArmoryRedemption"`
 }
 
 type ItemDebug struct {

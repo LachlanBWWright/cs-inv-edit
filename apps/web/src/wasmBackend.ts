@@ -1,4 +1,6 @@
 import type { AppBackendClient } from "@cs-inv-edit/app";
+import { createAppError } from "@cs-inv-edit/app";
+import { ResultAsync, okAsync } from "neverthrow";
 import type { ConnectionStatus, FeatureFlags, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 
 declare global {
@@ -102,34 +104,36 @@ export function createWasmBackendClient(): AppBackendClient {
   };
 
   return {
-    health: async (): Promise<HealthStatus> => {
-      await ensureRuntime();
+    health: () => ResultAsync.fromPromise(ensureRuntime(), (cause) => createAppError("Failed to load WASM runtime", undefined, cause)).map((): HealthStatus => {
       const runtime = window.csInvEditWasmBackend;
       const raw = runtime?.health?.();
       if (raw) {
         return JSON.parse(raw) as HealthStatus;
       }
       return { status: "ok", service: "cs2-wasm-backend", version: "0.0.0", time: new Date().toISOString() };
-    },
-    inventory: async () => createInventorySnapshot(),
-    refreshInventory: async () => createReceipt("inventory.refresh", "completed", "WASM inventory refresh completed."),
-    submitOperation: async (_type, _input) => createReceipt(_type, "completed", "WASM mode accepts the request and returns a placeholder receipt."),
-    operations: async () => [],
-    events: async () => createEvents(),
-    settings: async () => defaultSettings,
-    steamStatus: async () => createConnectionStatus("disconnected", "WASM mode does not connect to Steam."),
-    connectSteam: async () => createConnectionStatus("connected", "WASM mode simulates a connected Steam session."),
-    submitSteamGuard: async () => createConnectionStatus("connected", "WASM mode does not require Steam Guard."),
-    disconnectSteam: async () => createConnectionStatus("disconnected", "WASM mode disconnected the simulated session."),
-    applyNameTag: async (input) => createReceipt("nametags.apply", "completed", `Applied custom name for ${input.subjectItemId}`),
-    removeNameTag: async (input) => createReceipt("nametags.remove", "completed", `Removed custom name for ${input.itemId}`),
-    deleteItem: async (input) => createReceipt("items.delete", "completed", `Delete request queued for ${input.itemId}`),
-    applyStatTrakSwap: async (input) => createReceipt("stattrak.swap", "completed", `StatTrak swap queued for ${input.item1ItemId}`),
-    applyStrangePart: async (input) => createReceipt("strange-parts.apply", "completed", `Strange part request queued for ${input.itemItemId}`),
-    useItem: async (input) => createReceipt("items.use", "completed", `Item use queued for ${input.itemId}`),
-    useMultipleItems: async (input) => createReceipt("items.use-multiple", "completed", `Batch use queued for ${input.itemIds.join(",")}`),
-    applyToolToItem: async (input) => createReceipt("tools.apply", "completed", `Tool application queued for ${input.subjectItemId}`),
-    applyToolToBaseItem: async (input) => createReceipt("tools.apply-base", "completed", `Tool application queued for defindex ${input.baseitemDefIndex}`),
-    giftItem: async (input) => createReceipt("gifts.send", "completed", `Gift queued for ${input.itemId}`),
+    }),
+    inventory: () => okAsync(createInventorySnapshot()),
+    refreshInventory: () => okAsync(createReceipt("inventory.refresh", "completed", "WASM inventory refresh completed.")),
+    armory: () => okAsync({ balance: 0, generationTime: 0, itemIds: [], offers: [], refreshedAt: new Date().toISOString(), status: "requires_connection" as const }),
+    refreshArmory: () => okAsync(createReceipt("armory.refresh", "failed", "WASM mode cannot read live GC Armory state.")),
+    redeemArmory: () => okAsync(createReceipt("armory.redeem", "blocked_by_feature_flag", "WASM mode cannot purchase Armory items.")),
+    submitOperation: (_type, _input) => okAsync(createReceipt(_type, "completed", "WASM mode accepts the request and returns a placeholder receipt.")),
+    operations: () => okAsync([]),
+    events: () => okAsync(createEvents()),
+    settings: () => okAsync(defaultSettings),
+    steamStatus: () => okAsync(createConnectionStatus("disconnected", "WASM mode does not connect to Steam.")),
+    connectSteam: () => okAsync(createConnectionStatus("connected", "WASM mode simulates a connected Steam session.")),
+    submitSteamGuard: () => okAsync(createConnectionStatus("connected", "WASM mode does not require Steam Guard.")),
+    disconnectSteam: () => okAsync(createConnectionStatus("disconnected", "WASM mode disconnected the simulated session.")),
+    applyNameTag: (input) => okAsync(createReceipt("nametags.apply", "completed", `Applied custom name for ${input.subjectItemId}`)),
+    removeNameTag: (input) => okAsync(createReceipt("nametags.remove", "completed", `Removed custom name for ${input.itemId}`)),
+    deleteItem: (input) => okAsync(createReceipt("items.delete", "completed", `Delete request queued for ${input.itemId}`)),
+    applyStatTrakSwap: (input) => okAsync(createReceipt("stattrak.swap", "completed", `StatTrak swap queued for ${input.item1ItemId}`)),
+    applyStrangePart: (input) => okAsync(createReceipt("strange-parts.apply", "completed", `Strange part request queued for ${input.itemItemId}`)),
+    useItem: (input) => okAsync(createReceipt("items.use", "completed", `Item use queued for ${input.itemId}`)),
+    useMultipleItems: (input) => okAsync(createReceipt("items.use-multiple", "completed", `Batch use queued for ${input.itemIds.join(",")}`)),
+    applyToolToItem: (input) => okAsync(createReceipt("tools.apply", "completed", `Tool application queued for ${input.subjectItemId}`)),
+    applyToolToBaseItem: (input) => okAsync(createReceipt("tools.apply-base", "completed", `Tool application queued for defindex ${input.baseitemDefIndex}`)),
+    giftItem: (input) => okAsync(createReceipt("gifts.send", "completed", `Gift queued for ${input.itemId}`)),
   };
 }

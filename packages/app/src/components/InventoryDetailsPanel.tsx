@@ -1,10 +1,10 @@
-import { For, Show } from "solid-js";
-import type { InventoryItemDto } from "@cs-inv-edit/contracts";
+import { For, Show, createSignal } from "solid-js";
+import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
 import { Button } from "./ui/Button.js";
-import { Card, CardContent } from "./ui/Card.js";
 import { Input } from "./ui/Input.js";
 import { Select } from "./ui/Select.js";
-import { itemDisplayName, itemInitials, itemKindLabel, itemSubtitle } from "./inventory-view-utils.js";
+import { Dialog } from "./ui/Dialog.js";
+import { itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -44,14 +44,16 @@ export interface InventoryDetailsPanelProps {
 }
 
 export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
+  const [contentsDialog, setContentsDialog] = createSignal<{ title: string; description: string; items: RelatedItemDto[] }>();
+
   return (
-    <Card>
-      <CardContent>
+    <>
+    <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+      <div class="min-h-0 flex-1 overflow-y-auto">
         <Show keyed when={props.selectedItem} fallback={<p class="text-sm text-slate-400">No item selected.</p>}>
           {(selected) => (
             <div class="space-y-4">
               <div>
-                <p class="text-sm font-medium text-slate-400">Selected item</p>
                 <ItemIcon item={selected} large />
                 <h3 class="mt-3 text-xl font-semibold text-slate-50">{itemDisplayName(selected)}</h3>
                 <Show when={itemSubtitle(selected)}>
@@ -59,7 +61,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                 </Show>
               </div>
 
-              <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-300">
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-3 text-sm text-slate-300">
                 <div class="grid gap-3 sm:grid-cols-2">
                   <Show when={selected.kind}>
                     <div>
@@ -71,6 +73,12 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                     <div>
                       <p class="text-xs uppercase tracking-wide text-slate-500">Rarity</p>
                       <p class="mt-1 font-medium text-slate-100">{selected.rarity}</p>
+                    </div>
+                  </Show>
+                  <Show when={selected.collection}>
+                    <div>
+                      <p class="text-xs uppercase tracking-wide text-slate-500">Collection</p>
+                      <button type="button" class="mt-1 text-left font-medium text-cyan-300 underline decoration-cyan-500/50 underline-offset-4 hover:text-cyan-200" onClick={() => setContentsDialog({ title: selected.collection!, description: "Items belonging to this collection", items: selected.collectionItems ?? [] })}>{selected.collection}</button>
                     </div>
                   </Show>
                   <Show when={selected.exterior}>
@@ -113,6 +121,11 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
               </div>
 
               <div class="flex flex-wrap gap-2">
+                <Show when={selected.containerItems?.length}>
+                  <Button variant="secondary" onClick={() => setContentsDialog({ title: itemDisplayName(selected), description: "Possible container contents", items: selected.containerItems ?? [] })}>
+                    View possible contents ({selected.containerItems?.length})
+                  </Button>
+                </Show>
                 <Show when={props.canOpenContainer}>
                   <div class="flex flex-col gap-2">
                     <Button onClick={() => void props.onOpenContainer()} disabled={props.pending}>
@@ -136,7 +149,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
               </div>
 
               <Show when={props.renameOpen}>
-                <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                <div class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 text-sm text-slate-300">
                   <label class="block font-medium text-slate-100">Custom name</label>
                   <Input class="mt-2" value={props.draftName} onInput={(event) => props.onDraftNameChange((event.currentTarget as HTMLInputElement | null)?.value ?? "")} />
                   <Show when={props.nameTagTools.length > 0}>
@@ -159,7 +172,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                 </div>
               </Show>
 
-              <details class="rounded-2xl border border-slate-800 p-3 text-sm text-slate-400">
+              <details class="rounded-2xl border border-slate-800/80 p-3 text-sm text-slate-400">
                 <summary class="cursor-pointer font-medium text-slate-200">Diagnostics</summary>
                 <div class="mt-3 space-y-2 font-mono text-xs">
                   <p>Item ID: {selected.id}</p>
@@ -193,7 +206,20 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
             </div>
           )}
         </Show>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
+    <Dialog open={!!contentsDialog()} title={contentsDialog()?.title ?? "Items"} description={contentsDialog()?.description} onOpenChange={(open) => { if (!open) setContentsDialog(undefined); }}>
+      <Show when={(contentsDialog()?.items.length ?? 0) > 0} fallback={<p class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">No item contents were found in the current CS2 schema.</p>}>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <For each={contentsDialog()?.items ?? []}>{(item) => (
+            <div class={`rounded-xl border-2 bg-slate-900/80 p-3 ${rarityBorderClass(item.rarity)}`}>
+              <p class="font-medium text-slate-100">{item.marketName || item.name}</p>
+              <Show when={item.rarity}><p class="mt-1 text-xs capitalize text-slate-400">{item.rarity}</p></Show>
+            </div>
+          )}</For>
+        </div>
+      </Show>
+    </Dialog>
+    </>
   );
 }

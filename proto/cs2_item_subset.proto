@@ -56,6 +56,31 @@ enum EGCBaseClientMsg {
 enum ECsgoGCMsg {
   k_EMsgGCCStrike15_v2_GC2ClientGlobalStats = 9173;
   k_EMsgGCCStrike15_v2_ClientLogonFatalError = 9187;
+  k_EMsgGCCStrike15_v2_ClientRedeemMissionReward = 9209;
+}
+
+// Source: SteamTracking/GameTracking-CS2 Protobufs/cstrike15_gcmessages.proto.
+message CMsgGCCstrike15V2ClientRedeemMissionReward {
+  optional uint32 campaign_id = 1;
+  optional uint32 redeem_id = 2;
+  optional uint32 redeemable_balance = 3;
+  optional uint32 expected_cost = 4;
+  optional int32 bid_control = 5;
+  repeated uint64 volatile_shop = 6;
+  optional uint64 souvenir_matchid = 7;
+}
+
+message CSOAccountItemPersonalStore {
+  optional uint32 generation_time = 1;
+  optional uint32 redeemable_balance = 2;
+  repeated uint64 items = 3;
+}
+
+message CSOAccountXpShopBids {
+  optional uint32 campaign_id = 1;
+  optional uint32 redeem_id = 2;
+  optional uint32 expected_cost = 3;
+  optional uint32 generation_time = 4;
 }
 
 message CMsgSetItemName {

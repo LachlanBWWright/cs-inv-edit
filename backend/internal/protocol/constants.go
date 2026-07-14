@@ -35,6 +35,7 @@ const (
 	EMsgGCClientHelloR4          = uint32(cs2pb.EGCBaseClientMsg_k_EMsgGCClientHelloR4)
 	EMsgGCClientConnectionStatus = uint32(cs2pb.EGCBaseClientMsg_k_EMsgGCClientConnectionStatus)
 
-	EMsgGCCStrike15V2GC2ClientGlobalStats  = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_GC2ClientGlobalStats)
-	EMsgGCCStrike15V2ClientLogonFatalError = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_ClientLogonFatalError)
+	EMsgGCCStrike15V2GC2ClientGlobalStats      = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_GC2ClientGlobalStats)
+	EMsgGCCStrike15V2ClientLogonFatalError     = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_ClientLogonFatalError)
+	EMsgGCCStrike15V2ClientRedeemMissionReward = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_ClientRedeemMissionReward)
 )

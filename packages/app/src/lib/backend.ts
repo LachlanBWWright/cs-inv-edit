@@ -4,6 +4,8 @@ import type {
   ApplyToolToBaseItemRequest,
   ApplyToolToItemRequest,
   ConnectionStatus,
+	ArmorySnapshot,
+	ArmoryRedeemRequest,
   DeleteItemRequest,
   GiftItemRequest,
   HealthStatus,
@@ -16,27 +18,34 @@ import type {
   UseItemRequest,
   UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
+import type { ResultAsync } from "neverthrow";
+import type { AppError } from "./result-http.js";
+
+type BackendResult<T> = ResultAsync<T, AppError>;
 
 export interface AppBackendClient {
-  health(): Promise<HealthStatus>;
-  inventory(): Promise<InventorySnapshot>;
-  refreshInventory(): Promise<OperationReceipt>;
-  submitOperation(type: string, input?: unknown): Promise<OperationReceipt>;
-  operations(): Promise<OperationReceipt[]>;
-  events(): Promise<OperationEvent[]>;
-  settings(): Promise<SettingsData>;
-  steamStatus?(): Promise<ConnectionStatus>;
-  connectSteam?(input?: unknown): Promise<ConnectionStatus>;
-  submitSteamGuard?(input?: unknown): Promise<ConnectionStatus>;
-  disconnectSteam?(): Promise<ConnectionStatus>;
-  applyNameTag(input: SetItemNameRequest): Promise<OperationReceipt>;
-  removeNameTag(input: RemoveItemNameRequest): Promise<OperationReceipt>;
-  deleteItem(input: DeleteItemRequest): Promise<OperationReceipt>;
-  applyStatTrakSwap(input: ApplyStatTrakSwapRequest): Promise<OperationReceipt>;
-  applyStrangePart(input: ApplyStrangePartRequest): Promise<OperationReceipt>;
-  useItem(input: UseItemRequest): Promise<OperationReceipt>;
-  useMultipleItems(input: UseMultipleItemsRequest): Promise<OperationReceipt>;
-  applyToolToItem(input: ApplyToolToItemRequest): Promise<OperationReceipt>;
-  applyToolToBaseItem(input: ApplyToolToBaseItemRequest): Promise<OperationReceipt>;
-  giftItem(input: GiftItemRequest): Promise<OperationReceipt>;
+  health(): BackendResult<HealthStatus>;
+  inventory(): BackendResult<InventorySnapshot>;
+  refreshInventory(): BackendResult<OperationReceipt>;
+  armory(): BackendResult<ArmorySnapshot>;
+  refreshArmory(): BackendResult<OperationReceipt>;
+  redeemArmory(input: ArmoryRedeemRequest): BackendResult<OperationReceipt>;
+  submitOperation(type: string, input?: unknown): BackendResult<OperationReceipt>;
+  operations(): BackendResult<OperationReceipt[]>;
+  events(): BackendResult<OperationEvent[]>;
+  settings(): BackendResult<SettingsData>;
+  steamStatus?(): BackendResult<ConnectionStatus>;
+  connectSteam?(input?: unknown): BackendResult<ConnectionStatus>;
+  submitSteamGuard?(input?: unknown): BackendResult<ConnectionStatus>;
+  disconnectSteam?(): BackendResult<ConnectionStatus>;
+  applyNameTag(input: SetItemNameRequest): BackendResult<OperationReceipt>;
+  removeNameTag(input: RemoveItemNameRequest): BackendResult<OperationReceipt>;
+  deleteItem(input: DeleteItemRequest): BackendResult<OperationReceipt>;
+  applyStatTrakSwap(input: ApplyStatTrakSwapRequest): BackendResult<OperationReceipt>;
+  applyStrangePart(input: ApplyStrangePartRequest): BackendResult<OperationReceipt>;
+  useItem(input: UseItemRequest): BackendResult<OperationReceipt>;
+  useMultipleItems(input: UseMultipleItemsRequest): BackendResult<OperationReceipt>;
+  applyToolToItem(input: ApplyToolToItemRequest): BackendResult<OperationReceipt>;
+  applyToolToBaseItem(input: ApplyToolToBaseItemRequest): BackendResult<OperationReceipt>;
+  giftItem(input: GiftItemRequest): BackendResult<OperationReceipt>;
 }

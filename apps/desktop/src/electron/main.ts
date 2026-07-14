@@ -3,7 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import type { ResultAsync } from "neverthrow";
+import { ResultAsync } from "neverthrow";
 import { postJsonResult, requestJsonResult, type AppError } from "@cs-inv-edit/app";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,12 +37,8 @@ function startBackend() {
 
 async function waitForBackend(attempts = 30): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const response = await fetch(`${backendURL}/health`);
-      if (response.ok) return true;
-    } catch {
-      // keep polling
-    }
+    const healthy = await ResultAsync.fromPromise(fetch(`${backendURL}/health`), () => false).match((response) => response.ok, () => false);
+    if (healthy) return true;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
@@ -68,29 +64,29 @@ async function createWindow() {
   }
 }
 
-function toPromise<T>(result: ResultAsync<T, AppError>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    result.match(
-      (value) => resolve(value),
-      (error) => {
-        console.error(error.message, error.cause);
-        reject(error);
-      },
-    );
-  });
+type IpcResult<T> = { ok: true; value: T } | { ok: false; error: AppError };
+
+function serializeResult<T>(result: ResultAsync<T, AppError>): Promise<IpcResult<T>> {
+  return result.match(
+    (value) => ({ ok: true as const, value }),
+    (error) => ({ ok: false as const, error }),
+  );
 }
 
-async function requestJson<T>(pathName: string, init?: RequestInit): Promise<T> {
-  return toPromise(requestJsonResult<T>(backendURL, pathName, init));
+async function requestJson<T>(pathName: string, init?: RequestInit): Promise<IpcResult<T>> {
+  return serializeResult(requestJsonResult<T>(backendURL, pathName, init));
 }
 
-function postJson<T>(pathName: string, input?: unknown): Promise<T> {
-  return toPromise(postJsonResult<T>(backendURL, pathName, input));
+function postJson<T>(pathName: string, input?: unknown): Promise<IpcResult<T>> {
+  return serializeResult(postJsonResult<T>(backendURL, pathName, input));
 }
 
 ipcMain.handle("backend:health", async () => requestJson("/health"));
 ipcMain.handle("backend:inventory", async () => requestJson("/inventory"));
 ipcMain.handle("backend:refreshInventory", async () => requestJson("/inventory/refresh", { method: "POST" }));
+ipcMain.handle("backend:armory", async () => requestJson("/armory"));
+ipcMain.handle("backend:refreshArmory", async () => requestJson("/armory/refresh", { method: "POST" }));
+ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) => postJson("/armory/redeem", input));
 ipcMain.handle("backend:submitOperation", async (_event, type: string, input?: unknown) => requestJson(`/operations/${encodeURIComponent(type)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
 ipcMain.handle("backend:operations", async () => requestJson("/operations"));
 ipcMain.handle("backend:events", async () => requestJson("/events"));

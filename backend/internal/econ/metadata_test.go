@@ -110,6 +110,7 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		}
 	}
 }
+
 `)
 	if err != nil {
 		t.Fatal(err)

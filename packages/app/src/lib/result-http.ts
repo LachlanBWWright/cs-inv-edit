@@ -1,4 +1,4 @@
-import { err, ResultAsync } from "neverthrow";
+import { err, Result, ResultAsync } from "neverthrow";
 
 export interface AppError {
   message: string;
@@ -30,13 +30,13 @@ function errorMessageFromResponse(response: Response, body: string): string {
   if (trimmed === "") {
     return fallback;
   }
-  try {
-    const parsed = JSON.parse(trimmed) as { error?: unknown; message?: unknown };
+  return Result.fromThrowable(
+    () => JSON.parse(trimmed) as { error?: unknown; message?: unknown },
+    () => undefined,
+  )().match((parsed) => {
     const message = typeof parsed.error === "string" ? parsed.error : typeof parsed.message === "string" ? parsed.message : "";
     return message === "" ? `${fallback}: ${trimmed}` : `${fallback}: ${message}`;
-  } catch {
-    return `${fallback}: ${trimmed}`;
-  }
+  }, () => `${fallback}: ${trimmed}`);
 }
 
 export function postJsonResult<T>(baseUrl: string, path: string, input?: unknown): ResultAsync<T, AppError> {

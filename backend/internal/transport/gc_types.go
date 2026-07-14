@@ -127,6 +127,21 @@ type GCInventoryItem struct {
 	Attributes map[uint32]uint32
 }
 
+type GCArmoryOffer struct {
+	CampaignID     uint32
+	RedeemID       uint32
+	ExpectedCost   uint32
+	GenerationTime uint32
+}
+
+type GCArmorySnapshot struct {
+	GenerationTime uint32
+	Balance        uint32
+	ItemIDs        []uint64
+	Offers         []GCArmoryOffer
+	Diagnostics    []string
+}
+
 type GCClient interface {
 	Connect(ctx context.Context) error
 	LogOn(ctx context.Context, credentials LogonCredentials) (LogonResult, error)
@@ -135,6 +150,7 @@ type GCClient interface {
 	SendToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	RequestInventory(ctx context.Context) ([]GCInventoryItem, error)
+	RequestArmory(ctx context.Context) (GCArmorySnapshot, error)
 	Events() <-chan GCEvent
 	State() GCConnectionState
 }
@@ -177,6 +193,10 @@ func (m *TestGCClient) SendProtoToGC(_ context.Context, _ uint32, _ uint32, _ []
 
 func (m *TestGCClient) RequestInventory(context.Context) ([]GCInventoryItem, error) {
 	return nil, nil
+}
+
+func (m *TestGCClient) RequestArmory(context.Context) (GCArmorySnapshot, error) {
+	return GCArmorySnapshot{}, nil
 }
 
 func (m *TestGCClient) Events() <-chan GCEvent {

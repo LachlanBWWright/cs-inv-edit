@@ -2,11 +2,7 @@ import { For, Show } from "solid-js";
 import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryDetailsPanel } from "./InventoryDetailsPanel.js";
 import { Alert } from "./ui/Alert.js";
-import { Button } from "./ui/Button.js";
-import { Card, CardContent } from "./ui/Card.js";
-import { Input } from "./ui/Input.js";
-import { Select } from "./ui/Select.js";
-import { itemDisplayName, itemInitials, itemSubtitle } from "./inventory-view-utils.js";
+import { itemDisplayName, itemInitials, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -47,10 +43,12 @@ export interface InventoryViewContentProps {
   nameTagTools: InventoryItemDto[];
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
+  compactMode: "icons" | "concise" | "detailed";
   onRefresh: () => void;
   onQueryChange: (value: string) => void;
   onKindFilterChange: (value: "all" | InventoryItemDto["kind"]) => void;
-  onSelectItem: (item: InventoryItemDto, index: number) => void;
+  onCompactModeChange: (value: "icons" | "concise" | "detailed") => void;
+  onSelectItem: (item: InventoryItemDto) => void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRenameSubmit: () => Promise<void> | void;
   onRemoveName: () => Promise<void> | void;
@@ -63,20 +61,64 @@ export interface InventoryViewContentProps {
 export function InventoryViewContent(props: InventoryViewContentProps) {
   const inventoryDebugEnabled = () => props.settings?.featureFlags.enableInventoryDebug ?? false;
 
-  return (
-    <div class="space-y-5">
-      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 class="text-3xl font-semibold text-slate-50">Inventory workspace</h2>
-          <p class="mt-2 max-w-2xl text-sm text-slate-400">Inspect and edit inventory items without entering raw IDs.</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => props.onRefresh()}>
-            Refresh
-          </Button>
-        </div>
-      </header>
+  const itemCardClass = (item: InventoryItemDto) => {
+    const isSelected = props.selectedItem?.id === item.id;
+    return `group min-h-24 cursor-pointer overflow-hidden rounded-2xl border-2 p-3 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "bg-cyan-500/10 ring-1 ring-cyan-400/40" : "bg-slate-900/70 hover:bg-slate-800/90"}`;
+  };
 
+  const compactLayout = () => {
+    if (props.compactMode === "icons") {
+      return "flex flex-col items-center justify-center gap-2 px-3 py-3 text-center";
+    }
+    if (props.compactMode === "detailed") {
+      return "flex flex-col gap-3";
+    }
+    return "flex items-start gap-3";
+  };
+
+  const compactSummary = (item: InventoryItemDto) => {
+    if (props.compactMode === "icons") {
+      return <div class="text-center"><div class="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-950/80 text-sm font-semibold text-slate-500"><span>{itemInitials(item)}</span></div><p class="text-xs font-medium text-slate-200">{itemDisplayName(item)}</p></div>;
+    }
+    if (props.compactMode === "detailed") {
+      return (
+        <div class="min-w-0">
+          <strong class="text-base leading-tight text-slate-50">{itemDisplayName(item)}</strong>
+          <Show when={itemSubtitle(item)}>
+            <p class="mt-1 text-sm text-slate-400">{itemSubtitle(item)}</p>
+          </Show>
+          <dl class="mt-3 grid gap-1 text-sm text-slate-400">
+            <Show when={item.collection}>
+              <div class="flex justify-between gap-3"><dt>Collection</dt><dd>{item.collection}</dd></div>
+            </Show>
+            <Show when={item.exterior}>
+              <div class="flex justify-between gap-3"><dt>Exterior</dt><dd>{item.exterior}</dd></div>
+            </Show>
+            <Show when={item.storageLocation}>
+              <div class="flex justify-between gap-3"><dt>Storage</dt><dd>{item.storageLocation}</dd></div>
+            </Show>
+            <Show when={item.paintWear !== undefined}>
+              <div class="flex justify-between gap-3"><dt>Wear</dt><dd>{item.paintWear}</dd></div>
+            </Show>
+            <Show when={item.marketPrice}>
+              <div class="flex justify-between gap-3"><dt>Market</dt><dd>{item.marketPrice}</dd></div>
+            </Show>
+          </dl>
+        </div>
+      );
+    }
+    return (
+      <div class="min-w-0">
+        <strong class="text-base leading-tight text-slate-50">{itemDisplayName(item)}</strong>
+        <Show when={itemSubtitle(item)}>
+          <p class="mt-1 text-sm text-slate-400">{itemSubtitle(item)}</p>
+        </Show>
+      </div>
+    );
+  };
+
+  return (
+    <div class="flex h-full min-h-0 flex-col gap-4">
       <Show when={props.inventory?.status === "requires_connection" && !props.connected}>
         <Alert variant="warning">Connect a Steam account to load inventory items and enable name-tag editing.</Alert>
       </Show>
@@ -111,104 +153,49 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         <Alert>{props.statusMessage}</Alert>
       </Show>
 
-      <Card>
-        <CardContent class="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input class="max-w-none" placeholder="Search by name, type, collection, storage, stickers, or tools" value={props.query} onInput={(event) => props.onQueryChange((event.currentTarget as HTMLInputElement | null)?.value ?? "")} />
-          <Select value={props.kindFilter} onChange={(event) => props.onKindFilterChange(((event.currentTarget as HTMLInputElement | null)?.value ?? "") as "all" | InventoryItemDto["kind"])}>
-            <option value="all">All kinds</option>
-            <option value="weapon_skin">Weapon skins</option>
-            <option value="sticker_item">Stickers</option>
-            <option value="tool_item">Tools</option>
-            <option value="cs2_econ_item">CS2 items</option>
-            <option value="container">Containers</option>
-            <option value="storage_unit">Storage units</option>
-            <option value="unknown">Unknown</option>
-          </Select>
-        </CardContent>
-      </Card>
-
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_0.9fr]">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Show when={props.filteredItems.length > 0} fallback={<Alert>{props.inventoryLoading ? "Loading CS2 inventory from Steam Game Coordinator..." : "No inventory items are loaded."}</Alert>}>
-            <For each={props.filteredItems}>
-              {(item, index) => (
-                <button
-                  type="button"
-                  class={`min-h-28 cursor-pointer rounded-2xl border border-slate-800 text-left shadow-[0_10px_60px_-30px_rgba(34,211,238,0.35)] transition duration-150 hover:border-cyan-400/50 hover:bg-slate-800/90 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${
-                    props.selectedItemKey === `${index()}:${item.id}:${item.defindex ?? ""}:${item.marketName ?? item.name}` ? "border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]" : "bg-slate-900/70"
-                  }`}
-                  onClick={() => props.onSelectItem(item, index())}
-                >
-                  <CardContent>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="flex min-w-0 gap-3">
+      <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
+        <div class="min-h-0 overflow-y-auto pr-1">
+            <Show when={props.filteredItems.length > 0} fallback={<Alert>{props.inventoryLoading ? "Loading CS2 inventory from Steam Game Coordinator..." : "No inventory items are loaded."}</Alert>}>
+              <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                <For each={props.filteredItems}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      class={`cursor-pointer rounded-2xl border-2 p-3 text-left transition duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`}
+                      onClick={() => props.onSelectItem(item)}
+                    >
+                      <div class={compactLayout()}>
                         <ItemIcon item={item} />
-                        <div class="min-w-0">
-                          <strong class="text-base leading-snug text-slate-50">{itemDisplayName(item)}</strong>
-                          <Show when={itemSubtitle(item)}>
-                            <p class="mt-1 text-sm text-slate-400">{itemSubtitle(item)}</p>
-                          </Show>
-                        </div>
+                        {compactSummary(item)}
                       </div>
-                    </div>
-                    <dl class="mt-4 grid gap-1 text-sm text-slate-400">
-                      <Show when={item.collection}>
-                        <div class="flex justify-between gap-3">
-                          <dt>Collection</dt>
-                          <dd>{item.collection}</dd>
-                        </div>
-                      </Show>
-                      <Show when={item.exterior}>
-                        <div class="flex justify-between gap-3">
-                          <dt>Exterior</dt>
-                          <dd>{item.exterior}</dd>
-                        </div>
-                      </Show>
-                      <Show when={item.storageLocation}>
-                        <div class="flex justify-between gap-3">
-                          <dt>Storage</dt>
-                          <dd>{item.storageLocation}</dd>
-                        </div>
-                      </Show>
-                      <Show when={item.paintWear !== undefined}>
-                        <div class="flex justify-between gap-3">
-                          <dt>Wear</dt>
-                          <dd>{item.paintWear}</dd>
-                        </div>
-                      </Show>
-                      <Show when={item.marketPrice}>
-                        <div class="flex justify-between gap-3">
-                          <dt>Market</dt>
-                          <dd>{item.marketPrice}</dd>
-                        </div>
-                      </Show>
-                    </dl>
-                  </CardContent>
-                </button>
-              )}
-            </For>
-          </Show>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
         </div>
 
-        <InventoryDetailsPanel
-          selectedItem={props.selectedItem}
-          pending={props.pending}
-          renameOpen={props.renameOpen}
-          draftName={props.draftName}
-          selectedToolId={props.selectedToolId}
-          inventoryDebugEnabled={inventoryDebugEnabled()}
-          nameTagTools={props.nameTagTools}
-          canOpenContainer={props.canOpenContainer}
-          canUseNameTagOn={props.canUseNameTagOn}
-          containerStatusMessage={props.containerStatusMessage}
-          onOpenRenameEditor={props.onOpenRenameEditor}
-          onRenameSubmit={props.onRenameSubmit}
-          onRemoveName={props.onRemoveName}
-          onOpenContainer={props.onOpenContainer}
-          onCloseRename={props.onCloseRename}
-          onDraftNameChange={props.onDraftNameChange}
-          onSelectedToolChange={props.onSelectedToolChange}
-        />
+        <div class="min-h-0 overflow-hidden">
+          <InventoryDetailsPanel
+            selectedItem={props.selectedItem}
+            pending={props.pending}
+            renameOpen={props.renameOpen}
+            draftName={props.draftName}
+            selectedToolId={props.selectedToolId}
+            inventoryDebugEnabled={inventoryDebugEnabled()}
+            nameTagTools={props.nameTagTools}
+            canOpenContainer={props.canOpenContainer}
+            canUseNameTagOn={props.canUseNameTagOn}
+            containerStatusMessage={props.containerStatusMessage}
+            onOpenRenameEditor={props.onOpenRenameEditor}
+            onRenameSubmit={props.onRenameSubmit}
+            onRemoveName={props.onRemoveName}
+            onOpenContainer={props.onOpenContainer}
+            onCloseRename={props.onCloseRename}
+            onDraftNameChange={props.onDraftNameChange}
+            onSelectedToolChange={props.onSelectedToolChange}
+          />
+        </div>
       </div>
     </div>
   );

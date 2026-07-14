@@ -28,6 +28,8 @@ export interface InventoryItemDto {
   storageCount?: number;
   casketId?: string;
   collection?: string;
+  collectionItems?: RelatedItemDto[];
+  containerItems?: RelatedItemDto[];
   exterior?: string;
   rarity?: string;
   storageLocation?: string;
@@ -37,6 +39,12 @@ export interface InventoryItemDto {
   hasCustomName?: boolean;
   isNameTagTool?: boolean;
   debug?: ItemDebugDto;
+}
+
+export interface RelatedItemDto {
+  name: string;
+  marketName?: string;
+  rarity?: string;
 }
 
 export interface ItemDebugDto {
@@ -60,6 +68,32 @@ export interface InventorySnapshot {
   message?: string;
   error?: string;
   diagnostics?: string[];
+}
+
+export interface ArmoryOfferDto {
+  campaignId: number;
+  redeemId: number;
+  expectedCost: number;
+  generationTime: number;
+}
+
+export interface ArmorySnapshot {
+  balance: number;
+  generationTime: number;
+  itemIds: string[];
+  offers: ArmoryOfferDto[];
+  refreshedAt: string;
+  status: "ready" | "requires_connection" | "loading" | "error";
+  message?: string;
+  diagnostics?: string[];
+}
+
+export interface ArmoryRedeemRequest {
+  campaignId: number;
+  redeemId: number;
+  expectedCost: number;
+  redeemableBalance: number;
+  generationTime: number;
 }
 
 export interface ConnectionStatus {
@@ -115,6 +149,8 @@ export interface FeatureFlags {
   enableItemUse: boolean;
   enableToolApplication: boolean;
   enableGifting: boolean;
+  enableArmoryRead?: boolean;
+  enableArmoryRedemption?: boolean;
 }
 
 export interface SettingsData {

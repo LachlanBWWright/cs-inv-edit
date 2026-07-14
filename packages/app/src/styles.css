@@ -39,3 +39,69 @@ body {
 .panel-border {
   border-color: var(--border);
 }
+
+.rarity-outline {
+  --rarity-color: 51 65 85;
+  --rarity-ring-alpha: 0.3;
+  --rarity-glow-alpha: 0;
+  border-color: rgb(var(--rarity-color) / 0.8);
+  box-shadow:
+    0 0 0 1px rgb(var(--rarity-color) / var(--rarity-ring-alpha)),
+    0 0 26px rgb(var(--rarity-color) / var(--rarity-glow-alpha));
+}
+
+.rarity-common {
+  /* Common — white */
+  --rarity-color: 255 255 255;
+  --rarity-ring-alpha: 0.38;
+  --rarity-glow-alpha: 0.14;
+}
+
+.rarity-uncommon {
+  /* Uncommon — baby blue */
+  --rarity-color: 125 211 252;
+  --rarity-ring-alpha: 0.38;
+  --rarity-glow-alpha: 0.16;
+}
+
+.rarity-rare {
+  /* Rare — navy blue */
+  --rarity-color: 37 99 235;
+  --rarity-ring-alpha: 0.42;
+  --rarity-glow-alpha: 0.18;
+}
+
+.rarity-mythical {
+  /* Mythical — purple */
+  --rarity-color: 168 85 247;
+  --rarity-ring-alpha: 0.42;
+  --rarity-glow-alpha: 0.18;
+}
+
+.rarity-legendary {
+  /* Legendary — hot pink */
+  --rarity-color: 236 72 153;
+  --rarity-ring-alpha: 0.42;
+  --rarity-glow-alpha: 0.18;
+}
+
+.rarity-ancient {
+  /* Ancient — red */
+  --rarity-color: 239 68 68;
+  --rarity-ring-alpha: 0.42;
+  --rarity-glow-alpha: 0.18;
+}
+
+.rarity-exceedingly-rare {
+  /* Exceedingly Rare — gold */
+  --rarity-color: 251 191 36;
+  --rarity-ring-alpha: 0.44;
+  --rarity-glow-alpha: 0.2;
+}
+
+.rarity-immortal {
+  /* Immortal — rose gold */
+  --rarity-color: 253 164 175;
+  --rarity-ring-alpha: 0.44;
+  --rarity-glow-alpha: 0.2;
+}

@@ -4,6 +4,7 @@ import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 import { Card, CardContent, CardHeader } from "./ui/Card.js";
 import { Input } from "./ui/Input.js";
+import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
@@ -24,16 +25,14 @@ export function AccountView(props: AccountViewProps) {
     e.preventDefault();
     setLoading(true);
     setStatus("Signing in to Steam...");
-    try {
-      await props.onConnect({ username: username(), password: password() });
+    await fromAppPromise(props.onConnect({ username: username(), password: password() }), "Failed to sign in").match(() => {
       setStatus("");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to sign in.";
+    }, (error) => {
+      const message = appErrorMessage(error, "Failed to sign in.");
       setStatus(message);
       props.onToast?.({ title: "Sign in failed", description: message, variant: "danger" });
-    } finally {
-      setLoading(false);
-    }
+    });
+    setLoading(false);
   };
 
   const handleSteamGuard = async (e: Event) => {
@@ -44,30 +43,26 @@ export function AccountView(props: AccountViewProps) {
     }
     setLoading(true);
     setStatus("Verifying Steam Guard code...");
-    try {
-      await props.onSubmitSteamGuard({ code: guardCode() });
+    await fromAppPromise(props.onSubmitSteamGuard({ code: guardCode() }), "Failed to verify Steam Guard").match(() => {
       setStatus("");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to verify Steam Guard.";
+    }, (error) => {
+      const message = appErrorMessage(error, "Failed to verify Steam Guard.");
       setStatus(message);
       props.onToast?.({ title: "Steam Guard failed", description: message, variant: "danger" });
-    } finally {
-      setLoading(false);
-    }
+    });
+    setLoading(false);
   };
 
   const handleDisconnect = async () => {
     setLoading(true);
     setStatus("Signing out...");
-    try {
-      await props.onDisconnect();
+    await fromAppPromise(props.onDisconnect(), "Failed to sign out").match(() => {
       setStatus("Signed out.");
-    } catch {
+    }, () => {
       setStatus("Failed to sign out.");
       props.onToast?.({ title: "Disconnect failed", description: "The session could not be closed.", variant: "danger" });
-    } finally {
-      setLoading(false);
-    }
+    });
+    setLoading(false);
   };
 
   return (

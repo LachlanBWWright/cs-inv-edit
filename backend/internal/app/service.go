@@ -32,6 +32,7 @@ type Service struct {
 	events          []operations.Event
 	operations      []operations.Receipt
 	inventory       domain.InventorySnapshot
+	armory          domain.ArmorySnapshot
 	settings        domain.Settings
 	connection      domain.ConnectionStatus
 	gcClient        transport.GCClient
@@ -44,6 +45,7 @@ type Service struct {
 func NewService() *Service {
 	service := &Service{
 		inventory:    emptyInventory(),
+		armory:       emptyArmory(),
 		settings:     defaultSettings(),
 		connection:   domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
 		gcClient:     transport.NewSteamGCClient(),
@@ -72,6 +74,108 @@ func (s *Service) Inventory() domain.InventorySnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return cloneInventory(s.inventory)
+}
+
+func (s *Service) Armory() domain.ArmorySnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneArmory(s.armory)
+}
+
+func (s *Service) RefreshArmory() operations.Receipt {
+	receipt := s.newReceipt("armory.refresh")
+	s.mu.Lock()
+	if !s.settings.FeatureFlags.EnableArmoryRead {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "blocked_by_feature_flag", "Armory reads are disabled"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if s.connection.State != "connected" {
+		s.armory = emptyArmory()
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load Armory stars"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	s.armory.Status = "loading"
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	state, err := s.gcClient.RequestArmory(ctx)
+	s.mu.Lock()
+	if err != nil {
+		s.armory = domain.ArmorySnapshot{Status: "error", Message: err.Error(), RefreshedAt: now(), ItemIDs: []string{}, Offers: []domain.ArmoryOffer{}}
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "failed", err.Error()
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	s.armory = armoryFromGC(state)
+	s.mu.Unlock()
+	receipt.State, receipt.Message = "completed", "Armory star balance refreshed"
+	s.addEvent(receipt, receipt.State, receipt.Message)
+	return receipt
+}
+
+func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
+	receipt := s.newReceipt("armory.redeem")
+	s.mu.Lock()
+	if !s.settings.FeatureFlags.EnableArmoryRedemption {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "blocked_by_feature_flag", "Armory purchases are disabled"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if s.settings.ValidationMode {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "requires_validation", "disable validation mode only after verifying the live Armory offer"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	campaignID, err1 := requiredUint32Input(input, "campaignId")
+	redeemID, err2 := requiredUint32Input(input, "redeemId")
+	balance, err3 := requiredUint32Input(input, "redeemableBalance")
+	cost, err4 := requiredUint32Input(input, "expectedCost")
+	generation, err5 := requiredUint32Input(input, "generationTime")
+	if err := firstError(err1, err2, err3, err4, err5); err != nil {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "failed", err.Error()
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if s.connection.State != "connected" || s.armory.Status != "ready" || s.armory.GenerationTime != generation || s.armory.Balance != balance {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "failed", "Armory snapshot is stale; refresh before purchasing"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	matched := false
+	for _, offer := range s.armory.Offers {
+		if offer.CampaignID == campaignID && offer.RedeemID == redeemID && offer.ExpectedCost == cost {
+			matched = true
+			break
+		}
+	}
+	if !matched || cost > balance {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "failed", "Armory offer or cost does not match the latest GC snapshot"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	s.mu.Unlock()
+	body, err := proto.Marshal(&cs2pb.CMsgGCCstrike15V2ClientRedeemMissionReward{CampaignId: proto.Uint32(campaignID), RedeemId: proto.Uint32(redeemID), RedeemableBalance: proto.Uint32(balance), ExpectedCost: proto.Uint32(cost)})
+	if err == nil {
+		err = s.gcClient.SendProtoToGC(context.Background(), protocol.AppIDCS2, protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, body)
+	}
+	if err != nil {
+		receipt.State, receipt.Message = "failed", fmt.Sprintf("Armory purchase send failed: %v", err)
+	} else {
+		receipt.State, receipt.Message = "awaiting_gc_confirmation", "Armory purchase sent once; refresh to reconcile stars and inventory"
+		receipt.Result = map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "preBalance": balance, "generationTime": generation}
+	}
+	s.addEvent(receipt, receipt.State, receipt.Message)
+	return receipt
 }
 
 func (s *Service) RefreshInventory() operations.Receipt {
@@ -169,6 +273,12 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			}
 			if value, ok := next["enableGifting"].(bool); ok {
 				flags.EnableGifting = value
+			}
+			if value, ok := next["enableArmoryRead"].(bool); ok {
+				flags.EnableArmoryRead = value
+			}
+			if value, ok := next["enableArmoryRedemption"].(bool); ok {
+				flags.EnableArmoryRedemption = value
 			}
 			s.mu.Lock()
 			s.settings.FeatureFlags = flags
@@ -535,6 +645,21 @@ func emptyInventory() domain.InventorySnapshot {
 	return domain.InventorySnapshot{RefreshedAt: now(), Status: "requires_connection", Items: []domain.InventoryItem{}}
 }
 
+func emptyArmory() domain.ArmorySnapshot {
+	return domain.ArmorySnapshot{RefreshedAt: now(), Status: "requires_connection", ItemIDs: []string{}, Offers: []domain.ArmoryOffer{}}
+}
+
+func armoryFromGC(state transport.GCArmorySnapshot) domain.ArmorySnapshot {
+	result := domain.ArmorySnapshot{Balance: state.Balance, GenerationTime: state.GenerationTime, RefreshedAt: now(), Status: "ready", ItemIDs: make([]string, len(state.ItemIDs)), Offers: make([]domain.ArmoryOffer, len(state.Offers)), Diagnostics: append([]string(nil), state.Diagnostics...)}
+	for i, id := range state.ItemIDs {
+		result.ItemIDs[i] = strconv.FormatUint(id, 10)
+	}
+	for i, offer := range state.Offers {
+		result.Offers[i] = domain.ArmoryOffer{CampaignID: offer.CampaignID, RedeemID: offer.RedeemID, ExpectedCost: offer.ExpectedCost, GenerationTime: offer.GenerationTime}
+	}
+	return result
+}
+
 func inventoryError(message string, diagnostics []string) domain.InventorySnapshot {
 	return domain.InventorySnapshot{RefreshedAt: now(), Status: "error", Message: message, Error: message, Diagnostics: append([]string(nil), diagnostics...), Items: []domain.InventoryItem{}}
 }
@@ -609,6 +734,9 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 			Kind:               itemMetadata.Kind,
 			Defindex:           &defIndex,
 			Rarity:             itemMetadata.Rarity,
+			Collection:         itemMetadata.Collection,
+			CollectionItems:    domainRelatedItems(itemMetadata.CollectionItems),
+			ContainerItems:     domainRelatedItems(itemMetadata.ContainerItems),
 			ToolType:           itemMetadata.ToolType,
 			IsNameTagTool:      itemMetadata.IsNameTagTool,
 			MarketPrice:        itemMetadata.MarketPrice.SellPriceText,
@@ -636,6 +764,14 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 		Status:      "ready",
 		Diagnostics: inventoryMetadataDiagnostics(descriptionErr, marketErr, len(descriptions), descriptionMatches, len(pendingItems)),
 	}, nil
+}
+
+func domainRelatedItems(items []econ.RelatedItem) []domain.RelatedItem {
+	out := make([]domain.RelatedItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, domain.RelatedItem{Name: item.Name, MarketName: item.MarketName, Rarity: item.Rarity})
+	}
+	return out
 }
 
 func descriptionForGCItem(descriptions map[string]econ.InventoryDescription, item transport.GCInventoryItem) (econ.InventoryDescription, bool) {
@@ -860,6 +996,39 @@ func optionalUint64Input(input map[string]any, key string) (uint64, error) {
 	}
 }
 
+func requiredUint32Input(input map[string]any, key string) (uint32, error) {
+	value, ok := input[key]
+	if !ok {
+		return 0, fmt.Errorf("%s is required", key)
+	}
+	var parsed uint64
+	var err error
+	switch v := value.(type) {
+	case float64:
+		if v < 0 || v != float64(uint64(v)) {
+			return 0, fmt.Errorf("%s must be an unsigned integer", key)
+		}
+		parsed = uint64(v)
+	case string:
+		parsed, err = strconv.ParseUint(v, 10, 32)
+	default:
+		return 0, fmt.Errorf("%s must be an unsigned integer", key)
+	}
+	if err != nil || parsed > uint64(^uint32(0)) {
+		return 0, fmt.Errorf("%s must fit uint32", key)
+	}
+	return uint32(parsed), nil
+}
+
+func firstError(errors ...error) error {
+	for _, err := range errors {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type containerOpenConfirmation struct {
 	EMsg        uint32
 	Message     string
@@ -997,6 +1166,8 @@ func defaultSettings() domain.Settings {
 			EnableItemUse:          false,
 			EnableToolApplication:  false,
 			EnableGifting:          false,
+			EnableArmoryRead:       true,
+			EnableArmoryRedemption: false,
 		},
 	}
 }
@@ -1005,6 +1176,13 @@ func cloneInventory(inventory domain.InventorySnapshot) domain.InventorySnapshot
 	items := make([]domain.InventoryItem, len(inventory.Items))
 	copy(items, inventory.Items)
 	return domain.InventorySnapshot{Items: items, RefreshedAt: inventory.RefreshedAt, Status: inventory.Status, Message: inventory.Message, Error: inventory.Error, Diagnostics: append([]string(nil), inventory.Diagnostics...)}
+}
+
+func cloneArmory(armory domain.ArmorySnapshot) domain.ArmorySnapshot {
+	armory.ItemIDs = append([]string(nil), armory.ItemIDs...)
+	armory.Offers = append([]domain.ArmoryOffer(nil), armory.Offers...)
+	armory.Diagnostics = append([]string(nil), armory.Diagnostics...)
+	return armory
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {

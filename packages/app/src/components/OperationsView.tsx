@@ -29,7 +29,7 @@ export function OperationsView(props: OperationsViewProps) {
                       <span class="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200">{formatState(receipt.state)}</span>
                     </div>
                     <p class="mt-2">{receipt.type}</p>
-                    <p class="mt-1 text-xs text-slate-500">{formatTimestamp(receipt.createdAt)}</p>
+                    <p class="mt-1 text-xs text-slate-400">{formatTimestamp(receipt.createdAt)}</p>
                   </div>
                 )}
               </For>
@@ -49,7 +49,7 @@ export function OperationsView(props: OperationsViewProps) {
                       <span class="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200">{formatState(event.state)}</span>
                     </div>
                     <p class="mt-2">{event.message}</p>
-                    <p class="mt-1 text-xs text-slate-500">{formatTimestamp(event.createdAt)}</p>
+                    <p class="mt-1 text-xs text-slate-400">{formatTimestamp(event.createdAt)}</p>
                   </div>
                 )}
               </For>

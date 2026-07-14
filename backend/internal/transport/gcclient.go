@@ -17,6 +17,7 @@ type SteamGCClient struct {
 	events      chan GCEvent
 	state       GCConnectionState
 	pendingAuth *steamAuthSession
+	lastWelcome []byte
 }
 
 func NewSteamGCClient() *SteamGCClient {

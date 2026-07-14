@@ -161,6 +161,9 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 				continue
 			}
 			if message.EMsg == protocol.EMsgGCClientWelcome {
+				s.mu.Lock()
+				s.lastWelcome = append([]byte(nil), message.Body...)
+				s.mu.Unlock()
 				items, err := decodeInventoryFromClientWelcome(message.Body)
 				if err != nil {
 					return nil, trace.Error(err)
@@ -170,6 +173,52 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 			}
 		}
 	}
+}
+
+func (s *SteamGCClient) RequestArmory(_ context.Context) (GCArmorySnapshot, error) {
+	s.mu.Lock()
+	body := append([]byte(nil), s.lastWelcome...)
+	s.mu.Unlock()
+	if len(body) == 0 {
+		return GCArmorySnapshot{}, fmt.Errorf("CS2 GC Armory state is unavailable until ClientWelcome is received")
+	}
+	return decodeArmoryFromClientWelcome(body)
+}
+
+func decodeArmoryFromClientWelcome(body []byte) (GCArmorySnapshot, error) {
+	var welcome cs2pb.CMsgClientWelcome
+	if err := proto.Unmarshal(body, &welcome); err != nil {
+		return GCArmorySnapshot{}, fmt.Errorf("failed to decode CS2 ClientWelcome for Armory: %w", err)
+	}
+	var result GCArmorySnapshot
+	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
+		for _, objectType := range cache.GetObjects() {
+			if objectType.GetTypeId() == 1 { // CSOEconItem, the owned-item list.
+				continue
+			}
+			for _, objectData := range objectType.GetObjectData() {
+				var store cs2pb.CSOAccountItemPersonalStore
+				if err := proto.Unmarshal(objectData, &store); err == nil && store.GetGenerationTime() > 0 && len(store.GetItems()) > 0 {
+					if store.GetGenerationTime() >= result.GenerationTime {
+						result.GenerationTime = store.GetGenerationTime()
+						result.Balance = store.GetRedeemableBalance()
+						result.ItemIDs = append([]uint64(nil), store.GetItems()...)
+					}
+				}
+				var bid cs2pb.CSOAccountXpShopBids
+				if err := proto.Unmarshal(objectData, &bid); err == nil && bid.GetCampaignId() > 0 && bid.GetRedeemId() > 0 && bid.GetExpectedCost() > 0 && bid.GetGenerationTime() > 0 {
+					result.Offers = append(result.Offers, GCArmoryOffer{CampaignID: bid.GetCampaignId(), RedeemID: bid.GetRedeemId(), ExpectedCost: bid.GetExpectedCost(), GenerationTime: bid.GetGenerationTime()})
+				}
+			}
+		}
+	}
+	if result.GenerationTime == 0 {
+		return GCArmorySnapshot{}, fmt.Errorf("CS2 ClientWelcome contained no authoritative Armory personal-store object")
+	}
+	if len(result.Offers) == 0 {
+		result.Diagnostics = append(result.Diagnostics, "Armory balance loaded, but no purchasable bid objects were present in the GC cache")
+	}
+	return result, nil
 }
 
 func decodeCS2ClientLogonFatalError(body []byte) error {

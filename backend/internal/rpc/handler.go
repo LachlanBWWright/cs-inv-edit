@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cs-inv-edit/backend/internal/app"
+	"cs-inv-edit/backend/internal/operations"
 )
 
 type Handler struct {
@@ -21,6 +22,9 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/health", h.health)
 	h.mux.HandleFunc("/inventory", h.inventory)
 	h.mux.HandleFunc("/inventory/refresh", h.inventoryRefresh)
+	h.mux.HandleFunc("/armory", h.armory)
+	h.mux.HandleFunc("/armory/refresh", h.armoryRefresh)
+	h.mux.HandleFunc("/armory/redeem", h.armoryRedeem)
 	h.mux.HandleFunc("/operations", h.operations)
 	h.mux.HandleFunc("/operations/", h.operationRoot)
 	h.mux.HandleFunc("/operations/{type}", h.operation)
@@ -57,6 +61,21 @@ func (h *Handler) inventory(w http.ResponseWriter, _ *http.Request) {
 }
 func (h *Handler) inventoryRefresh(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.RefreshInventory())
+}
+func (h *Handler) armory(w http.ResponseWriter, _ *http.Request) { writeJSON(w, h.service.Armory()) }
+func (h *Handler) armoryRefresh(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, h.service.RefreshArmory())
+}
+func (h *Handler) armoryRedeem(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, h.handleBodyOperationDirect(r, h.service.RedeemArmory))
+}
+
+func (h *Handler) handleBodyOperationDirect(r *http.Request, submit func(map[string]any) operations.Receipt) operations.Receipt {
+	body, err := parseBody(r)
+	if err != nil {
+		return operations.Receipt{State: "failed", Message: err.Error()}
+	}
+	return submit(body)
 }
 func (h *Handler) operations(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.Operations())

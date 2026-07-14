@@ -1,7 +1,8 @@
 import { createSignal } from "solid-js";
 import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
-import { itemDisplayName, itemKey, itemKindLabel } from "./inventory-view-utils.js";
+import { itemDisplayName, itemKey, itemKindLabel, resolveSelectedInventoryItem } from "./inventory-view-utils.js";
+import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 
 export interface InventoryViewProps {
   inventory: InventorySnapshot | undefined;
@@ -9,6 +10,12 @@ export interface InventoryViewProps {
   setSelectedItemId: (id: string | undefined) => void;
   connection: ConnectionStatus | undefined;
   settings: SettingsData | undefined;
+  query: string;
+  setQuery: (value: string) => void;
+  kindFilter: "all" | InventoryItemDto["kind"];
+  setKindFilter: (value: "all" | InventoryItemDto["kind"]) => void;
+  compactMode: "icons" | "concise" | "detailed";
+  setCompactMode: (value: "icons" | "concise" | "detailed") => void;
   onRefresh: () => void;
   onRename: (input: { subjectItemId: string; toolItemId: string; name: string }) => Promise<unknown>;
   onRemoveName: (input: { itemId: string }) => Promise<unknown>;
@@ -17,18 +24,15 @@ export interface InventoryViewProps {
 }
 
 export function InventoryView(props: InventoryViewProps) {
-  const [query, setQuery] = createSignal("");
-  const [kindFilter, setKindFilter] = createSignal<"all" | InventoryItemDto["kind"]>("all");
   const [renameOpen, setRenameOpen] = createSignal(false);
   const [draftName, setDraftName] = createSignal("");
   const [selectedToolId, setSelectedToolId] = createSignal("");
   const [statusMessage, setStatusMessage] = createSignal("");
   const [containerStatusMessage, setContainerStatusMessage] = createSignal("");
-  const [localSelectedItemKey, setLocalSelectedItemKey] = createSignal<string | undefined>();
   const [pending, setPending] = createSignal(false);
 
   const filteredItems = () => {
-    const q = query().toLowerCase();
+    const q = props.query.toLowerCase();
     return (props.inventory?.items ?? []).filter((item) => {
       const searchable = [
         item.name,
@@ -48,24 +52,12 @@ export function InventoryView(props: InventoryViewProps) {
         .join(" ")
         .toLowerCase();
       const matchesQuery = !q || searchable.includes(q);
-      const matchesKind = kindFilter() === "all" || item.kind === kindFilter();
+      const matchesKind = props.kindFilter === "all" || item.kind === props.kindFilter;
       return matchesQuery && matchesKind;
     });
   };
 
-  const selectedItem = () => {
-    const items = filteredItems();
-    const selectedKey = localSelectedItemKey();
-    if (selectedKey) {
-      const keyed = items.find((item, index) => itemKey(item, index) === selectedKey);
-      if (keyed) return keyed;
-    }
-    if (props.selectedItemId) {
-      const byID = items.find((item) => item.id === props.selectedItemId);
-      if (byID) return byID;
-    }
-    return items[0];
-  };
+  const selectedItem = () => resolveSelectedInventoryItem(filteredItems(), props.selectedItemId);
 
   const selectedItemKey = () => {
     const selected = selectedItem();
@@ -74,8 +66,7 @@ export function InventoryView(props: InventoryViewProps) {
     return itemKey(selected, index);
   };
 
-  const selectItem = (item: InventoryItemDto, index: number) => {
-    setLocalSelectedItemKey(itemKey(item, index));
+  const selectItem = (item: InventoryItemDto) => {
     props.setSelectedItemId(item.id);
   };
 
@@ -90,10 +81,6 @@ export function InventoryView(props: InventoryViewProps) {
     const firstTool = nameTagTools()[0]?.id;
     setSelectedToolId(firstTool ?? "");
     setRenameOpen(true);
-    const index = filteredItems().indexOf(item);
-    if (index >= 0) {
-      setLocalSelectedItemKey(itemKey(item, index));
-    }
     props.setSelectedItemId(item.id);
   };
 
@@ -115,18 +102,16 @@ export function InventoryView(props: InventoryViewProps) {
     }
     setPending(true);
     setStatusMessage("Applying custom name...");
-    try {
-      await props.onRename({ subjectItemId: item.id, toolItemId: toolId, name: draftName() });
+    await fromAppPromise(props.onRename({ subjectItemId: item.id, toolItemId: toolId, name: draftName() }), "Failed to apply custom name").match(() => {
       setStatusMessage("Custom name updated.");
       setRenameOpen(false);
       props.onToast?.({ title: "Custom name applied", description: `${item.name} now has a custom label.`, variant: "success" });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to apply custom name.";
+    }, (error) => {
+      const message = appErrorMessage(error, "Failed to apply custom name.");
       setStatusMessage(message);
       props.onToast?.({ title: "Rename failed", description: message, variant: "danger" });
-    } finally {
-      setPending(false);
-    }
+    });
+    setPending(false);
   };
 
   const handleRemoveName = async () => {
@@ -140,17 +125,15 @@ export function InventoryView(props: InventoryViewProps) {
     }
     setPending(true);
     setStatusMessage("Removing custom name...");
-    try {
-      await props.onRemoveName({ itemId: item.id });
+    await fromAppPromise(props.onRemoveName({ itemId: item.id }), "Failed to remove custom name").match(() => {
       setStatusMessage("Custom name removed.");
       props.onToast?.({ title: "Custom name removed", description: `${item.name} is back to its original label.`, variant: "success" });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to remove custom name.";
+    }, (error) => {
+      const message = appErrorMessage(error, "Failed to remove custom name.");
       setStatusMessage(message);
       props.onToast?.({ title: "Remove-name failed", description: message, variant: "danger" });
-    } finally {
-      setPending(false);
-    }
+    });
+    setPending(false);
   };
 
   const handleOpenContainer = async () => {
@@ -169,8 +152,7 @@ export function InventoryView(props: InventoryViewProps) {
     }
     setPending(true);
     setContainerStatusMessage("Sending open request to CS2...");
-    try {
-      const receipt = await props.onOpenContainer({ itemId: item.id });
+    await fromAppPromise(props.onOpenContainer({ itemId: item.id }), "Failed to open container").match((receipt) => {
       if (typeof receipt === "object" && receipt && "state" in receipt && receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation") {
         const message = "message" in receipt && typeof receipt.message === "string" ? receipt.message : "Container open request was not accepted.";
         const responseBody =
@@ -191,15 +173,10 @@ export function InventoryView(props: InventoryViewProps) {
         setContainerStatusMessage(message);
         if (openedItem?.id) {
           props.setSelectedItemId(openedItem.id);
-          setLocalSelectedItemKey(undefined);
         }
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to open container.";
-      setContainerStatusMessage(message);
-    } finally {
-      setPending(false);
-    }
+    }, (error) => setContainerStatusMessage(appErrorMessage(error, "Failed to open container.")));
+    setPending(false);
   };
 
   const selected = selectedItem();
@@ -210,8 +187,8 @@ export function InventoryView(props: InventoryViewProps) {
       inventory={props.inventory}
       connection={props.connection}
       settings={props.settings}
-      query={query()}
-      kindFilter={kindFilter()}
+      query={props.query}
+      kindFilter={props.kindFilter}
       filteredItems={filteredItems()}
       selectedItem={selected}
       selectedItemKey={selectedItemKey()}
@@ -229,8 +206,10 @@ export function InventoryView(props: InventoryViewProps) {
       canOpenContainer={!!selected && (selected.kind === "container" || selectedLabel.includes("container") || selectedLabel.includes("capsule") || selectedLabel.includes("case"))}
       canUseNameTagOn={!!selected && selected.kind === "weapon_skin" && nameTagTools().length > 0}
       onRefresh={props.onRefresh}
-      onQueryChange={setQuery}
-      onKindFilterChange={setKindFilter}
+      onQueryChange={props.setQuery}
+      onKindFilterChange={props.setKindFilter}
+      compactMode={props.compactMode}
+      onCompactModeChange={props.setCompactMode}
       onSelectItem={selectItem}
       onOpenRenameEditor={openRenameEditor}
       onRenameSubmit={handleRenameSubmit}

@@ -1,4 +1,6 @@
 import { createEffect, createResource, createSignal } from "solid-js";
+import { errAsync } from "neverthrow";
+import type { ResultAsync } from "neverthrow";
 import type { ConnectionStatus, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 import { AppView } from "./AppView.js";
 import { createOperationApi } from "./lib/api.js";
@@ -7,6 +9,8 @@ export * from "./lib/result-http.js";
 
 import type { AppBackendClient } from "./lib/backend.js";
 import type { ToastItem } from "./components/ui/ToastViewport.js";
+import { appErrorMessage, fromAppPromise } from "./lib/result.js";
+import type { AppError } from "./lib/result-http.js";
 
 export interface AppProps {
   backend: AppBackendClient;
@@ -16,15 +20,20 @@ export interface AppProps {
 export function App(props: AppProps) {
   const [view, setView] = createSignal("inventory");
   const [selectedItemId, setSelectedItemId] = createSignal<string | undefined>();
+  const [query, setQuery] = createSignal("");
+  const [kindFilter, setKindFilter] = createSignal<"all" | import("@cs-inv-edit/contracts").InventoryItemDto["kind"]>("all");
+  const [compactMode, setCompactMode] = createSignal<"icons" | "concise" | "detailed">("concise");
   const [statusMessage, setStatusMessage] = createSignal<string>("");
   const [toasts, setToasts] = createSignal<ToastItem[]>([]);
 
-  const [health] = createResource(() => props.backend.health());
-  const [inventory, { refetch: refetchInventory }] = createResource(() => props.backend.inventory());
-  const [receipts, { refetch: refetchOperations }] = createResource(() => props.backend.operations());
-  const [events, { refetch: refetchEvents }] = createResource(() => props.backend.events());
-  const [settings, { refetch: refetchSettings }] = createResource(() => props.backend.settings());
-  const [connection, { refetch: refetchConnection }] = createResource(() => props.backend.steamStatus?.() ?? Promise.resolve({ state: "disconnected" as const }));
+  const resourceValue = <T,>(result: ResultAsync<T, AppError>) => result.match((value) => value, (error) => { console.error(error.message, error.cause); return undefined; });
+  const [health] = createResource(() => resourceValue(props.backend.health()));
+  const [inventory, { refetch: refetchInventory }] = createResource(() => resourceValue(props.backend.inventory()));
+  const [armory, { refetch: refetchArmory }] = createResource(() => resourceValue(props.backend.armory()));
+  const [receipts, { refetch: refetchOperations }] = createResource(() => resourceValue(props.backend.operations()));
+  const [events, { refetch: refetchEvents }] = createResource(() => resourceValue(props.backend.events()));
+  const [settings, { refetch: refetchSettings }] = createResource(() => resourceValue(props.backend.settings()));
+  const [connection, { refetch: refetchConnection }] = createResource(() => resourceValue(props.backend.steamStatus?.() ?? errAsync({ message: "Steam status unavailable" })));
 
   const pushToast = (toast: Omit<ToastItem, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -54,8 +63,7 @@ export function App(props: AppProps) {
       return;
     }
     steamGuardPollInFlight = true;
-    try {
-      const res = await props.backend.submitSteamGuard({ code: "" });
+    await props.backend.submitSteamGuard({ code: "" }).match(async (res) => {
       console.info("[app] Steam Guard mobile poll result", res);
       logSteamDiagnostics("steam guard mobile poll", res);
       if (res.state === "connected") {
@@ -70,11 +78,10 @@ export function App(props: AppProps) {
       } else {
         await refetchConnection();
       }
-    } catch (error) {
+    }, (error) => {
       console.info("[app] Steam Guard mobile approval pending", error);
-    } finally {
-      steamGuardPollInFlight = false;
-    }
+    });
+    steamGuardPollInFlight = false;
   };
 
   createEffect(() => {
@@ -111,7 +118,7 @@ export function App(props: AppProps) {
     void props.backend.submitOperation("settings", {
       ...currentSettings,
       featureFlags: { ...currentSettings.featureFlags, enableNameTags: true },
-    }).then(() => refetchSettings()).catch((error) => {
+    }).andThen(() => fromAppPromise(Promise.resolve(refetchSettings()), "Failed to refresh settings")).match(() => undefined, (error) => {
       console.error("[app] failed to enable name-tag workflow", error);
       pushToast({ title: "Defaults updated", description: "Name-tag editing could not be enabled automatically.", variant: "warning" });
     });
@@ -135,39 +142,34 @@ export function App(props: AppProps) {
     }
   };
 
-  const settleOperation = async (receiptPromise: Promise<OperationReceipt>) => {
-    try {
-      const receipt = await receiptPromise;
+  const settleOperation = async (receiptResult: ResultAsync<OperationReceipt, AppError>): Promise<OperationReceipt> => {
+    return receiptResult.andThen((receipt) => {
       console.info("[app] operation receipt", receipt);
       notifyOperationReceipt(receipt);
       if (receipt.type !== "containers.open" && (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation")) {
-        await props.backend.refreshInventory();
-        await refetchInventory();
+        return props.backend.refreshInventory().andThen(() => fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed")).map(() => receipt);
       } else if (receipt.type === "containers.open") {
-        await refetchInventory();
+        return fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed").map(() => receipt);
       }
-      await Promise.all([refetchOperations(), refetchEvents()]);
-      return receipt;
-    } catch (error) {
+      return fromAppPromise(Promise.resolve(receipt));
+    }).andThen((receipt) => fromAppPromise(Promise.all([refetchOperations(), refetchEvents()]), "Operation state refresh failed").map(() => receipt)).match((receipt) => receipt, (error) => {
       console.error("[app] operation failed", error);
-      pushToast({ title: "Operation error", description: error instanceof Error ? error.message : "Unknown operation error", variant: "danger" });
-      return Promise.reject(error);
-    }
+      const message = appErrorMessage(error, "Unknown operation error");
+      pushToast({ title: "Operation error", description: message, variant: "danger" });
+      return { operationId: `failed-${Date.now()}`, type: "operation.error", state: "failed", createdAt: new Date().toISOString(), message };
+    });
   };
 
   const refreshAll = async () => {
     setStatusMessage("Refreshing backend state");
     console.info("[app] refreshing backend state");
-    try {
-      await Promise.all([refetchInventory(), refetchOperations(), refetchEvents(), refetchSettings(), refetchConnection()]);
+    await fromAppPromise(Promise.all([refetchInventory(), refetchArmory(), refetchOperations(), refetchEvents(), refetchSettings(), refetchConnection()]), "Refresh failed").match(() => {
       pushToast({ title: "Inventory refreshed", description: "The latest backend state is now loaded.", variant: "success" });
-    } catch (error) {
+    }, (error) => {
       console.error("[app] refresh failed", error);
-      pushToast({ title: "Refresh failed", description: error instanceof Error ? error.message : "Unable to refresh state", variant: "danger" });
-      return Promise.reject(error);
-    } finally {
-      setStatusMessage("");
-    }
+      pushToast({ title: "Refresh failed", description: appErrorMessage(error, "Unable to refresh state"), variant: "danger" });
+    });
+    setStatusMessage("");
   };
 
   const syncAccountState = async (latestStatus?: ConnectionStatus) => {
@@ -177,17 +179,17 @@ export function App(props: AppProps) {
     if (status?.state === "connected") {
       setView("inventory");
       console.info("[app] connection ready, refreshing inventory");
-      let inventoryRefreshFailed = false;
-      try {
-        const refreshPromise = props.backend.refreshInventory();
-        await new Promise((resolve) => window.setTimeout(resolve, 25));
-        await refetchInventory();
-        await refreshPromise;
-        await refetchInventory();
-      } catch (error) {
-        inventoryRefreshFailed = true;
+      const inventoryResult = await props.backend.refreshInventory()
+        .andThen(() => fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed"));
+      const inventoryRefreshFailed = inventoryResult.isErr();
+      if (inventoryResult.isErr()) {
+        const error = inventoryResult.error;
         console.error("[app] inventory refresh after sign-in failed", error);
-        pushToast({ title: "Inventory refresh failed", description: error instanceof Error ? error.message : "Unable to refresh inventory after sign-in", variant: "danger" });
+        pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, "Unable to refresh inventory after sign-in"), variant: "danger" });
+      } else {
+        await props.backend.refreshArmory()
+          .andThen(() => fromAppPromise(Promise.resolve(refetchArmory()), "Armory reload failed"))
+          .match(() => undefined, (error) => console.info("[app] Armory state was not present in the current GC cache", error));
       }
       pushToast({ title: "Account connected", description: inventoryRefreshFailed ? "Signed in successfully. Inventory still needs attention." : "Inventory is ready to inspect and edit.", variant: "success" });
       return;
@@ -225,7 +227,14 @@ export function App(props: AppProps) {
       health={health()}
       connection={connection()}
       inventory={inventory()}
+      armory={armory()}
       settings={settings()}
+      query={query()}
+      setQuery={setQuery}
+      kindFilter={kindFilter()}
+      setKindFilter={setKindFilter}
+      compactMode={compactMode()}
+      setCompactMode={setCompactMode}
       receipts={receipts()}
       events={events()}
       toasts={toasts()}
@@ -234,62 +243,56 @@ export function App(props: AppProps) {
       onRefreshInventory={() => void refreshAll()}
       onDismissToast={dismissToast}
       onConnect={async (input) => {
-        try {
-          if (props.backend.connectSteam) {
+        const result: ResultAsync<ConnectionStatus, AppError> = props.backend.connectSteam
+          ? props.backend.connectSteam(input)
+          : errAsync({ message: "Steam connection unavailable" });
+        await result.andThen((res) => {
             console.info("[app] connecting Steam account", input);
-            const res = await props.backend.connectSteam(input);
             console.info("[app] connect result", res);
             logSteamDiagnostics("connect", res);
-            if (res.state === "error") return Promise.reject(new Error(res.detail || "Connection failed"));
+            if (res.state === "error") return errAsync({ message: res.detail || "Connection failed" });
             if (res.state === "connected") {
               setView("inventory");
             }
-            await syncAccountState(res);
-          } else {
-            await syncAccountState();
-          }
-        } catch (error) {
+            return fromAppPromise(syncAccountState(res), "Account synchronization failed");
+          }).match(() => undefined, (error) => {
           console.error("[app] connect failed", error);
-          pushToast({ title: "Sign-in failed", description: error instanceof Error ? error.message : "Unable to sign in to Steam", variant: "danger" });
-          return Promise.reject(error);
-        }
+          pushToast({ title: "Sign-in failed", description: appErrorMessage(error, "Unable to sign in to Steam"), variant: "danger" });
+        });
       }}
       onSubmitSteamGuard={async (input) => {
-        try {
-          if (props.backend.submitSteamGuard) {
+        const result: ResultAsync<ConnectionStatus, AppError> = props.backend.submitSteamGuard
+          ? props.backend.submitSteamGuard(input)
+          : errAsync({ message: "Steam Guard unavailable" });
+        await result.andThen((res) => {
             console.info("[app] submitting Steam Guard code");
-            const res = await props.backend.submitSteamGuard(input);
             console.info("[app] Steam Guard result", res);
             logSteamDiagnostics("steam guard", res);
-            if (res.state === "error") return Promise.reject(new Error(res.detail || "Steam Guard failed"));
+            if (res.state === "error") return errAsync({ message: res.detail || "Steam Guard failed" });
             if (res.state === "connected") {
               setView("inventory");
             }
-            await syncAccountState(res);
-          } else {
-            await syncAccountState();
-          }
-        } catch (error) {
+            return fromAppPromise(syncAccountState(res), "Account synchronization failed");
+          }).match(() => undefined, (error) => {
           console.error("[app] steam guard failed", error);
-          pushToast({ title: "Steam Guard failed", description: error instanceof Error ? error.message : "Unable to verify the code", variant: "danger" });
-          return Promise.reject(error);
-        }
+          pushToast({ title: "Steam Guard failed", description: appErrorMessage(error, "Unable to verify the code"), variant: "danger" });
+        });
       }}
       onDisconnect={async () => {
-        try {
-          console.info("[app] disconnecting Steam account");
-          if (props.backend.disconnectSteam) await props.backend.disconnectSteam();
-          await refetchConnection();
+        console.info("[app] disconnecting Steam account");
+        const disconnect = props.backend.disconnectSteam?.() ?? errAsync<ConnectionStatus, AppError>({ message: "Disconnect unavailable" });
+        await disconnect.andThen(() => fromAppPromise(Promise.resolve(refetchConnection()), "Connection reload failed")).match(() => {
           setView("account");
           pushToast({ title: "Account disconnected", description: "The session has been cleared.", variant: "warning" });
-        } catch (error) {
+        }, (error) => {
           console.error("[app] disconnect failed", error);
-          pushToast({ title: "Disconnect failed", description: error instanceof Error ? error.message : "Unable to disconnect", variant: "danger" });
-          return Promise.reject(error);
-        }
+          pushToast({ title: "Disconnect failed", description: appErrorMessage(error, "Unable to disconnect"), variant: "danger" });
+        });
       }}
       onToast={pushToast}
       onInventoryRefresh={() => void refreshAll()}
+      onArmoryRefresh={async () => { await props.backend.refreshArmory(); await refetchArmory(); }}
+      onArmoryRedeem={(input) => settleOperation(props.backend.redeemArmory(input)).then(async (receipt) => { await refetchArmory(); return receipt; })}
       onInventoryRename={(input) => settleOperation(operationApi.applyNameTag(input))}
       onRemoveName={(input) => settleOperation(operationApi.removeNameTag(input))}
       onOpenContainer={(input) => settleOperation(props.backend.submitOperation("containers.open", input))}

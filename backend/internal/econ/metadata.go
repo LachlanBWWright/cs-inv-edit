@@ -23,14 +23,23 @@ type Provider struct {
 }
 
 type Metadata struct {
-	Name          string
-	MarketName    string
-	Kind          string
-	Rarity        string
-	ImageURL      string
-	MarketPrice   MarketPrice
-	ToolType      string
-	IsNameTagTool bool
+	Name            string
+	MarketName      string
+	Kind            string
+	Rarity          string
+	ImageURL        string
+	MarketPrice     MarketPrice
+	ToolType        string
+	IsNameTagTool   bool
+	Collection      string
+	CollectionItems []RelatedItem
+	ContainerItems  []RelatedItem
+}
+
+type RelatedItem struct {
+	Name       string
+	MarketName string
+	Rarity     string
 }
 
 type MarketPrice struct {
@@ -72,6 +81,14 @@ type Schema struct {
 	musicDefinitions map[uint32]musicDefinition
 	keychains        map[uint32]keychainDefinition
 	tokens           map[string]string
+	collections      map[string]collectionDefinition
+	collectionByItem map[string]string
+	lootLists        map[string][]string
+}
+
+type collectionDefinition struct {
+	Name  string
+	Items []string
 }
 
 type itemDefinition struct {
@@ -84,11 +101,13 @@ type itemDefinition struct {
 	Image        string
 	ToolType     string
 	Capabilities map[string]string
+	LootList     string
 }
 
 type paintKitDefinition struct {
 	Name        string
 	Description string
+	Rarity      string
 }
 
 type stickerKitDefinition struct {
@@ -140,6 +159,9 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		musicDefinitions: make(map[uint32]musicDefinition),
 		keychains:        make(map[uint32]keychainDefinition),
 		tokens:           parseTokens(englishRoot),
+		collections:      make(map[string]collectionDefinition),
+		collectionByItem: make(map[string]string),
+		lootLists:        make(map[string][]string),
 	}
 	schema.parseItems(itemsRoot)
 	if len(schema.items) == 0 {
@@ -383,8 +405,10 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 	}
 	kind := itemKind(item)
 	marketName := name
+	rarity := item.Rarity
 	if paintKit != 0 {
 		if paint, ok := s.paintKits[paintKit]; ok {
+			rarity = firstNonEmpty(paint.Rarity, rarity)
 			paintName := s.localize(paint.Description)
 			if paintName == "" {
 				paintName = paint.Name
@@ -444,12 +468,15 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		}
 	}
 	return Metadata{
-		Name:          name,
-		MarketName:    marketName,
-		Kind:          kind,
-		Rarity:        item.Rarity,
-		ToolType:      item.ToolType,
-		IsNameTagTool: strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
+		Name:            name,
+		MarketName:      marketName,
+		Kind:            kind,
+		Rarity:          rarity,
+		ToolType:        item.ToolType,
+		IsNameTagTool:   strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
+		Collection:      s.collectionNameFor(item.Name, paintKit),
+		CollectionItems: s.collectionItemsFor(item.Name, paintKit),
+		ContainerItems:  s.lootListItems(item.LootList, nil),
 	}
 }
 
@@ -515,6 +542,7 @@ func (s *Schema) parseItems(root kvObject) {
 			Image:        merged.string("image_inventory"),
 			ToolType:     merged.object("tool").string("type"),
 			Capabilities: merged.object("capabilities").strings(),
+			LootList:     merged.string("loot_list_name"),
 		}
 	}
 	for key, node := range itemsGame.object("paint_kits") {
@@ -526,6 +554,7 @@ func (s *Schema) parseItems(root kvObject) {
 		s.paintKits[uint32(paintKit)] = paintKitDefinition{
 			Name:        paint.string("name"),
 			Description: paint.string("description_tag"),
+			Rarity:      itemsGame.object("paint_kits_rarity").string(paint.string("name")),
 		}
 	}
 	for key, node := range itemsGame.object("sticker_kits") {
@@ -564,6 +593,131 @@ func (s *Schema) parseItems(root kvObject) {
 			Image:    keychain.string("image_inventory"),
 		}
 	}
+	s.parseCollections(itemsGame)
+}
+
+func (s *Schema) parseCollections(itemsGame kvObject) {
+	if s.collections == nil {
+		s.collections = make(map[string]collectionDefinition)
+	}
+	if s.collectionByItem == nil {
+		s.collectionByItem = make(map[string]string)
+	}
+	if s.lootLists == nil {
+		s.lootLists = make(map[string][]string)
+	}
+	for key, node := range itemsGame.object("item_sets") {
+		set := node.objectValue()
+		definition := collectionDefinition{Name: s.localize(set.string("name"))}
+		if definition.Name == "" {
+			definition.Name = humanizeIdentifier(key)
+		}
+		for itemKey := range set.object("items") {
+			definition.Items = append(definition.Items, itemKey)
+			s.collectionByItem[itemKey] = key
+		}
+		s.collections[key] = definition
+	}
+	for key, node := range itemsGame.object("client_loot_lists") {
+		for entry := range node.objectValue() {
+			s.lootLists[key] = append(s.lootLists[key], entry)
+		}
+	}
+}
+
+func schemaItemKey(itemName string, paintKit uint32, paintKits map[uint32]paintKitDefinition) string {
+	if paint, ok := paintKits[paintKit]; ok && paint.Name != "" {
+		return "[" + paint.Name + "]" + itemName
+	}
+	return itemName
+}
+
+func (s *Schema) collectionNameFor(itemName string, paintKit uint32) string {
+	key := schemaItemKey(itemName, paintKit, s.paintKits)
+	setKey := s.collectionByItem[key]
+	return s.collections[setKey].Name
+}
+
+func (s *Schema) collectionItemsFor(itemName string, paintKit uint32) []RelatedItem {
+	key := schemaItemKey(itemName, paintKit, s.paintKits)
+	setKey := s.collectionByItem[key]
+	return s.relatedItems(s.collections[setKey].Items)
+}
+
+func (s *Schema) relatedItems(keys []string) []RelatedItem {
+	items := make([]RelatedItem, 0, len(keys))
+	for _, key := range keys {
+		paintName, itemName := splitSchemaItemKey(key)
+		var item itemDefinition
+		for _, candidate := range s.items {
+			if candidate.Name == itemName {
+				item = candidate
+				break
+			}
+		}
+		if item.Name == "" {
+			continue
+		}
+		baseName := firstNonEmpty(s.localize(item.ItemName), item.Name)
+		related := RelatedItem{Name: baseName, MarketName: baseName, Rarity: item.Rarity}
+		for _, paint := range s.paintKits {
+			if paint.Name == paintName {
+				paintDisplay := firstNonEmpty(s.localize(paint.Description), paint.Name)
+				related.MarketName = baseName + " | " + paintDisplay
+				related.Rarity = firstNonEmpty(paint.Rarity, related.Rarity)
+				break
+			}
+		}
+		items = append(items, related)
+	}
+	return items
+}
+
+func splitSchemaItemKey(key string) (string, string) {
+	if strings.HasPrefix(key, "[") {
+		if end := strings.IndexByte(key, ']'); end > 1 {
+			return key[1:end], key[end+1:]
+		}
+	}
+	return "", key
+}
+
+func (s *Schema) lootListItems(name string, seen map[string]bool) []RelatedItem {
+	if name == "" {
+		return nil
+	}
+	if seen == nil {
+		seen = make(map[string]bool)
+	}
+	if seen[name] {
+		return nil
+	}
+	seen[name] = true
+	var keys []string
+	for _, entry := range s.lootLists[name] {
+		if _, nested := s.lootLists[entry]; nested {
+			keys = append(keys, s.relatedItemKeysFromLootList(entry, seen)...)
+			continue
+		}
+		keys = append(keys, entry)
+	}
+	return s.relatedItems(keys)
+}
+
+func (s *Schema) relatedItemKeysFromLootList(name string, seen map[string]bool) []string {
+	if seen[name] {
+		return nil
+	}
+	seen[name] = true
+	var keys []string
+	for _, entry := range s.lootLists[name] {
+		if _, nested := s.lootLists[entry]; nested {
+			keys = append(keys, s.relatedItemKeysFromLootList(entry, seen)...)
+		} else {
+			keys = append(keys, entry)
+		}
+	}
+	return keys
 }
 
 func parseTokens(root kvObject) map[string]string {

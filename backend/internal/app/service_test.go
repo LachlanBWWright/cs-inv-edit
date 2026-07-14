@@ -80,3 +80,12 @@ func TestRefreshInventoryRequiresConnection(t *testing.T) {
 		t.Fatalf("expected requires_connection, got %q", receipt.State)
 	}
 }
+
+func TestArmoryReadEnabledAndPurchasesDisabledByDefault(t *testing.T) {
+	service := NewService()
+	settings := service.Settings()
+	if !settings.FeatureFlags.EnableArmoryRead { t.Fatal("expected Armory reads enabled by default") }
+	if settings.FeatureFlags.EnableArmoryRedemption { t.Fatal("expected Armory purchases disabled by default") }
+	receipt := service.RedeemArmory(map[string]any{})
+	if receipt.State != "blocked_by_feature_flag" { t.Fatalf("expected blocked purchase, got %q", receipt.State) }
+}
