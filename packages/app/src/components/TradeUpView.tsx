@@ -20,7 +20,7 @@ export function TradeUpView(props: TradeUpViewProps) {
   const playReveal = (receipt: OperationReceipt) => {
     if ((props.settings?.animations?.tradeUp ?? "slot-machine") === "none" || (receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation")) return Promise.resolve();
     const selectedItems = (props.inventory?.items ?? []).filter((item) => selected().includes(item.id));
-    const candidates = selectedItems.flatMap((item) => item.collectionItems ?? []).map((item) => ({ name: item.marketName || item.name, rarity: item.rarity }));
+    const candidates = selectedItems.flatMap((item) => item.tradeUpItems ?? item.collectionItems ?? []).map((item) => ({ name: item.marketName || item.name, imageUrl: item.imageUrl, rarity: item.rarity }));
     const opened = receipt.result?.openedItem;
     const result = opened ? { name: opened.marketName || opened.name, imageUrl: opened.imageUrl, rarity: opened.rarity } : { name: receipt.message || "Trade-up submitted" };
     return new Promise<void>((resolve) => setReveal({ result, candidates, complete: resolve }));

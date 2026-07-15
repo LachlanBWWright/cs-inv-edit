@@ -101,6 +101,18 @@ type LogonResult struct {
 	SteamID uint64
 }
 
+type QRAuthSession struct {
+	ClientID     uint64
+	RequestID    []byte
+	ChallengeURL string
+	PollInterval time.Duration
+}
+
+type QRAuthResult struct {
+	AccountName string
+	AccessToken string
+}
+
 type steamResultError struct {
 	method string
 	result steamlang.EResult
@@ -114,17 +126,30 @@ func (e steamResultError) Error() string {
 }
 
 type GCInventoryItem struct {
-	ID         uint64
-	OriginalID uint64
-	DefIndex   uint32
-	Quantity   uint32
-	Quality    uint32
-	Rarity     uint32
-	Inventory  uint32
-	CustomName string
-	PaintKit   uint32
-	PaintWear  *float64
-	Attributes map[uint32]uint32
+	ID             uint64
+	OriginalID     uint64
+	DefIndex       uint32
+	Quantity       uint32
+	Quality        uint32
+	Rarity         uint32
+	Inventory      uint32
+	CustomName     string
+	PaintKit       uint32
+	PaintWear      *float64
+	Attributes     map[uint32]uint32
+	AttributeBytes map[uint32][]byte
+	EquippedStates []GCEquippedState
+	InteriorItemID uint64
+	Level          uint32
+	Flags          uint32
+	Origin         uint32
+	Style          uint32
+	CustomDesc     string
+}
+
+type GCEquippedState struct {
+	Class uint32
+	Slot  uint32
 }
 
 type GCArmoryOffer struct {
@@ -146,19 +171,27 @@ type GCArmorySnapshot struct {
 type GCClient interface {
 	Connect(ctx context.Context) error
 	LogOn(ctx context.Context, credentials LogonCredentials) (LogonResult, error)
+	BeginQRAuth(ctx context.Context) (QRAuthSession, error)
+	CompleteQRAuth(ctx context.Context, session QRAuthSession) (QRAuthResult, error)
 	Close() error
 	SendGamesPlayed(ctx context.Context, appID uint32) error
+	SetGamesPlayed(ctx context.Context, appIDs []uint32) error
 	SendToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	RequestInventory(ctx context.Context) ([]GCInventoryItem, error)
+	RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error)
 	RequestArmory(ctx context.Context) (GCArmorySnapshot, error)
 	Events() <-chan GCEvent
 	State() GCConnectionState
 }
 
 type TestGCClient struct {
-	events chan GCEvent
-	state  GCConnectionState
+	events            chan GCEvent
+	state             GCConnectionState
+	SentProtoMessages []GCMessage
+	GameInventoryErr  error
+	GameInventoryFunc func(context.Context, uint32) ([]GCInventoryItem, error)
+	GamesPlayedCalls  [][]uint32
 }
 
 func NewTestGCClient() *TestGCClient {
@@ -175,6 +208,14 @@ func (m *TestGCClient) LogOn(context.Context, LogonCredentials) (LogonResult, er
 	return LogonResult{EResult: int32(steamlang.EResult_OK)}, nil
 }
 
+func (m *TestGCClient) BeginQRAuth(context.Context) (QRAuthSession, error) {
+	return QRAuthSession{}, nil
+}
+
+func (m *TestGCClient) CompleteQRAuth(context.Context, QRAuthSession) (QRAuthResult, error) {
+	return QRAuthResult{}, nil
+}
+
 func (m *TestGCClient) Close() error {
 	m.state = GCConnectionState{State: "closed"}
 	return nil
@@ -184,16 +225,29 @@ func (m *TestGCClient) SendGamesPlayed(_ context.Context, _ uint32) error {
 	return nil
 }
 
+func (m *TestGCClient) SetGamesPlayed(_ context.Context, appIDs []uint32) error {
+	m.GamesPlayedCalls = append(m.GamesPlayedCalls, append([]uint32(nil), appIDs...))
+	return nil
+}
+
 func (m *TestGCClient) SendToGC(_ context.Context, _ uint32, _ uint32, _ []byte) error {
 	return nil
 }
 
-func (m *TestGCClient) SendProtoToGC(_ context.Context, _ uint32, _ uint32, _ []byte) error {
+func (m *TestGCClient) SendProtoToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
+	m.SentProtoMessages = append(m.SentProtoMessages, GCMessage{AppID: appID, EMsg: emsg, Body: append([]byte(nil), body...)})
 	return nil
 }
 
 func (m *TestGCClient) RequestInventory(context.Context) ([]GCInventoryItem, error) {
 	return nil, nil
+}
+
+func (m *TestGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
+	if m.GameInventoryFunc != nil {
+		return m.GameInventoryFunc(ctx, appID)
+	}
+	return nil, m.GameInventoryErr
 }
 
 func (m *TestGCClient) RequestArmory(context.Context) (GCArmorySnapshot, error) {

@@ -1,10 +1,10 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import type { ConnectionStatus, HealthStatus, InventoryItemDto, InventorySnapshot, SettingsData, SteamAccountProfile } from "@cs-inv-edit/contracts";
 import { AccountSwitcher } from "./AccountSwitcher.js";
 import { SettingsView } from "./SettingsView.js";
 import { Input } from "./ui/Input.js";
 import type { AppMode, AppScreen } from "../view.js";
-import { modeForScreen } from "../view.js";
+import { availableModes, isEconomyInventoryScreen, isInventoryScreen, modeForScreen } from "../view.js";
 
 export interface SidebarProps {
   view: AppScreen;
@@ -36,28 +36,28 @@ export function Sidebar(props: SidebarProps) {
   const [kindMenuOpen, setKindMenuOpen] = createSignal(false);
   const [compactMenuOpen, setCompactMenuOpen] = createSignal(false);
   const chooseMode = (mode: AppMode) => props.setView(mode);
+	const modeLabel: Record<AppMode, string> = { inventory: "Inventory", "inventory-storage": "Storage move selection (stub)", "inventory-tradeup": "Trade-up input selection (stub)", armory: "Armory", "tf2-inventory": "Team Fortress 2 Inventory", "dota2-inventory": "Dota 2 Inventory" };
 
   return (
     <header class="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-slate-800/80 bg-slate-950/90 px-3 py-2 backdrop-blur lg:px-4">
-      <label class="relative shrink-0">
+      <Show when={props.view !== "account"}><label class="relative shrink-0">
         <span class="sr-only">Mode</span>
         <select
           aria-label="Mode"
           class="h-9 min-w-32 cursor-pointer appearance-auto rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-medium text-slate-100 hover:border-cyan-400/50"
-          value={modeForScreen(props.view)}
+          value={props.view === "account" ? modeForScreen(props.view) : props.view}
           onInput={(event) => chooseMode(event.currentTarget.value as AppMode)}
           onChange={(event) => chooseMode(event.currentTarget.value as AppMode)}
         >
-          <option value="inventory">Inventory</option>
-          <option value="armory">Armory</option>
+		  <For each={availableModes(props.settings?.featureFlags)}>{(mode) => <option value={mode}>{modeLabel[mode]}</option>}</For>
         </select>
-      </label>
-      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      </label></Show>
+      <Show when={isInventoryScreen(props.view) || isEconomyInventoryScreen(props.view)}><div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <div class="relative min-w-[220px] flex-1">
             <Input class="w-full min-w-0" placeholder="Search" value={props.query} onInput={(event) => props.setQuery((event.currentTarget as HTMLInputElement | null)?.value ?? "")} />
           </div>
-          <div class="relative">
+          <Show when={isInventoryScreen(props.view)}><div class="relative">
             <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Filter inventory" aria-haspopup="menu" aria-expanded={kindMenuOpen()} onClick={() => { setKindMenuOpen((value) => !value); setCompactMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 5h16" />
@@ -76,7 +76,7 @@ export function Sidebar(props: SidebarProps) {
                 <button class="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800/80" onClick={() => { props.setKindFilter("container"); setKindMenuOpen(false); }}>Containers</button>
               </div>
             </Show>
-          </div>
+          </div></Show>
           <div class="relative">
             <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Inventory display size" aria-haspopup="menu" aria-expanded={compactMenuOpen()} onClick={() => { setCompactMenuOpen((value) => !value); setKindMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -97,7 +97,7 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </div>
         </div>
-      </div>
+      </div></Show>
 
       <div class="ml-auto flex items-center gap-2">
         <div class="relative">

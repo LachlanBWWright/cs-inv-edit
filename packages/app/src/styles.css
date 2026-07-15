@@ -12,6 +12,27 @@
   --accent-strong: #06b6d4;
 }
 
+/* TF2 backend Quality labels from Steam description tags. */
+.economy-outline--tf2-normal { border-color: #b2b2b2; }
+.economy-outline--tf2-unique { border-color: #ffd700; }
+.economy-outline--tf2-vintage { border-color: #476291; }
+.economy-outline--tf2-genuine { border-color: #4d7455; }
+.economy-outline--tf2-strange { border-color: #cf6a32; }
+.economy-outline--tf2-unusual { border-color: #8650ac; }
+.economy-outline--tf2-haunted { border-color: #38f3ab; }
+.economy-outline--tf2-collectors { border-color: #aa0000; }
+.economy-outline--tf2-community, .economy-outline--tf2-selfmade { border-color: #70b04a; }
+
+/* Dota 2 backend Rarity labels from Steam description tags. */
+.economy-outline--dota-common { border-color: #b0c3d9; }
+.economy-outline--dota-uncommon { border-color: #5e98d9; }
+.economy-outline--dota-rare { border-color: #4b69ff; }
+.economy-outline--dota-mythical { border-color: #8847ff; }
+.economy-outline--dota-legendary { border-color: #d32ce6; }
+.economy-outline--dota-immortal { border-color: #e4ae39; }
+.economy-outline--dota-arcana { border-color: #ade55c; }
+.economy-outline--dota-ancient { border-color: #eb4b4b; }
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -218,3 +239,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .reveal-reel.is-rolling { transition-duration: 400ms; }
 }
+
+.wear-color-factory-new { background-color: rgb(6 182 212); }
+.wear-color-minimal-wear { background-color: rgb(16 185 129); }
+.wear-color-field-tested { background-color: rgb(251 191 36); }
+.wear-color-well-worn { background-color: rgb(249 115 22); }
+.wear-color-battle-scarred { background-color: rgb(225 29 72); }
+.wear-color-impossible { background-color: rgb(51 65 85 / 0.9); }

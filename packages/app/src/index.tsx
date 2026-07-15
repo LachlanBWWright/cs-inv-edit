@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal } from "solid-js";
+import { createEffect, createResource, createSignal, onCleanup } from "solid-js";
 import { errAsync } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
 import { steamAccountProfilesSchema, type ConnectionStatus, type OperationReceipt, type SettingsData, type SteamAccountProfile } from "@cs-inv-edit/contracts";
@@ -11,7 +11,7 @@ import type { AppBackendClient } from "./lib/backend.js";
 import type { ToastItem } from "./components/ui/ToastViewport.js";
 import { appErrorMessage, fromAppPromise } from "./lib/result.js";
 import type { AppError } from "./lib/result-http.js";
-import type { AppScreen } from "./view.js";
+import { enabledModeOrDefault, type AppScreen } from "./view.js";
 
 export interface AppProps {
   backend: AppBackendClient;
@@ -42,12 +42,14 @@ export function App(props: AppProps) {
 
   const resourceValue = <T,>(result: ResultAsync<T, AppError>) => result.match((value) => value, (error) => { console.error(error.message, error.cause); return undefined; });
   const [health] = createResource(() => resourceValue(props.backend.health()));
+  const [settings, { refetch: refetchSettings }] = createResource(() => resourceValue(props.backend.settings()));
   const [inventory, { refetch: refetchInventory }] = createResource(() => resourceValue(props.backend.inventory()));
+  const [tf2Inventory, { refetch: refetchTF2Inventory }] = createResource(() => settings()?.featureFlags.enableTf2Inventory ? "tf2" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
+  const [dota2Inventory, { refetch: refetchDota2Inventory }] = createResource(() => settings()?.featureFlags.enableDota2Inventory ? "dota2" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
   const [armory, { refetch: refetchArmory }] = createResource(() => resourceValue(props.backend.armory()));
   const [receipts, { refetch: refetchOperations }] = createResource(() => resourceValue(props.backend.operations()));
   const [events, { refetch: refetchEvents }] = createResource(() => resourceValue(props.backend.events()));
-  const [settings, { refetch: refetchSettings }] = createResource(() => resourceValue(props.backend.settings()));
-  const [connection, { refetch: refetchConnection }] = createResource(() => resourceValue(props.backend.steamStatus?.() ?? errAsync({ message: "Steam status unavailable" })));
+  const [connection, { refetch: refetchConnection, mutate: setConnection }] = createResource(() => resourceValue(props.backend.steamStatus?.() ?? errAsync({ message: "Steam status unavailable" })));
 
   const pushToast = (toast: Omit<ToastItem, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -69,6 +71,36 @@ export function App(props: AppProps) {
   createEffect(() => {
     logSteamDiagnostics("status", connection());
   });
+
+  createEffect(() => {
+    const flags = settings()?.featureFlags;
+		const current = view();
+		if (current !== "account" && enabledModeOrDefault(current, flags) !== current) {
+      setSelectedItemId(undefined);
+      setView("inventory");
+    }
+  });
+
+	let selectionScope = "";
+	createEffect(() => {
+		const nextScope = `${connection()?.steamId ?? "disconnected"}\u0000${view()}`;
+		if (selectionScope && selectionScope !== nextScope) setSelectedItemId(undefined);
+		selectionScope = nextScope;
+	});
+
+	let automaticGameRefresh = "";
+	createEffect(() => {
+		const game = view() === "tf2-inventory" ? "tf2" : view() === "dota2-inventory" ? "dota2" : undefined;
+		const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined;
+		if (!game || !steamId) return;
+		const enabled = game === "tf2" ? settings()?.featureFlags.enableTf2Inventory : settings()?.featureFlags.enableDota2Inventory;
+		const key = `${steamId}\u0000${game}`;
+		if (!enabled || automaticGameRefresh === key) return;
+		automaticGameRefresh = key;
+		void props.backend.refreshGameInventory(game)
+			.andThen(() => fromAppPromise(Promise.resolve(game === "tf2" ? refetchTF2Inventory() : refetchDota2Inventory()), `${game} inventory reload failed`))
+			.match(() => undefined, (error) => pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, `Unable to refresh ${game} inventory`), variant: "danger" }));
+	});
 
   createEffect(() => {
     const snapshot = armory();
@@ -102,48 +134,15 @@ export function App(props: AppProps) {
     });
   });
 
-  let steamGuardPollTimer: number | undefined;
-  let steamGuardPollInFlight = false;
-  const pollSteamGuardMobileApproval = async () => {
-    if (steamGuardPollInFlight || connection()?.state !== "needs_steam_guard" || !props.backend.submitSteamGuard) {
-      return;
+  const stopSteamStatus = props.backend.watchSteamStatus?.((status) => {
+    const wasConnected = connection()?.state === "connected";
+    setConnection(status);
+    if (!wasConnected && status.state === "connected") {
+      setView("inventory");
+      void syncAccountState(status);
     }
-    steamGuardPollInFlight = true;
-    await props.backend.submitSteamGuard({ code: "" }).match(async (res) => {
-      console.info("[app] Steam Guard mobile poll result", res);
-      logSteamDiagnostics("steam guard mobile poll", res);
-      if (res.state === "connected") {
-        if (steamGuardPollTimer !== undefined) {
-          window.clearInterval(steamGuardPollTimer);
-          steamGuardPollTimer = undefined;
-        }
-        setView("inventory");
-        await syncAccountState(res);
-      } else if (res.state === "error") {
-        console.info("[app] Steam Guard mobile approval still pending or transiently unavailable", res);
-      } else {
-        await refetchConnection();
-      }
-    }, (error) => {
-      console.info("[app] Steam Guard mobile approval pending", error);
-    });
-    steamGuardPollInFlight = false;
-  };
-
-  createEffect(() => {
-    if (steamGuardPollTimer !== undefined) {
-      window.clearInterval(steamGuardPollTimer);
-      steamGuardPollTimer = undefined;
-    }
-    steamGuardPollInFlight = false;
-    if (connection()?.state !== "needs_steam_guard" || !props.backend.submitSteamGuard) {
-      return;
-    }
-    void pollSteamGuardMobileApproval();
-    steamGuardPollTimer = window.setInterval(() => {
-      void pollSteamGuardMobileApproval();
-    }, 2000);
   });
+  onCleanup(() => stopSteamStatus?.());
 
   const dismissToast = (id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));
@@ -227,14 +226,14 @@ export function App(props: AppProps) {
     if (status?.state === "connected") {
       setView("inventory");
       console.info("[app] connection ready, refreshing inventory");
-      const inventoryResult = await props.backend.refreshInventory()
-        .andThen(() => fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed"));
-      const inventoryRefreshFailed = inventoryResult.isErr();
-      if (inventoryResult.isErr()) {
-        const error = inventoryResult.error;
+      const inventoryRefreshFailed = await props.backend.refreshInventory()
+        .andThen(() => fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed"))
+        .match(() => false, (error) => {
         console.error("[app] inventory refresh after sign-in failed", error);
         pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, "Unable to refresh inventory after sign-in"), variant: "danger" });
-      } else {
+        return true;
+      });
+      if (!inventoryRefreshFailed) {
         await props.backend.refreshArmory()
           .andThen(() => fromAppPromise(Promise.resolve(refetchArmory()), "Armory reload failed"))
           .match(() => undefined, (error) => console.info("[app] Armory state was not present in the current GC cache", error));
@@ -247,17 +246,23 @@ export function App(props: AppProps) {
 
   const operationApi = createOperationApi(props.backend);
 
+  const disconnectAndRefresh = async () => {
+    if (!props.backend.disconnectSteam) return;
+    await props.backend.disconnectSteam()
+      .andThen(() => fromAppPromise(Promise.resolve(refetchConnection()), "Connection reload failed"))
+      .match(() => undefined, (error) => pushToast({ title: "Disconnect failed", description: appErrorMessage(error, "Unable to disconnect"), variant: "danger" }));
+  };
+
   const saveSettings = async (next: SettingsData) => {
     console.info("[app] saving settings", next);
-    await props.backend.submitOperation("settings", next);
-    await refetchSettings();
-    pushToast({ title: "Settings updated", description: "The latest backend settings are saved.", variant: "success" });
+    await props.backend.submitOperation("settings", next)
+      .andThen(() => fromAppPromise(Promise.resolve(refetchSettings()), "Settings reload failed"))
+      .match(() => pushToast({ title: "Settings updated", description: "The latest backend settings are saved.", variant: "success" }), (error) => pushToast({ title: "Settings update failed", description: appErrorMessage(error, "Unable to save settings"), variant: "danger" }));
   };
 
   const addAccount = async () => {
     if (connection()?.state === "connected" && props.backend.disconnectSteam) {
-      await props.backend.disconnectSteam();
-      await refetchConnection();
+      await disconnectAndRefresh();
     }
     setSelectedItemId(undefined);
     setAccountUsername("");
@@ -266,8 +271,7 @@ export function App(props: AppProps) {
 
   const signInAccount = async (account: SteamAccountProfile) => {
     if (connection()?.state === "connected" && props.backend.disconnectSteam) {
-      await props.backend.disconnectSteam();
-      await refetchConnection();
+      await disconnectAndRefresh();
     }
     setSelectedItemId(undefined);
     setAccountUsername(account.accountName);
@@ -276,8 +280,7 @@ export function App(props: AppProps) {
 
   const signOutAccount = async (account: SteamAccountProfile) => {
     if (account.signedIn && props.backend.disconnectSteam) {
-      await props.backend.disconnectSteam();
-      await refetchConnection();
+      await disconnectAndRefresh();
     }
     setAccounts((current) => current.map((candidate) => candidate.accountName === account.accountName ? { ...candidate, signedIn: false } : candidate));
     setSelectedItemId(undefined);
@@ -286,8 +289,7 @@ export function App(props: AppProps) {
 
   const deleteAccount = async (account: SteamAccountProfile) => {
     if (account.signedIn && props.backend.disconnectSteam) {
-      await props.backend.disconnectSteam();
-      await refetchConnection();
+      await disconnectAndRefresh();
     }
     setAccounts((current) => current.filter((candidate) => candidate.accountName !== account.accountName));
     setSelectedItemId(undefined);
@@ -306,6 +308,8 @@ export function App(props: AppProps) {
       accounts={accounts()}
       accountUsername={accountUsername()}
       inventory={inventory()}
+      tf2Inventory={tf2Inventory()}
+      dota2Inventory={dota2Inventory()}
       armory={armory()}
       settings={settings()}
       query={query()}
@@ -343,6 +347,10 @@ export function App(props: AppProps) {
           pushToast({ title: "Sign-in failed", description: appErrorMessage(error, "Unable to sign in to Steam"), variant: "danger" });
         });
       }}
+      onStartSteamQR={async () => {
+        const result = props.backend.startSteamQR ? props.backend.startSteamQR() : errAsync<ConnectionStatus, AppError>({ message: "Steam QR login unavailable" });
+        await result.match((status) => setConnection(status), (error) => pushToast({ title: "QR sign-in failed", description: appErrorMessage(error, "Unable to start QR sign-in"), variant: "danger" }));
+      }}
       onSubmitSteamGuard={async (input) => {
         const result: ResultAsync<ConnectionStatus, AppError> = props.backend.submitSteamGuard
           ? props.backend.submitSteamGuard(input)
@@ -374,7 +382,8 @@ export function App(props: AppProps) {
       }}
       onToast={pushToast}
       onInventoryRefresh={() => void refreshAll()}
-      onArmoryRefresh={async () => { await props.backend.refreshArmory(); await refetchArmory(); }}
+      onGameInventoryRefresh={(game) => void props.backend.refreshGameInventory(game).andThen(() => fromAppPromise(Promise.resolve(game === "tf2" ? refetchTF2Inventory() : refetchDota2Inventory()), `${game} inventory reload failed`)).match(() => undefined, (error) => pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, `Unable to refresh ${game} inventory`), variant: "danger" }))}
+      onArmoryRefresh={async () => { await props.backend.refreshArmory().andThen(() => fromAppPromise(Promise.resolve(refetchArmory()), "Armory reload failed")).match(() => undefined, (error) => pushToast({ title: "Armory refresh failed", description: appErrorMessage(error, "Unable to refresh Armory"), variant: "danger" })); }}
       onArmoryRedeem={(input) => settleOperation(props.backend.redeemArmory(input)).then(async (receipt) => { await refetchArmory(); return receipt; })}
       onInventoryRename={(input) => settleOperation(operationApi.applyNameTag(input))}
       onRemoveName={(input) => settleOperation(operationApi.removeNameTag(input))}

@@ -1,11 +1,13 @@
-import { createSignal } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
 import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
 import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
 import { itemDisplayName, itemKey, itemKindLabel, resolveSelectedInventoryItem } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import type { InventoryMode } from "../view.js";
 
 export interface InventoryViewProps {
+  mode: InventoryMode;
   inventory: InventorySnapshot | undefined;
   selectedItemId: string | undefined;
   setSelectedItemId: (id: string | undefined) => void;
@@ -25,6 +27,7 @@ export interface InventoryViewProps {
 }
 
 export function InventoryView(props: InventoryViewProps) {
+  const mode = createMemo(() => props.mode);
   const [renameOpen, setRenameOpen] = createSignal(false);
   const [draftName, setDraftName] = createSignal("");
   const [selectedToolId, setSelectedToolId] = createSignal("");
@@ -32,6 +35,7 @@ export function InventoryView(props: InventoryViewProps) {
   const [containerStatusMessage, setContainerStatusMessage] = createSignal("");
   const [pending, setPending] = createSignal(false);
   const [reveal, setReveal] = createSignal<{ result: RevealItem; candidates: RevealItem[]; complete: () => void }>();
+  const [selectedItemIds, setSelectedItemIds] = createSignal<string[]>([]);
 
   const playReveal = (result: RevealItem, candidates: RevealItem[]) => {
     if ((props.settings?.animations?.container ?? "slot-machine") === "none") return Promise.resolve();
@@ -74,6 +78,12 @@ export function InventoryView(props: InventoryViewProps) {
   };
 
   const selectItem = (item: InventoryItemDto) => {
+	if (mode() !== "inventory") {
+		setSelectedItemIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]);
+		props.setSelectedItemId(item.id);
+		return;
+	}
+	setSelectedItemIds([]);
     props.setSelectedItemId(item.id);
   };
 
@@ -180,7 +190,7 @@ export function InventoryView(props: InventoryViewProps) {
         if (openedItem) {
           await playReveal(
             { name: itemDisplayName(openedItem), imageUrl: openedItem.imageUrl, rarity: openedItem.rarity },
-            (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, rarity: candidate.rarity })),
+            (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, imageUrl: candidate.imageUrl, rarity: candidate.rarity })),
           );
         }
         setContainerStatusMessage(message);
@@ -200,6 +210,8 @@ export function InventoryView(props: InventoryViewProps) {
   return (<>
     <InventoryViewContent
       inventory={props.inventory}
+      selectionMode={mode()}
+	  selectedItemIds={selectedItemIds()}
       connection={props.connection}
       settings={props.settings}
       query={props.query}

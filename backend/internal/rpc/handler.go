@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
 	"cs-inv-edit/backend/internal/app"
 	"cs-inv-edit/backend/internal/operations"
+	"golang.org/x/net/websocket"
 )
 
 type Handler struct {
@@ -22,6 +24,8 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/health", h.health)
 	h.mux.HandleFunc("/inventory", h.inventory)
 	h.mux.HandleFunc("/inventory/refresh", h.inventoryRefresh)
+	h.mux.HandleFunc("/games/{game}/inventory", h.gameInventory)
+	h.mux.HandleFunc("/games/{game}/inventory/refresh", h.gameInventoryRefresh)
 	h.mux.HandleFunc("/armory", h.armory)
 	h.mux.HandleFunc("/armory/refresh", h.armoryRefresh)
 	h.mux.HandleFunc("/armory/redeem", h.armoryRedeem)
@@ -32,6 +36,8 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/settings", h.settings)
 	h.mux.HandleFunc("/steam/status", h.steamStatus)
 	h.mux.HandleFunc("/steam/connect", h.steamConnect)
+	h.mux.HandleFunc("/steam/qr", h.steamQR)
+	h.mux.Handle("/steam/status/ws", websocket.Handler(h.steamStatusWebSocket))
 	h.mux.HandleFunc("/steam/guard", h.steamGuard)
 	h.mux.HandleFunc("/steam/disconnect", h.steamDisconnect)
 	h.mux.HandleFunc("/storage/load", h.storageLoad)
@@ -61,6 +67,33 @@ func (h *Handler) inventory(w http.ResponseWriter, _ *http.Request) {
 }
 func (h *Handler) inventoryRefresh(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.RefreshInventory())
+}
+func (h *Handler) gameInventory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "game inventory route requires GET")
+		return
+	}
+	snapshot, supported, enabled := h.service.GameInventory(r.PathValue("game"))
+	if !supported {
+		writeError(w, http.StatusNotFound, "unsupported economy game")
+		return
+	}
+	if !enabled {
+		writeError(w, http.StatusForbidden, "game inventory is disabled by feature flag")
+		return
+	}
+	writeJSON(w, snapshot)
+}
+func (h *Handler) gameInventoryRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "game inventory refresh requires POST")
+		return
+	}
+	receipt := h.service.RefreshGameInventory(r.PathValue("game"))
+	if receipt.State == "blocked_by_feature_flag" {
+		w.WriteHeader(http.StatusForbidden)
+	}
+	writeJSON(w, receipt)
 }
 func (h *Handler) armory(w http.ResponseWriter, _ *http.Request) { writeJSON(w, h.service.Armory()) }
 func (h *Handler) armoryRefresh(w http.ResponseWriter, _ *http.Request) {
@@ -98,6 +131,29 @@ func (h *Handler) steamConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, h.service.ConnectSteam(body))
+}
+func (h *Handler) steamQR(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, h.service.StartSteamQR())
+}
+func (h *Handler) steamStatusWebSocket(conn *websocket.Conn) {
+	defer conn.Close()
+	var previous any
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		status := h.service.ConnectionStatus()
+		if !reflect.DeepEqual(previous, status) {
+			if err := websocket.JSON.Send(conn, status); err != nil {
+				return
+			}
+			previous = status
+		}
+		select {
+		case <-conn.Request().Context().Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 func (h *Handler) steamGuard(w http.ResponseWriter, r *http.Request) {
 	body, err := parseBody(r)

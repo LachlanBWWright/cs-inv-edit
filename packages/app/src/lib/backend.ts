@@ -8,6 +8,8 @@ import type {
 	ArmoryRedeemRequest,
   DeleteItemRequest,
   GiftItemRequest,
+  EconomyGame,
+  GameInventorySnapshot,
   HealthStatus,
   InventorySnapshot,
   OperationEvent,
@@ -27,6 +29,8 @@ export interface AppBackendClient {
   health(): BackendResult<HealthStatus>;
   inventory(): BackendResult<InventorySnapshot>;
   refreshInventory(): BackendResult<OperationReceipt>;
+  gameInventory(game: EconomyGame): BackendResult<GameInventorySnapshot>;
+  refreshGameInventory(game: EconomyGame): BackendResult<OperationReceipt>;
   armory(): BackendResult<ArmorySnapshot>;
   refreshArmory(): BackendResult<OperationReceipt>;
   redeemArmory(input: ArmoryRedeemRequest): BackendResult<OperationReceipt>;
@@ -36,6 +40,8 @@ export interface AppBackendClient {
   settings(): BackendResult<SettingsData>;
   steamStatus?(): BackendResult<ConnectionStatus>;
   connectSteam?(input?: unknown): BackendResult<ConnectionStatus>;
+  startSteamQR?(): BackendResult<ConnectionStatus>;
+  watchSteamStatus?(listener: (status: ConnectionStatus) => void): () => void;
   submitSteamGuard?(input?: unknown): BackendResult<ConnectionStatus>;
   disconnectSteam?(): BackendResult<ConnectionStatus>;
   applyNameTag(input: SetItemNameRequest): BackendResult<OperationReceipt>;

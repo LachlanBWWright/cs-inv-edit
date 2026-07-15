@@ -60,7 +60,7 @@ The upstream paths still use legacy names such as `csgo`, `cstrike15`, and `ECsg
 - `prefabs`, which must be merged into concrete item definitions.
 - `item_name` localization tokens such as `#SFUI_WPNHUD_AK47`.
 - `item_type_name`, `item_class`, `item_rarity`, and tool/capability metadata.
-- `paint_kits`, including paint kit localization tokens such as `description_tag`.
+- `paint_kits`, including localization tokens and `wear_remap_min` / `wear_remap_max` caps used by wear and trade-up previews.
 - `item_sets`, which link weapon/finish pairs to named collections.
 - `client_loot_lists` and each container's `loot_list_name`, which describe possible container contents (including nested loot lists).
 - Logical inventory image keys such as `econ/weapons/base_weapons/weapon_ak47`.
@@ -93,6 +93,10 @@ The upstream paths still use legacy names such as `csgo`, `cstrike15`, and `ECsg
 
 These IDs are decoded from `CSOEconItem.attribute`; do not infer paint names from defindex alone.
 
+See [`trade-up-formula.md`](trade-up-formula.md) for normalized input wear,
+outcome wear, collection probabilities, knife/glove contracts, and Souvenir
+conversion behavior.
+
 ## Steam Inventory Description Overlay
 
 `items_game.txt` is not enough for reliable images. During inventory refresh, the app may also request Steam community inventory descriptions for the authenticated SteamID:
@@ -108,11 +112,11 @@ The GC-owned item list remains authoritative. The web response is metadata only.
 3. Description fields such as `market_hash_name`, `icon_url`, and `icon_url_large` overlay the schema-derived metadata.
 
 If the Steam asset ID does not match either the GC item ID or original ID, the
-overlay may fall back to an exact, case-insensitive display/market-name match
-only when that name identifies one unique Steam description. Ambiguous names
-are deliberately left unmatched. This is particularly important for
-non-marketable collectible badges, whose valid CDN icon token is available in
-the Steam description but not through market search.
+overlay may use a normalized exact display/market-name key only when it maps to
+one unique Steam description. Both the full name and a trailing-variant base
+name are indexed (for example, a sealed-graffiti color suffix). Ambiguous keys
+are recorded and deliberately rejected. This fallback supplies valid Steam
+icons for non-marketable collectibles without changing the GC-owned item list.
 
 Permanent definition-level non-tradability is read from the fully merged
 `items_game` `capabilities.can_trade = 0` value. Instance-level tradability and
@@ -154,3 +158,52 @@ only when their wire fields exactly match fields 1–3 of `CSOAccountXpShop`, al
 values fit their authoritative uint32 types, `generation_time` is present, and
 the candidate is unique. Inventory type 1 and multi-object cache types are
 excluded before decoding.
+
+Collection, container, and Armory previews are sorted from highest to lowest
+rarity. Preview images are populated only from exact Steam market description
+`icon_url` / `icon_url_large` tokens; `items_game.image_inventory` is never
+turned into a fabricated CDN URL. Missing Steam icons render an explicit UI
+fallback.
+Preview lookups are cached for the backend session. Owned items may also use a
+unique exact-name Steam inventory-description join when GC/original asset IDs
+do not match; ambiguous names are never joined. This covers non-marketable
+badges and sealed graffiti when Steam exposes their description icons.
+Bracketed sticker loot entries such as `[paper_name]sticker` resolve through
+`sticker_kits`, rather than the generic sticker item definition. The same
+resolver handles `[spray]spray` graffiti and `[patch]patch` patch kits;
+`[keychain]keychain` entries resolve through `keychain_definitions`, while pin
+loot lists resolve their named commodity-pin item definitions. Weapon cases
+resolve their `set supply crate series` attribute through
+`revolving_loot_lists` before recursively expanding `client_loot_lists`.
+
+Bulk Armory redemption sends the authoritative redeem message once per item,
+adjusting `redeemable_balance` before each message. Messages are paced by the
+editable `armoryPurchasePacingSeconds` setting (default 5 seconds).
+Container, trade-up, and Armory slot-machine candidates reuse these resolved
+related-item names, rarities, and Steam thumbnails.
+
+Collection-preview rows are compact and expandable. Expanded rows expose the
+canonical Steam Market link, available market price, and live paint-kit float
+caps for weapon finishes. Container-context previews additionally calculate
+base item odds by assigning adjacent rarity tiers a 5:1 probability ratio and
+dividing each tier evenly among its resolved items. Eligible weapon finishes
+show the separate 10% StatTrak™ share of their base item probability.
+
+Historical category-first wear probabilities and the subsequent paint-kit
+float-cap transform are kept in the client valuation utilities for container
+expected-value/ROI calculations. They are not presented as another set of
+per-item opening odds in the preview UI. See
+[`trade-up-float-and-paint-seed-distribution.md`](trade-up-float-and-paint-seed-distribution.md)
+for the empirical basis and its confidence limits.
+
+Preview lookup keys are canonical market names, not display labels. Steam's
+market search does not reliably handle the literal weapon-name `|`, so lookup
+starts with the portion after the separator and every
+result is still checked against the complete requested market name. A
+wear-qualified trade-up outcome (for example, `M4A4 | Converter (Minimal
+Wear)`) is computed once and used as the exact key for both its price and icon.
+Exterior variants may supply the icon and a clearly labelled lowest observed
+(`From`) price for a base collection entry. Exact wear-qualified outcomes keep
+their exact listing price. The exact `market_hash_name` selected during lookup
+is retained separately from the schema name so preview links open a concrete
+Steam listing rather than a broad market search.

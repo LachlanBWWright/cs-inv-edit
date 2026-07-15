@@ -5,26 +5,37 @@ import { Button } from "./ui/Button.js";
 import { Card, CardContent, CardHeader } from "./ui/Card.js";
 import { Input } from "./ui/Input.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import QRCode from "qrcode";
+import { ResultAsync } from "neverthrow";
 
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
   initialUsername?: string;
   onConnect: (input: { username?: string; password?: string }) => Promise<void>;
+  onStartSteamQR: () => Promise<void>;
   onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
   onDisconnect: () => Promise<void>;
   onToast?: (toast: { title: string; description?: string; variant?: "default" | "success" | "warning" | "danger" }) => void;
 }
 
 export function AccountView(props: AccountViewProps) {
-  const [username, setUsername] = createSignal("");
+  const [username, setUsername] = createSignal(props.initialUsername ?? "");
   const [password, setPassword] = createSignal("");
+  const [passwordVisible, setPasswordVisible] = createSignal(false);
   const [guardCode, setGuardCode] = createSignal("");
   const [status, setStatus] = createSignal("");
   const [loading, setLoading] = createSignal(false);
+  const [qrImage, setQRImage] = createSignal("");
 
   createEffect(() => {
     setUsername(props.initialUsername ?? "");
-    setPassword("");
+  });
+
+  createEffect(() => {
+    const challenge = props.connection?.qrChallengeUrl;
+    if (!challenge) { setQRImage(""); return; }
+    void ResultAsync.fromPromise(QRCode.toDataURL(challenge, { width: 260, margin: 2 }), (cause) => ({ message: "Failed to render Steam QR code", cause }))
+      .match(setQRImage, (error) => setStatus(error.message));
   });
 
   const handleConnect = async (e: Event) => {
@@ -135,7 +146,15 @@ export function AccountView(props: AccountViewProps) {
             </form>
           </Show>
 
-          <Show when={props.connection?.state !== "connected" && props.connection?.state !== "needs_steam_guard"}>
+          <Show when={props.connection?.state === "awaiting_qr"}>
+            <div class="space-y-4 text-center">
+              <p class="text-sm text-slate-300">Open the Steam mobile app, choose the QR scanner, and scan this code.</p>
+              <Show when={qrImage()}><img class="mx-auto rounded-xl bg-white p-2" src={qrImage()} alt="Steam sign-in QR code" /></Show>
+              <Button type="button" variant="ghost" class="w-full justify-center" onClick={() => void handleDisconnect()}>Cancel</Button>
+            </div>
+          </Show>
+
+          <Show when={props.connection?.state !== "connected" && props.connection?.state !== "needs_steam_guard" && props.connection?.state !== "awaiting_qr"}>
             <form class="space-y-4" onSubmit={handleConnect}>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-200">Steam username</label>
@@ -143,10 +162,33 @@ export function AccountView(props: AccountViewProps) {
               </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-200">Password</label>
-                <Input type="password" value={password()} onInput={(e) => setPassword((e.currentTarget as HTMLInputElement | null)?.value ?? "")} disabled={loading()} autocomplete="current-password" required />
+                <div class="relative">
+                  <Input
+                    type={passwordVisible() ? "text" : "password"}
+                    value={password()}
+                    class="pr-20"
+                    onInput={(e) => setPassword((e.currentTarget as HTMLInputElement | null)?.value ?? "")}
+                    disabled={loading()}
+                    autocomplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    class="absolute inset-y-0 right-0 px-3 text-sm font-medium text-slate-400 transition hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400"
+                    aria-label={passwordVisible() ? "Hide password" : "Show password"}
+                    aria-pressed={passwordVisible()}
+                    onClick={() => setPasswordVisible((visible) => !visible)}
+                  >
+                    {passwordVisible() ? "Hide" : "Show"}
+                  </button>
+                </div>
               </div>
               <Button type="submit" class="w-full justify-center" disabled={loading()}>
                 {loading() ? "Signing in..." : "Sign in"}
+              </Button>
+              <div class="flex items-center gap-3 text-xs text-slate-500"><span class="h-px flex-1 bg-slate-700" /><span>or</span><span class="h-px flex-1 bg-slate-700" /></div>
+              <Button type="button" variant="secondary" class="w-full justify-center" disabled={loading()} onClick={() => void props.onStartSteamQR()}>
+                Sign in with Steam app QR code
               </Button>
             </form>
           </Show>

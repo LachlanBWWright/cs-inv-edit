@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cs-inv-edit/backend/internal/proto/generated"
+	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
 	"cs-inv-edit/backend/internal/protocol"
 	"github.com/Lucino772/envelop/pkg/steam"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
@@ -19,21 +20,189 @@ import (
 )
 
 func (s *SteamGCClient) SendGamesPlayed(_ context.Context, appID uint32) error {
+	return s.sendGamesPlayed([]uint32{appID})
+}
+
+func (s *SteamGCClient) SetGamesPlayed(_ context.Context, appIDs []uint32) error {
+	return s.sendGamesPlayed(appIDs)
+}
+
+func (s *SteamGCClient) sendGamesPlayed(appIDs []uint32) error {
 	s.mu.Lock()
 	conn := s.conn
 	s.mu.Unlock()
 	if conn == nil {
 		return ErrNotConnected
 	}
-	packet, err := encodeGamesPlayedPacket(appID)
+	packet, err := encodeGamesPlayedPacketForApps(appIDs)
 	if err != nil {
 		return err
 	}
 	if err := conn.SendPacket(packet); err != nil {
 		return err
 	}
-	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appid=%d gameid=%d", steamlang.EMsg_ClientGamesPlayed.String(), appID, steamAppGameID(appID))}
+	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appids=%v", steamlang.EMsg_ClientGamesPlayed.String(), appIDs)}
 	return nil
+}
+
+func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	if appID != 440 && appID != 570 {
+		return nil, fmt.Errorf("unsupported multi-game inventory AppID %d", appID)
+	}
+	trace := newDiagnosticTrace(fmt.Sprintf("appid=%d GC inventory request started", appID))
+	if err := s.sendGamesPlayed([]uint32{protocol.AppIDCS2, appID}); err != nil {
+		return nil, trace.Error(fmt.Errorf("multi-game presence failed: %w", err))
+	}
+	hello, err := gameClientHello(appID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.SendProtoToGC(ctx, appID, 4006, hello); err != nil {
+		return nil, trace.Error(fmt.Errorf("appid=%d GC hello failed: %w", appID, err))
+	}
+	trace.Add(fmt.Sprintf("appid=%d GC ClientHello sent emsg=4006", appID))
+	retry := time.NewTicker(3 * time.Second)
+	defer retry.Stop()
+	welcomeSeen := false
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, trace.Error(fmt.Errorf("appid=%d timed out waiting for authoritative economy SOCache: %w", appID, ctx.Err()))
+		case <-retry.C:
+			if err := s.SendProtoToGC(ctx, appID, 4006, hello); err != nil {
+				return nil, trace.Error(err)
+			}
+			trace.Add(fmt.Sprintf("appid=%d GC ClientHello retry sent", appID))
+		case event := <-s.events:
+			message, ok := event.Payload.(GCMessage)
+			if !ok || event.Type != "gc.message" || message.AppID != appID {
+				continue
+			}
+			trace.Add(fmt.Sprintf("appid=%d observed emsg=%d bytes=%d", appID, message.EMsg, len(message.Body)))
+			switch message.EMsg {
+			case 4004:
+				welcomeSeen = true
+				if items, found, decodeErr := decodeGameWelcomeInventory(appID, message.Body); decodeErr != nil {
+					return nil, trace.Error(decodeErr)
+				} else if found {
+					trace.Add(fmt.Sprintf("appid=%d welcome inventory_items=%d", appID, len(items)))
+					return items, nil
+				}
+			case 24:
+				items, found, decodeErr := decodeGenericSubscribedInventory(appID, message.Body)
+				if decodeErr != nil {
+					return nil, trace.Error(decodeErr)
+				}
+				if found {
+					trace.Add(fmt.Sprintf("appid=%d subscribed inventory_items=%d welcome_seen=%t", appID, len(items), welcomeSeen))
+					return items, nil
+				}
+			}
+		}
+	}
+}
+
+func gameClientHello(appID uint32) ([]byte, error) {
+	// These versions come from steam.inf at the pinned tracker revisions listed
+	// in docs/multi-game-economy-sources.md. Dota 2 must explicitly identify
+	// Source 2 because the protobuf's legacy default is Source 1.
+	switch appID {
+	case 440:
+		return proto.Marshal(&multigamepb.CMsgClientHello{Version: proto.Uint32(10815139)})
+	case 570:
+		return proto.Marshal(&multigamepb.CMsgClientHello{Version: proto.Uint32(6859), ClientSessionNeed: proto.Uint32(0), ClientLauncher: proto.Uint32(0), Engine: proto.Uint32(1)})
+	default:
+		return nil, fmt.Errorf("unsupported hello AppID %d", appID)
+	}
+}
+
+func decodeGameWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
+	// TF2's authoritative CMsgClientWelcome field 3 is txn_country_code, while
+	// Dota 2 uses field 3 for outofdate_subscribed_caches. Never decode the TF2
+	// country string as a Dota SOCache; TF2 inventory arrives in EMsg 24.
+	if appID == 440 {
+		return nil, false, nil
+	}
+	if appID != 570 {
+		return nil, false, fmt.Errorf("unsupported welcome AppID %d", appID)
+	}
+	return decodeGenericWelcomeInventory(appID, body)
+}
+
+func decodeGenericWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
+	var welcome multigamepb.CMsgClientWelcome
+	if err := proto.Unmarshal(body, &welcome); err != nil {
+		return nil, false, err
+	}
+	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
+		if items, found, err := decodeGenericSubscribedTypes(appID, cache.GetObjects()); found || err != nil {
+			return items, found, err
+		}
+	}
+	return nil, false, nil
+}
+
+func decodeGenericSubscribedInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
+	var cache multigamepb.CMsgSOCacheSubscribed
+	if err := proto.Unmarshal(body, &cache); err != nil {
+		return nil, false, err
+	}
+	return decodeGenericSubscribedTypes(appID, cache.GetObjects())
+}
+
+func decodeGenericSubscribedTypes(appID uint32, types []*multigamepb.CMsgSOCacheSubscribed_SubscribedType) ([]GCInventoryItem, bool, error) {
+	for _, objectType := range types {
+		if objectType.GetTypeId() != 1 {
+			continue
+		}
+		items := make([]GCInventoryItem, 0, len(objectType.GetObjectData()))
+		for _, data := range objectType.GetObjectData() {
+			var item multigamepb.CSOEconItem
+			if err := proto.Unmarshal(data, &item); err != nil {
+				return nil, true, fmt.Errorf("decode economy item: %w", err)
+			}
+			if item.GetId() == 0 {
+				continue
+			}
+			attributes := make(map[uint32]uint32, len(item.GetAttribute()))
+			attributeBytes := make(map[uint32][]byte, len(item.GetAttribute()))
+			for _, attribute := range item.GetAttribute() {
+				definitionIndex := attribute.GetDefIndex()
+				if appID == 570 && attribute.DefIndex == nil {
+					definitionIndex = 65535
+				}
+				value := attribute.GetValue()
+				if value == 0 && len(attribute.GetValueBytes()) >= 4 {
+					value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+				}
+				attributes[definitionIndex] = value
+				if len(attribute.GetValueBytes()) > 0 {
+					attributeBytes[definitionIndex] = append([]byte(nil), attribute.GetValueBytes()...)
+				}
+			}
+			equipped := make([]GCEquippedState, 0, len(item.GetEquippedState()))
+			for _, state := range item.GetEquippedState() {
+				equipped = append(equipped, GCEquippedState{Class: state.GetNewClass(), Slot: state.GetNewSlot()})
+			}
+			quantity, level, quality := item.GetQuantity(), item.GetLevel(), item.GetQuality()
+			if appID == 570 {
+				if item.Quantity == nil {
+					quantity = 1
+				}
+				if item.Level == nil {
+					level = 1
+				}
+				if item.Quality == nil {
+					quality = 4
+				}
+			}
+			items = append(items, GCInventoryItem{ID: item.GetId(), OriginalID: item.GetOriginalId(), DefIndex: item.GetDefIndex(), Quantity: quantity, Quality: quality, Inventory: item.GetInventory(), CustomName: item.GetCustomName(), Attributes: attributes, AttributeBytes: attributeBytes, EquippedStates: equipped, InteriorItemID: item.GetInteriorItem().GetId(), Level: level, Flags: item.GetFlags(), Origin: item.GetOrigin(), Style: item.GetStyle(), CustomDesc: item.GetCustomDesc()})
+		}
+		return items, true, nil
+	}
+	return nil, false, nil
 }
 
 func (s *SteamGCClient) SendToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
@@ -78,6 +247,8 @@ func packetBodyForDiagnostics(emsg uint32, body []byte, protobufPayload bool) []
 }
 
 func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
 	trace := newDiagnosticTrace("cs2 gc inventory request started")
 	if err := s.SendGamesPlayed(ctx, protocol.AppIDCS2); err != nil {
 		wrapped := fmt.Errorf("cs2 games played presence failed: %w", err)
@@ -178,6 +349,8 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 }
 
 func (s *SteamGCClient) RequestArmory(ctx context.Context) (GCArmorySnapshot, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
 	s.mu.Lock()
 	body := append([]byte(nil), s.lastWelcome...)
 	s.mu.Unlock()
@@ -626,17 +799,23 @@ func econPaintWear(item *cs2pb.CSOEconItem) *float64 {
 }
 
 func encodeGamesPlayedPacket(appID uint32) (*steammsg.Packet, error) {
-	if appID == 0 {
-		return nil, fmt.Errorf("app id is required")
-	}
+	return encodeGamesPlayedPacketForApps([]uint32{appID})
+}
+
+func encodeGamesPlayedPacketForApps(appIDs []uint32) (*steammsg.Packet, error) {
 	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientGamesPlayed)
-	msg := &steampb.CMsgClientGamesPlayed{
-		GamesPlayed: []*steampb.CMsgClientGamesPlayed_GamePlayed{
-			{
-				GameId:        proto.Uint64(steamAppGameID(appID)),
-				GameExtraInfo: proto.String("Counter-Strike 2"),
-			},
-		},
+	msg := &steampb.CMsgClientGamesPlayed{}
+	labels := map[uint32]string{730: "Counter-Strike 2", 440: "Team Fortress 2", 570: "Dota 2"}
+	seen := make(map[uint32]bool)
+	for _, appID := range appIDs {
+		if appID == 0 || seen[appID] {
+			continue
+		}
+		seen[appID] = true
+		msg.GamesPlayed = append(msg.GamesPlayed, &steampb.CMsgClientGamesPlayed_GamePlayed{GameId: proto.Uint64(steamAppGameID(appID)), GameExtraInfo: proto.String(labels[appID])})
+	}
+	if len(msg.GamesPlayed) == 0 {
+		return nil, fmt.Errorf("at least one app id is required")
 	}
 	return steammsg.EncodePacket(header, msg, nil)
 }

@@ -1,4 +1,4 @@
-export type ConnectionState = "disconnected" | "connecting" | "awaiting_guard" | "needs_steam_guard" | "connected" | "error";
+export type ConnectionState = "disconnected" | "connecting" | "awaiting_guard" | "needs_steam_guard" | "awaiting_qr" | "connected" | "error";
 export * from "./schemas.js";
 
 export interface HealthStatus {
@@ -34,10 +34,13 @@ export interface InventoryItemDto {
   kind: "weapon_skin" | "sticker_item" | "container" | "storage_unit" | "tool_item" | "cs2_econ_item" | "unknown";
   defindex?: number;
   paintWear?: number;
+  paintWearMin?: number;
+  paintWearMax?: number;
   storageCount?: number;
   casketId?: string;
   collection?: string;
   collectionItems?: RelatedItemDto[];
+  tradeUpItems?: RelatedItemDto[];
   containerItems?: RelatedItemDto[];
   exterior?: string;
   rarity?: string;
@@ -59,7 +62,14 @@ export interface InventoryItemDto {
 export interface RelatedItemDto {
   name: string;
   marketName?: string;
+  listingName?: string;
+  kind?: string;
   rarity?: string;
+  imageUrl?: string;
+  price?: string;
+  paintWear?: number;
+  wearMin?: number;
+  wearMax?: number;
 }
 
 export interface ItemDebugDto {
@@ -113,6 +123,7 @@ export interface ArmoryRedeemRequest {
   expectedCost: number;
   redeemableBalance: number;
   generationTime: number;
+  quantity?: number;
 }
 
 export interface ConnectionStatus {
@@ -122,6 +133,7 @@ export interface ConnectionStatus {
   accountName?: string;
   avatarUrl?: string;
   diagnostics?: string[];
+  qrChallengeUrl?: string;
 }
 
 export interface SteamAccountProfile {
@@ -178,7 +190,88 @@ export interface FeatureFlags {
   enableGifting: boolean;
   enableArmoryRead?: boolean;
   enableArmoryRedemption?: boolean;
+  enableTf2Inventory: boolean;
+  enableDota2Inventory: boolean;
 }
+
+export type EconomyGame = "tf2" | "dota2";
+
+export interface EconomyTagDto {
+  category: string;
+  internalName: string;
+  name: string;
+}
+
+interface EconomyInventoryItemBase {
+  contextId?: string;
+  assetId: string;
+  classId?: string;
+  instanceId?: string;
+  definitionId?: number;
+  name: string;
+  marketName?: string;
+  imageUrl?: string;
+  quantity: number;
+  type?: string;
+  rarity?: string;
+  quality?: string;
+  tradable: boolean;
+  marketable: boolean;
+  tags: EconomyTagDto[];
+  descriptions?: string[];
+}
+
+export interface EconomyItemDetailsBase {
+  level: number;
+  qualityId: number;
+  inventoryPosition: number;
+  originId: number;
+  style: number;
+  flags: number;
+  customName?: string;
+  customDescription?: string;
+  attributes: Record<string, number>;
+  attributeBytes?: Record<string, string>;
+  equippedStates?: { class: number; slot: number }[];
+  interiorItemId?: string;
+}
+
+export interface TF2ItemDetails extends EconomyItemDetailsBase {
+  game: "tf2";
+  schemaQuality?: string;
+  equipSlot?: string;
+  usableClasses?: string[];
+  capabilities?: Record<string, string>;
+  hero?: never;
+  slot?: never;
+}
+
+export interface Dota2ItemDetails extends EconomyItemDetailsBase {
+  game: "dota2";
+  hero?: string;
+  slot?: string;
+  schemaQuality?: never;
+  equipSlot?: never;
+  usableClasses?: never;
+  capabilities?: never;
+}
+
+export type EconomyInventoryItemDto =
+  | (EconomyInventoryItemBase & { game: "tf2"; appId: 440; details: TF2ItemDetails })
+  | (EconomyInventoryItemBase & { game: "dota2"; appId: 570; details: Dota2ItemDetails });
+
+interface GameInventorySnapshotBase {
+  refreshedAt: string;
+  status: "ready" | "requires_connection" | "loading" | "error";
+  message?: string;
+  error?: string;
+  schemaRevision?: string;
+  diagnostics: string[];
+}
+
+export type GameInventorySnapshot =
+  | (GameInventorySnapshotBase & { game: "tf2"; appId: 440; items: Extract<EconomyInventoryItemDto, { game: "tf2" }>[] })
+  | (GameInventorySnapshotBase & { game: "dota2"; appId: 570; items: Extract<EconomyInventoryItemDto, { game: "dota2" }>[] });
 
 export interface SettingsData {
   backendUrl: string;
@@ -186,6 +279,7 @@ export interface SettingsData {
   sacrificialAccountMode: boolean;
   featureFlags: FeatureFlags;
   animations: AnimationSettings;
+  armoryPurchasePacingSeconds: number;
 }
 
 export type RevealAnimationMode = "none" | "countdown" | "slot-machine";

@@ -1,6 +1,7 @@
 import { render } from "solid-js/web";
-import { App, postJsonResult, requestJsonResult, type AppBackendClient, type AppError, type SafeParseSchema } from "@cs-inv-edit/app";
-import type { ArmorySnapshot, ConnectionStatus, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
+import { fromThrowable } from "neverthrow";
+import { App, postJsonResult, requestJsonResult, type AppBackendClient, type SafeParseSchema } from "@cs-inv-edit/app";
+import type { ArmorySnapshot, ConnectionStatus, GameInventorySnapshot, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 import { backendSchemas } from "@cs-inv-edit/contracts";
 import "@cs-inv-edit/app/styles.css";
 import { createWasmBackendClient } from "./wasmBackend.js";
@@ -21,6 +22,8 @@ function createHttpBackendClient(): AppBackendClient {
     health: () => createRequestResult<HealthStatus>("/health", backendSchemas.health),
     inventory: () => createRequestResult<InventorySnapshot>("/inventory", backendSchemas.inventory),
     refreshInventory: () => createRequestResult<OperationReceipt>("/inventory/refresh", backendSchemas.receipt, { method: "POST" }),
+    gameInventory: (game) => createRequestResult<GameInventorySnapshot>(`/games/${game}/inventory`, backendSchemas.gameInventory),
+    refreshGameInventory: (game) => createRequestResult<OperationReceipt>(`/games/${game}/inventory/refresh`, backendSchemas.receipt, { method: "POST" }),
     armory: () => createRequestResult<ArmorySnapshot>("/armory", backendSchemas.armory),
     refreshArmory: () => createRequestResult<OperationReceipt>("/armory/refresh", backendSchemas.receipt, { method: "POST" }),
     redeemArmory: (input) => createPostResult<OperationReceipt>("/armory/redeem", backendSchemas.receipt, input),
@@ -30,6 +33,15 @@ function createHttpBackendClient(): AppBackendClient {
     settings: () => createRequestResult<SettingsData>("/settings", backendSchemas.settings),
     steamStatus: () => createRequestResult<ConnectionStatus>("/steam/status", backendSchemas.connection),
     connectSteam: (input) => createPostResult<ConnectionStatus>("/steam/connect", backendSchemas.connection, input),
+    startSteamQR: () => createPostResult<ConnectionStatus>("/steam/qr", backendSchemas.connection, {}),
+    watchSteamStatus: (listener) => {
+      const socket = new WebSocket("ws://127.0.0.1:7331/steam/status/ws");
+      const parse = fromThrowable(JSON.parse, (cause) => cause);
+      socket.onmessage = (event) => parse(String(event.data)).map((value) => backendSchemas.connection.safeParse(value)).map((result) => {
+        if (result.success) listener(result.data);
+      });
+      return () => socket.close();
+    },
     submitSteamGuard: (input) => createPostResult<ConnectionStatus>("/steam/guard", backendSchemas.connection, input),
     disconnectSteam: () => createRequestResult<ConnectionStatus>("/steam/disconnect", backendSchemas.connection, { method: "POST" }),
     applyNameTag: (input) => createPostResult<OperationReceipt>("/nametags/apply", backendSchemas.receipt, input),

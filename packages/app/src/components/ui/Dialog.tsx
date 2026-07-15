@@ -24,7 +24,7 @@ export function Dialog(props: DialogProps) {
       <Portal>
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
           <button type="button" class="absolute inset-0 cursor-default bg-slate-950/80 backdrop-blur-sm" aria-label="Close dialog" onClick={() => props.onOpenChange(false)} />
-          <section class="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-700 bg-slate-950 p-6 text-slate-100 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title">
+          <section class="relative z-10 flex max-h-[90vh] w-[min(94vw,88rem)] flex-col rounded-2xl border border-slate-700 bg-slate-950 p-6 text-slate-100 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h2 id="collection-dialog-title" class="text-lg font-semibold">{props.title}</h2>

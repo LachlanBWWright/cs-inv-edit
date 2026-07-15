@@ -1,6 +1,44 @@
 package econ
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+func TestSchemaParsesPaintKitWearCaps(t *testing.T) {
+	root, err := parseKeyValues(`"items_game" { "paint_kits" { "101" { "name" "test_finish" "wear_remap_min" "0.06" "wear_remap_max" "0.80" } } }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := &Schema{paintKits: make(map[uint32]paintKitDefinition)}
+	schema.parseItems(root)
+	paint := schema.paintKits[101]
+	if paint.WearMin == nil || *paint.WearMin != 0.06 || paint.WearMax == nil || *paint.WearMax != 0.80 {
+		t.Fatalf("wear caps = %#v, %#v", paint.WearMin, paint.WearMax)
+	}
+}
+
+func TestCovertTradeUpFindsRareSpecialsFromContainingLootList(t *testing.T) {
+	schema := &Schema{
+		items: map[uint32]itemDefinition{
+			7:  {Name: "weapon_ak47", ItemName: "AK-47", Rarity: "ancient"},
+			42: {Name: "weapon_knife", ItemName: "Knife", Rarity: "unusual"},
+		},
+		paintKits: map[uint32]paintKitDefinition{
+			1: {Name: "red", Description: "Red", Rarity: "ancient"},
+			2: {Name: "fade", Description: "Fade", Rarity: "unusual"},
+		},
+		lootLists: map[string][]string{
+			"case":       {"case_skins", "case_rare"},
+			"case_skins": {"[red]weapon_ak47"},
+			"case_rare":  {"[fade]weapon_knife"},
+		},
+	}
+	items := schema.rareSpecialTradeUpItems("[red]weapon_ak47")
+	if len(items) != 1 || items[0].MarketName != "weapon_knife | fade" {
+		t.Fatalf("rare-special outcomes = %#v", items)
+	}
+}
 
 func TestInventoryDescriptionDoesNotDiscardSchemaWeaponFinish(t *testing.T) {
 	metadata := Metadata{
@@ -168,6 +206,7 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		"keychain_kc_missinglink_howl" "Lil' Howl"
 	}
 }
+
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -235,5 +274,30 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 	}
 	if got := schema.AppliedItems(1209, map[uint32]uint32{113: 42}); len(got) != 0 {
 		t.Fatalf("generic sticker applied items = %#v, want none", got)
+	}
+}
+
+func TestMarketSearchQueriesAvoidLiteralWeaponSeparator(t *testing.T) {
+	queries := marketSearchQueries("M4A4 | Converter (Minimal Wear)")
+	if len(queries) != 2 || queries[0] != "Converter (Minimal Wear)" || queries[1] != "M4A4 | Converter (Minimal Wear)" {
+		t.Fatalf("market queries = %#v", queries)
+	}
+}
+
+func TestInventoryDescriptionNameKeysIncludeVariantBase(t *testing.T) {
+	keys := inventoryDescriptionNameKeys("Sealed Graffiti | Chicken (Shark White)")
+	if len(keys) != 2 || keys[1] != "name:sealed graffiti | chicken" {
+		t.Fatalf("description keys = %#v", keys)
+	}
+}
+
+func TestTransientSteamMarketErrors(t *testing.T) {
+	for _, message := range []string{"HTTP 429", "HTTP 502", "request timeout", "unexpected EOF"} {
+		if !isTransientSteamMarketError(errors.New(message)) {
+			t.Fatalf("%q should be transient", message)
+		}
+	}
+	if isTransientSteamMarketError(errors.New("no exact market result")) {
+		t.Fatal("an exact-match miss should not be retried")
 	}
 }

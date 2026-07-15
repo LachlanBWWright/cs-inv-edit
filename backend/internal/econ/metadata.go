@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,7 +23,9 @@ const (
 )
 
 type Provider struct {
-	client *http.Client
+	client       *http.Client
+	previewMu    sync.Mutex
+	previewCache map[string]MarketDescription
 }
 
 type Metadata struct {
@@ -35,16 +39,26 @@ type Metadata struct {
 	IsNameTagTool     bool
 	Collection        string
 	CollectionItems   []RelatedItem
+	TradeUpItems      []RelatedItem
 	ContainerItems    []RelatedItem
 	AppliedItemImages []string
 	Tradable          *bool
 	TradableAfter     string
+	PaintWearMin      *float64
+	PaintWearMax      *float64
 }
 
 type RelatedItem struct {
-	Name       string
-	MarketName string
-	Rarity     string
+	Name        string
+	MarketName  string
+	ListingName string
+	Kind        string
+	Rarity      string
+	ImageURL    string
+	Price       string
+	PaintWear   *float64
+	WearMin     *float64
+	WearMax     *float64
 }
 
 type AppliedItem struct {
@@ -89,16 +103,17 @@ type MarketDescription struct {
 }
 
 type Schema struct {
-	items            map[uint32]itemDefinition
-	paintKits        map[uint32]paintKitDefinition
-	stickerKits      map[uint32]stickerKitDefinition
-	musicDefinitions map[uint32]musicDefinition
-	keychains        map[uint32]keychainDefinition
-	tokens           map[string]string
-	collections      map[string]collectionDefinition
-	collectionByItem map[string]string
-	lootLists        map[string][]string
-	armoryOffers     []ArmoryOffer
+	items              map[uint32]itemDefinition
+	paintKits          map[uint32]paintKitDefinition
+	stickerKits        map[uint32]stickerKitDefinition
+	musicDefinitions   map[uint32]musicDefinition
+	keychains          map[uint32]keychainDefinition
+	tokens             map[string]string
+	collections        map[string]collectionDefinition
+	collectionByItem   map[string]string
+	lootLists          map[string][]string
+	revolvingLootLists map[string]string
+	armoryOffers       []ArmoryOffer
 }
 
 type ArmoryOffer struct {
@@ -117,22 +132,25 @@ type collectionDefinition struct {
 }
 
 type itemDefinition struct {
-	Name         string
-	ItemName     string
-	TypeName     string
-	ItemClass    string
-	Prefab       string
-	Rarity       string
-	Image        string
-	ToolType     string
-	Capabilities map[string]string
-	LootList     string
+	Name              string
+	ItemName          string
+	TypeName          string
+	ItemClass         string
+	Prefab            string
+	Rarity            string
+	Image             string
+	ToolType          string
+	Capabilities      map[string]string
+	LootList          string
+	SupplyCrateSeries string
 }
 
 type paintKitDefinition struct {
 	Name        string
 	Description string
 	Rarity      string
+	WearMin     *float64
+	WearMax     *float64
 }
 
 type stickerKitDefinition struct {
@@ -152,10 +170,11 @@ type keychainDefinition struct {
 	Name     string
 	ItemName string
 	Image    string
+	Rarity   string
 }
 
 func NewProvider() *Provider {
-	return &Provider{client: &http.Client{Timeout: 15 * time.Second}}
+	return &Provider{client: &http.Client{Timeout: 15 * time.Second}, previewCache: make(map[string]MarketDescription)}
 }
 
 func (p *Provider) Load(ctx context.Context) (*Schema, error) {
@@ -179,15 +198,16 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		return nil, fmt.Errorf("parse CS2 English localization: %w", err)
 	}
 	schema := &Schema{
-		items:            make(map[uint32]itemDefinition),
-		paintKits:        make(map[uint32]paintKitDefinition),
-		stickerKits:      make(map[uint32]stickerKitDefinition),
-		musicDefinitions: make(map[uint32]musicDefinition),
-		keychains:        make(map[uint32]keychainDefinition),
-		tokens:           parseTokens(englishRoot),
-		collections:      make(map[string]collectionDefinition),
-		collectionByItem: make(map[string]string),
-		lootLists:        make(map[string][]string),
+		items:              make(map[uint32]itemDefinition),
+		paintKits:          make(map[uint32]paintKitDefinition),
+		stickerKits:        make(map[uint32]stickerKitDefinition),
+		musicDefinitions:   make(map[uint32]musicDefinition),
+		keychains:          make(map[uint32]keychainDefinition),
+		tokens:             parseTokens(englishRoot),
+		collections:        make(map[string]collectionDefinition),
+		collectionByItem:   make(map[string]string),
+		lootLists:          make(map[string][]string),
+		revolvingLootLists: make(map[string]string),
 	}
 	schema.parseItems(itemsRoot)
 	schema.armoryOffers = parseArmoryOffers(itemsText, schema)
@@ -239,7 +259,7 @@ func parseArmoryOffers(itemsText string, schema *Schema) []ArmoryOffer {
 		if name == "" {
 			name = humanizeIdentifier(strings.TrimPrefix(itemName, "lootlist:"))
 		}
-		lootListName := strings.TrimPrefix(itemName, "lootlist:")
+		lootListName := schema.armoryLootListName(itemName)
 		offers = append(offers, ArmoryOffer{CampaignID: uint32(campaignID), RedeemID: uint32(redeemID), ExpectedCost: uint32(cost), ItemName: itemName, Name: name, Category: object.string("ui_order"), Items: schema.lootListItems(lootListName, nil)})
 	}
 	return offers
@@ -306,7 +326,7 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 			desc.AssetID = asset.AssetID
 			out[asset.AssetID] = desc
 			for _, name := range []string{desc.MarketHashName, desc.MarketName, desc.Name} {
-				if key := inventoryDescriptionNameKey(name); key != "" {
+				for _, key := range inventoryDescriptionNameKeys(name) {
 					if _, ambiguous := out["ambiguous:"+key]; ambiguous {
 						continue
 					}
@@ -335,6 +355,22 @@ func inventoryDescriptionNameKey(name string) string {
 	return "name:" + name
 }
 
+func inventoryDescriptionNameKeys(name string) []string {
+	exact := inventoryDescriptionNameKey(name)
+	if exact == "" {
+		return nil
+	}
+	keys := []string{exact}
+	normalized := strings.TrimSpace(name)
+	if cut := strings.LastIndex(normalized, " ("); cut > 0 && strings.HasSuffix(normalized, ")") {
+		base := inventoryDescriptionNameKey(normalized[:cut])
+		if base != "" && base != exact {
+			keys = append(keys, base)
+		}
+	}
+	return keys
+}
+
 func sameInventoryDescription(a InventoryDescription, b InventoryDescription) bool {
 	return a.ClassID == b.ClassID && a.InstanceID == b.InstanceID
 }
@@ -355,7 +391,7 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 			continue
 		}
 		seen[marketName] = true
-		desc, err := p.fetchMarketDescription(ctx, marketName)
+		desc, err := p.fetchMarketDescription(ctx, marketName, false)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", marketName, err))
 			continue
@@ -379,10 +415,71 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 	return out, nil
 }
 
-func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string) (MarketDescription, error) {
+func (p *Provider) LoadPreviewDescriptions(ctx context.Context, marketNames []string) (map[string]MarketDescription, error) {
+	if p.client == nil {
+		p.client = &http.Client{Timeout: 15 * time.Second}
+	}
+	out := make(map[string]MarketDescription)
+	seen := make(map[string]bool)
+	unique := make([]string, 0, len(marketNames))
+	for _, marketName := range marketNames {
+		marketName = strings.TrimSpace(marketName)
+		if marketName == "" || seen[marketName] {
+			continue
+		}
+		seen[marketName] = true
+		p.previewMu.Lock()
+		cached, ok := p.previewCache[marketName]
+		p.previewMu.Unlock()
+		if ok {
+			out[marketName] = cached
+			continue
+		}
+		unique = append(unique, marketName)
+	}
+	var mu sync.Mutex
+	var wait sync.WaitGroup
+	var errs []string
+	// Steam's public market search throttles short high-concurrency bursts.
+	// Keep this deliberately small; the session cache prevents repeat work.
+	workers := make(chan struct{}, 3)
+	for _, marketName := range unique {
+		wait.Add(1)
+		go func(name string) {
+			defer wait.Done()
+			select {
+			case workers <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-workers }()
+			desc, err := p.fetchMarketDescription(ctx, name, true)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", name, err))
+				return
+			}
+			out[name] = desc
+			p.previewMu.Lock()
+			if p.previewCache == nil {
+				p.previewCache = make(map[string]MarketDescription)
+			}
+			p.previewCache[name] = desc
+			p.previewMu.Unlock()
+		}(marketName)
+	}
+	wait.Wait()
+	if len(errs) > 0 {
+		return out, fmt.Errorf("fetch Steam preview descriptions: %s", strings.Join(errs, "; "))
+	}
+	return out, nil
+}
+
+func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string, allowExteriorVariant bool) (MarketDescription, error) {
 	var errs []string
 	for _, query := range marketSearchQueries(marketName) {
-		desc, err := p.fetchMarketDescriptionQuery(ctx, marketName, query)
+		desc, err := p.fetchMarketDescriptionQuery(ctx, marketName, query, allowExteriorVariant)
 		if err == nil {
 			return desc, nil
 		}
@@ -391,7 +488,38 @@ func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string
 	return MarketDescription{}, errors.New(strings.Join(errs, "; "))
 }
 
-func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName string, query string) (MarketDescription, error) {
+func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName string, query string, allowExteriorVariant bool) (MarketDescription, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(attempt*500) * time.Millisecond
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return MarketDescription{}, ctx.Err()
+			}
+		}
+		description, err := p.fetchMarketDescriptionQueryOnce(ctx, marketName, query, allowExteriorVariant)
+		if err == nil {
+			return description, nil
+		}
+		lastErr = err
+		if !isTransientSteamMarketError(err) {
+			break
+		}
+	}
+	return MarketDescription{}, lastErr
+}
+
+func isTransientSteamMarketError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "http 429") || strings.Contains(message, "http 5") || strings.Contains(message, "timeout") || strings.Contains(message, "connection reset") || strings.Contains(message, "eof")
+}
+
+func (p *Provider) fetchMarketDescriptionQueryOnce(ctx context.Context, marketName string, query string, allowExteriorVariant bool) (MarketDescription, error) {
 	values := url.Values{}
 	values.Set("appid", "730")
 	values.Set("norender", "1")
@@ -402,6 +530,7 @@ func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName s
 	if err != nil {
 		return MarketDescription{}, err
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; cs-inv-edit/0.0; Steam metadata lookup)")
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return MarketDescription{}, err
@@ -417,13 +546,22 @@ func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName s
 	if !page.Success {
 		return MarketDescription{}, fmt.Errorf("response was not successful")
 	}
+	var cheapestVariant *MarketDescription
 	for _, result := range page.Results {
 		desc := result.AssetDescription
 		hashName := firstNonEmpty(result.HashName, desc.MarketHashName, desc.MarketName, result.Name)
-		if !marketNameMatches(marketName, hashName) && !marketNameMatches(marketName, desc.MarketName) && !marketNameMatches(marketName, result.Name) {
+		exactMatch := marketNameMatches(marketName, hashName) || marketNameMatches(marketName, desc.MarketName) || marketNameMatches(marketName, result.Name)
+		variantMatch := allowExteriorVariant && strings.HasPrefix(strings.ToLower(hashName), strings.ToLower(strings.TrimSpace(marketName))+" (")
+		if !exactMatch && !variantMatch {
 			continue
 		}
-		return MarketDescription{
+		price := MarketPrice{
+			SellPrice:     result.SellPrice,
+			SellPriceText: result.SellPriceText,
+			SalePriceText: result.SalePriceText,
+			SellListings:  result.SellListings,
+		}
+		candidate := MarketDescription{
 			Name:           firstNonEmpty(desc.Name, result.Name),
 			HashName:       result.HashName,
 			MarketName:     desc.MarketName,
@@ -431,25 +569,33 @@ func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName s
 			IconURL:        steamIconURL(desc.IconURL),
 			IconURLLarge:   steamIconURL(desc.IconURLLarge),
 			Type:           desc.Type,
-			Price: MarketPrice{
-				SellPrice:     result.SellPrice,
-				SellPriceText: result.SellPriceText,
-				SalePriceText: result.SalePriceText,
-				SellListings:  result.SellListings,
-			},
-		}, nil
+			Price:          price,
+		}
+		if exactMatch {
+			return candidate, nil
+		}
+		if cheapestVariant == nil || (result.SellPrice > 0 && (cheapestVariant.Price.SellPrice <= 0 || result.SellPrice < cheapestVariant.Price.SellPrice)) {
+			candidate.Price.SellPriceText = "From " + candidate.Price.SellPriceText
+			cheapestVariant = &candidate
+		}
+	}
+	if cheapestVariant != nil {
+		return *cheapestVariant, nil
 	}
 	return MarketDescription{}, fmt.Errorf("no exact market result")
 }
 
 func marketSearchQueries(marketName string) []string {
 	marketName = strings.TrimSpace(marketName)
-	queries := []string{marketName}
-	if before, after, ok := strings.Cut(marketName, "|"); ok && strings.EqualFold(strings.TrimSpace(before), "Sticker") {
-		stickerName := strings.TrimSpace(after)
-		if stickerName != "" && !containsStringFold(queries, stickerName) {
-			queries = append(queries, stickerName)
+	queries := make([]string, 0, 2)
+	if _, after, ok := strings.Cut(marketName, "|"); ok {
+		unqualifiedName := strings.TrimSpace(after)
+		if unqualifiedName != "" {
+			queries = append(queries, unqualifiedName)
 		}
+	}
+	if marketName != "" && !containsStringFold(queries, marketName) {
+		queries = append(queries, marketName)
 	}
 	return queries
 }
@@ -509,8 +655,10 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 	kind := itemKind(item)
 	marketName := name
 	rarity := item.Rarity
+	var wearMin, wearMax *float64
 	if paintKit != 0 {
 		if paint, ok := s.paintKits[paintKit]; ok {
+			wearMin, wearMax = paint.WearMin, paint.WearMax
 			rarity = firstNonEmpty(paint.Rarity, rarity)
 			paintName := s.localize(paint.Description)
 			if paintName == "" {
@@ -572,6 +720,10 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			kind = "tool_item"
 		}
 	}
+	return s.metadataResult(item, name, marketName, kind, rarity, paintKit, attributes, wearMin, wearMax)
+}
+
+func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind string, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {
 	return Metadata{
 		Name:            name,
 		MarketName:      marketName,
@@ -581,8 +733,11 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		IsNameTagTool:   strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
 		Collection:      s.collectionNameFor(item.Name, paintKit),
 		CollectionItems: s.collectionItemsFor(item.Name, paintKit),
+		TradeUpItems:    s.tradeUpItemsFor(item.Name, paintKit, rarity),
 		ContainerItems:  s.lootListItems(item.LootList, nil),
 		Tradable:        schemaTradable(item),
+		PaintWearMin:    wearMin,
+		PaintWearMax:    wearMax,
 	}
 }
 
@@ -699,16 +854,17 @@ func (s *Schema) parseItems(root kvObject) {
 		}
 		merged := mergePrefab(node.objectValue(), prefabs, nil)
 		s.items[uint32(defIndex)] = itemDefinition{
-			Name:         merged.string("name"),
-			ItemName:     merged.string("item_name"),
-			TypeName:     merged.string("item_type_name"),
-			ItemClass:    merged.string("item_class"),
-			Prefab:       merged.string("prefab"),
-			Rarity:       merged.string("item_rarity"),
-			Image:        merged.string("image_inventory"),
-			ToolType:     merged.object("tool").string("type"),
-			Capabilities: merged.object("capabilities").strings(),
-			LootList:     merged.string("loot_list_name"),
+			Name:              merged.string("name"),
+			ItemName:          merged.string("item_name"),
+			TypeName:          merged.string("item_type_name"),
+			ItemClass:         merged.string("item_class"),
+			Prefab:            merged.string("prefab"),
+			Rarity:            merged.string("item_rarity"),
+			Image:             merged.string("image_inventory"),
+			ToolType:          merged.object("tool").string("type"),
+			Capabilities:      merged.object("capabilities").strings(),
+			LootList:          merged.string("loot_list_name"),
+			SupplyCrateSeries: merged.object("attributes").object("set supply crate series").string("value"),
 		}
 	}
 	for key, node := range itemsGame.object("paint_kits") {
@@ -721,6 +877,8 @@ func (s *Schema) parseItems(root kvObject) {
 			Name:        paint.string("name"),
 			Description: paint.string("description_tag"),
 			Rarity:      itemsGame.object("paint_kits_rarity").string(paint.string("name")),
+			WearMin:     optionalFloat(paint.string("wear_remap_min")),
+			WearMax:     optionalFloat(paint.string("wear_remap_max")),
 		}
 	}
 	for key, node := range itemsGame.object("sticker_kits") {
@@ -758,9 +916,18 @@ func (s *Schema) parseItems(root kvObject) {
 			Name:     keychain.string("name"),
 			ItemName: keychain.string("loc_name"),
 			Image:    keychain.string("image_inventory"),
+			Rarity:   keychain.string("item_rarity"),
 		}
 	}
 	s.parseCollections(itemsGame)
+}
+
+func optionalFloat(value string) *float64 {
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func (s *Schema) parseCollections(itemsGame kvObject) {
@@ -790,6 +957,29 @@ func (s *Schema) parseCollections(itemsGame kvObject) {
 			s.lootLists[key] = append(s.lootLists[key], entry)
 		}
 	}
+	for series, node := range itemsGame.object("revolving_loot_lists") {
+		if node.value != "" {
+			s.revolvingLootLists[series] = node.value
+		}
+	}
+}
+
+func (s *Schema) armoryLootListName(itemName string) string {
+	if strings.HasPrefix(itemName, "lootlist:") {
+		return strings.TrimPrefix(itemName, "lootlist:")
+	}
+	for _, item := range s.items {
+		if item.Name != itemName {
+			continue
+		}
+		if item.LootList != "" {
+			return item.LootList
+		}
+		if item.SupplyCrateSeries != "" {
+			return s.revolvingLootLists[item.SupplyCrateSeries]
+		}
+	}
+	return ""
 }
 
 func schemaItemKey(itemName string, paintKit uint32, paintKits map[uint32]paintKitDefinition) string {
@@ -811,10 +1001,70 @@ func (s *Schema) collectionItemsFor(itemName string, paintKit uint32) []RelatedI
 	return s.relatedItems(s.collections[setKey].Items)
 }
 
+func (s *Schema) tradeUpItemsFor(itemName string, paintKit uint32, rarity string) []RelatedItem {
+	targetRank := rarityRank(rarity) + 1
+	if targetRank == 7 {
+		return s.rareSpecialTradeUpItems(schemaItemKey(itemName, paintKit, s.paintKits))
+	}
+	if targetRank <= 1 || targetRank > 6 {
+		return nil
+	}
+	var out []RelatedItem
+	for _, item := range s.collectionItemsFor(itemName, paintKit) {
+		if rarityRank(item.Rarity) == targetRank {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (s *Schema) rareSpecialTradeUpItems(inputKey string) []RelatedItem {
+	seenItems := make(map[string]bool)
+	var out []RelatedItem
+	for lootList := range s.lootLists {
+		if !s.lootListContains(lootList, inputKey, nil) {
+			continue
+		}
+		for _, item := range s.lootListItems(lootList, nil) {
+			key := item.MarketName
+			if rarityRank(item.Rarity) != 7 || key == "" || seenItems[key] {
+				continue
+			}
+			seenItems[key] = true
+			out = append(out, item)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].MarketName < out[j].MarketName })
+	return out
+}
+
+func (s *Schema) lootListContains(name string, target string, seen map[string]bool) bool {
+	if seen == nil {
+		seen = make(map[string]bool)
+	}
+	if seen[name] {
+		return false
+	}
+	seen[name] = true
+	for _, entry := range s.lootLists[name] {
+		if entry == target {
+			return true
+		}
+		if _, nested := s.lootLists[entry]; nested && s.lootListContains(entry, target, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Schema) relatedItems(keys []string) []RelatedItem {
 	items := make([]RelatedItem, 0, len(keys))
 	for _, key := range keys {
 		paintName, itemName := splitSchemaItemKey(key)
+		if related, ok := s.relatedSpecialItem(paintName, itemName); ok {
+			items = append(items, related)
+			continue
+		}
 		var item itemDefinition
 		for _, candidate := range s.items {
 			if candidate.Name == itemName {
@@ -826,18 +1076,103 @@ func (s *Schema) relatedItems(keys []string) []RelatedItem {
 			continue
 		}
 		baseName := firstNonEmpty(s.localize(item.ItemName), item.Name)
-		related := RelatedItem{Name: baseName, MarketName: baseName, Rarity: item.Rarity}
+		related := RelatedItem{Name: baseName, MarketName: baseName, Kind: itemKind(item), Rarity: item.Rarity}
 		for _, paint := range s.paintKits {
 			if paint.Name == paintName {
 				paintDisplay := firstNonEmpty(s.localize(paint.Description), paint.Name)
 				related.MarketName = baseName + " | " + paintDisplay
 				related.Rarity = firstNonEmpty(paint.Rarity, related.Rarity)
+				related.WearMin = paint.WearMin
+				related.WearMax = paint.WearMax
 				break
 			}
 		}
 		items = append(items, related)
 	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left, right := rarityRank(items[i].Rarity), rarityRank(items[j].Rarity)
+		if left != right {
+			return left > right
+		}
+		return items[i].MarketName < items[j].MarketName
+	})
 	return items
+}
+
+func (s *Schema) relatedSpecialItem(variantName string, itemName string) (RelatedItem, bool) {
+	if variantName == "" {
+		return RelatedItem{}, false
+	}
+	if itemName == "sticker" || itemName == "spray" || itemName == "patch" {
+		for _, sticker := range s.stickerKits {
+			if sticker.Name != variantName {
+				continue
+			}
+			name := firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name))
+			prefix := "Sticker | "
+			if itemName == "patch" || strings.HasPrefix(sticker.Name, "patch_") {
+				prefix = "Patch | "
+			} else if itemName == "spray" || strings.HasPrefix(sticker.Name, "spray_") {
+				prefix = "Sealed Graffiti | "
+			}
+			return RelatedItem{Name: name, MarketName: prefix + name, Kind: itemName, Rarity: sticker.Rarity}, true
+		}
+	}
+	if itemName == "keychain" {
+		for _, keychain := range s.keychains {
+			if keychain.Name != variantName {
+				continue
+			}
+			name := firstNonEmpty(s.localize(keychain.ItemName), humanizeIdentifier(keychain.Name))
+			return RelatedItem{Name: name, MarketName: "Charm | " + name, Kind: "keychain", Rarity: keychain.Rarity}, true
+		}
+	}
+	return RelatedItem{}, false
+}
+
+func rarityRank(rarity string) int {
+	switch strings.ToLower(strings.TrimSpace(rarity)) {
+	case "immortal", "contraband", "contraband (discontinued)", "clandestine":
+		return 8
+	case "exceedingly rare", "rare special (★)", "rare special item", "knife", "gloves", "unusual":
+		return 7
+	case "ancient", "covert", "extraordinary", "master":
+		return 6
+	case "legendary", "classified", "exotic", "superior":
+		return 5
+	case "mythical", "restricted", "remarkable", "exceptional":
+		return 4
+	case "rare", "mil-spec", "mil-spec grade", "high grade", "distinguished":
+		return 3
+	case "uncommon", "industrial grade", "medium grade":
+		return 2
+	case "common", "consumer grade", "base grade":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func RelatedItemMarketNames(items []RelatedItem) []string {
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.MarketName != "" {
+			names = append(names, item.MarketName)
+		}
+	}
+	return names
+}
+
+func ApplyRelatedItemDescriptions(items []RelatedItem, descriptions map[string]MarketDescription) []RelatedItem {
+	out := append([]RelatedItem(nil), items...)
+	for index := range out {
+		if description, ok := descriptions[out[index].MarketName]; ok {
+			out[index].ImageURL = firstNonEmpty(description.IconURLLarge, description.IconURL)
+			out[index].Price = description.Price.SellPriceText
+			out[index].ListingName = firstNonEmpty(description.HashName, description.MarketHashName, description.MarketName)
+		}
+	}
+	return out
 }
 
 func splitSchemaItemKey(key string) (string, string) {

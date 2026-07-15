@@ -1,6 +1,6 @@
 import type { AppBackendClient } from "@cs-inv-edit/app";
 import { createAppError } from "@cs-inv-edit/app";
-import { ResultAsync, okAsync } from "neverthrow";
+import { ResultAsync, err, errAsync, fromThrowable, ok, okAsync } from "neverthrow";
 import { healthStatusSchema, type ConnectionStatus, type FeatureFlags, type HealthStatus, type InventorySnapshot, type OperationEvent, type OperationReceipt, type SettingsData } from "@cs-inv-edit/contracts";
 
 declare global {
@@ -34,6 +34,8 @@ const defaultFeatureFlags: FeatureFlags = {
   enableItemUse: false,
   enableToolApplication: false,
   enableGifting: false,
+  enableTf2Inventory: false,
+  enableDota2Inventory: false,
 };
 
 const defaultSettings: SettingsData = {
@@ -41,6 +43,8 @@ const defaultSettings: SettingsData = {
   validationMode: true,
   sacrificialAccountMode: true,
   featureFlags: defaultFeatureFlags,
+  animations: { container: "slot-machine", tradeUp: "slot-machine", armory: "slot-machine" },
+  armoryPurchasePacingSeconds: 5,
 };
 
 function createReceipt(type: string, state: OperationReceipt["state"], message: string): OperationReceipt {
@@ -108,14 +112,19 @@ export function createWasmBackendClient(): AppBackendClient {
       const runtime = window.csInvEditWasmBackend;
       const raw = runtime?.health?.();
       if (raw) {
-        const parsed = healthStatusSchema.safeParse(JSON.parse(raw));
-        if (!parsed.success) throw new Error(`Invalid WASM health payload: ${parsed.error.message}`);
-        return parsed.data;
+        const decoded = fromThrowable(JSON.parse, (cause) => createAppError("Invalid WASM health JSON", undefined, cause))(raw)
+          .andThen((value) => {
+            const parsed = healthStatusSchema.safeParse(value);
+            return parsed.success ? ok(parsed.data) : err(createAppError(`Invalid WASM health payload: ${parsed.error.message}`));
+          });
+        return decoded.match((value) => value, () => ({ status: "error", service: "cs2-wasm-backend", version: "0.0.0", time: new Date().toISOString() }));
       }
       return { status: "ok", service: "cs2-wasm-backend", version: "0.0.0", time: new Date().toISOString() };
     }),
     inventory: () => okAsync(createInventorySnapshot()),
     refreshInventory: () => okAsync(createReceipt("inventory.refresh", "completed", "WASM inventory refresh completed.")),
+    gameInventory: (game) => errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
+    refreshGameInventory: (game) => errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
     armory: () => okAsync({ balance: 0, generationTime: 0, itemIds: [], offers: [], refreshedAt: new Date().toISOString(), status: "requires_connection" as const }),
     refreshArmory: () => okAsync(createReceipt("armory.refresh", "failed", "WASM mode cannot read live GC Armory state.")),
     redeemArmory: () => okAsync(createReceipt("armory.redeem", "blocked_by_feature_flag", "WASM mode cannot purchase Armory items.")),
@@ -125,6 +134,7 @@ export function createWasmBackendClient(): AppBackendClient {
     settings: () => okAsync(defaultSettings),
     steamStatus: () => okAsync(createConnectionStatus("disconnected", "WASM mode does not connect to Steam.")),
     connectSteam: () => okAsync(createConnectionStatus("connected", "WASM mode simulates a connected Steam session.")),
+    startSteamQR: () => okAsync(createConnectionStatus("error", "QR login is unavailable in WASM mode.")),
     submitSteamGuard: () => okAsync(createConnectionStatus("connected", "WASM mode does not require Steam Guard.")),
     disconnectSteam: () => okAsync(createConnectionStatus("disconnected", "WASM mode disconnected the simulated session.")),
     applyNameTag: (input) => okAsync(createReceipt("nametags.apply", "completed", `Applied custom name for ${input.subjectItemId}`)),

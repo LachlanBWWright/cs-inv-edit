@@ -9,6 +9,7 @@ import type {
   ConnectionStatus,
   DeleteItemRequest,
   GiftItemRequest,
+  GameInventorySnapshot,
   HealthStatus,
   InventoryItemDto,
   InventorySnapshot,
@@ -24,10 +25,12 @@ import type {
 import { AccountView } from "./components/AccountView.js";
 import { ArmoryView } from "./components/ArmoryView.js";
 import { InventoryView } from "./components/InventoryView.js";
+import { GameInventoryView } from "./components/GameInventoryView.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Alert } from "./components/ui/Alert.js";
 import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
 import type { AppScreen } from "./view.js";
+import { isEconomyInventoryScreen, isInventoryScreen } from "./view.js";
 
 export interface AppViewProps {
   view: AppScreen;
@@ -40,6 +43,8 @@ export interface AppViewProps {
   accounts: SteamAccountProfile[];
   accountUsername: string;
   inventory: InventorySnapshot | undefined;
+  tf2Inventory: GameInventorySnapshot | undefined;
+  dota2Inventory: GameInventorySnapshot | undefined;
   armory: ArmorySnapshot | undefined;
   settings: SettingsData | undefined;
   query: string;
@@ -59,10 +64,12 @@ export interface AppViewProps {
   onRefreshInventory: () => void;
   onDismissToast: (id: string) => void;
   onConnect: (input: { username?: string; password?: string }) => Promise<void>;
+  onStartSteamQR: () => Promise<void>;
   onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
   onDisconnect: () => Promise<void>;
   onToast: (toast: Omit<ToastItem, "id">) => void;
   onInventoryRefresh: () => void;
+  onGameInventoryRefresh: (game: "tf2" | "dota2") => void;
   onArmoryRefresh: () => Promise<unknown>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
   onInventoryRename: (input: SetItemNameRequest) => Promise<unknown>;
@@ -122,13 +129,15 @@ export function AppView(props: AppViewProps) {
             connection={props.connection}
             initialUsername={props.accountUsername}
             onConnect={props.onConnect}
+            onStartSteamQR={props.onStartSteamQR}
             onSubmitSteamGuard={props.onSubmitSteamGuard}
             onDisconnect={props.onDisconnect}
             onToast={props.onToast}
           />
         </Match>
-        <Match when={props.view === "inventory"}>
+        <Match when={isInventoryScreen(props.view)}>
           <InventoryView
+			mode={isInventoryScreen(props.view) ? props.view : "inventory"}
             inventory={props.inventory}
             selectedItemId={props.selectedItemId}
             setSelectedItemId={props.setSelectedItemId}
@@ -145,6 +154,17 @@ export function AppView(props: AppViewProps) {
             onRemoveName={props.onRemoveName}
             onOpenContainer={props.onOpenContainer}
             onToast={props.onToast}
+          />
+        </Match>
+        <Match when={isEconomyInventoryScreen(props.view)}>
+          <GameInventoryView
+			game={props.view === "tf2-inventory" ? "tf2" : "dota2"}
+            snapshot={props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
+            query={props.query}
+            selectedAssetId={props.selectedItemId}
+            setSelectedAssetId={props.setSelectedItemId}
+            compactMode={props.compactMode}
+            onRefresh={() => props.onGameInventoryRefresh(props.view === "tf2-inventory" ? "tf2" : "dota2")}
           />
         </Match>
         <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onRedeem={props.onArmoryRedeem} /></Match>

@@ -1,4 +1,21 @@
-import type { InventoryItemDto } from "@cs-inv-edit/contracts";
+import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
+
+export function rarityRank(rarity: string | undefined) {
+  const value = rarity?.trim().toLowerCase() ?? "";
+  if (["immortal", "contraband", "contraband (discontinued)", "clandestine"].includes(value)) return 8;
+  if (["exceedingly rare", "rare special (★)", "rare special item", "knife", "gloves", "unusual"].includes(value)) return 7;
+  if (["ancient", "covert", "extraordinary", "master"].includes(value)) return 6;
+  if (["legendary", "classified", "exotic", "superior"].includes(value)) return 5;
+  if (["mythical", "restricted", "remarkable", "exceptional"].includes(value)) return 4;
+  if (["rare", "mil-spec", "mil-spec grade", "high grade", "distinguished"].includes(value)) return 3;
+  if (["uncommon", "industrial grade", "medium grade"].includes(value)) return 2;
+  if (["common", "consumer grade", "base grade"].includes(value)) return 1;
+  return 0;
+}
+
+export function sortRelatedItemsByRarity(items: RelatedItemDto[]) {
+  return [...items].sort((left, right) => rarityRank(right.rarity) - rarityRank(left.rarity) || (left.marketName || left.name).localeCompare(right.marketName || right.name));
+}
 
 export function itemKindLabel(kind: InventoryItemDto["kind"] | undefined) {
   switch (kind) {

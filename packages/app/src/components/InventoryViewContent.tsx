@@ -6,6 +6,7 @@ import { itemDisplayName, itemInitials, itemSubtitle, rarityBorderClass } from "
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
 import { TradeLockIndicator } from "./TradeLockIndicator.js";
+import type { InventoryMode } from "../view.js";
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -26,6 +27,8 @@ function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
 
 export interface InventoryViewContentProps {
   inventory: InventorySnapshot | undefined;
+  selectionMode: InventoryMode;
+  selectedItemIds: string[];
   connection: ConnectionStatus | undefined;
   settings: SettingsData | undefined;
   query: string;
@@ -65,7 +68,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
   const inventoryDebugEnabled = () => props.settings?.featureFlags.enableInventoryDebug ?? false;
 
   const itemCardClass = (item: InventoryItemDto) => {
-    const isSelected = props.selectedItem?.id === item.id;
+    const isSelected = props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id);
     return `group relative min-h-24 cursor-pointer overflow-hidden rounded-2xl border-2 p-3 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "bg-cyan-500/10 ring-2 ring-cyan-300" : "bg-slate-900/70 hover:bg-slate-800/90"}`;
   };
 
@@ -124,6 +127,9 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
+	  <Show when={props.selectionMode !== "inventory"}>
+		<Alert variant="warning">{props.selectionMode === "inventory-storage" ? "Storage selection is a stub." : "Trade-up selection is a stub."} Select multiple inventory items below; no operation will be performed. Selected: {props.selectedItemIds.length}.</Alert>
+	  </Show>
       <Show when={props.inventory?.status === "requires_connection" && !props.connected}>
         <Alert variant="warning">Connect a Steam account to load inventory items and enable name-tag editing.</Alert>
       </Show>
@@ -160,14 +166,29 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
 
       <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
         <div class="min-h-0 overflow-y-auto pr-1">
-            <Show when={props.filteredItems.length > 0} fallback={<Alert>{props.inventoryLoading ? "Loading CS2 inventory from Steam Game Coordinator..." : "No inventory items are loaded."}</Alert>}>
+            <Show
+              when={props.filteredItems.length > 0}
+              fallback={
+                <Alert class="flex h-full min-h-48 items-center justify-center">
+                  <Show when={props.inventoryLoading} fallback={<p>No inventory items are loaded.</p>}>
+                    <div class="flex flex-col items-center gap-4 text-center" role="status" aria-live="polite">
+                      <span
+                        class="h-9 w-9 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-300"
+                        aria-hidden="true"
+                      />
+                      <p>Loading CS2 inventory from Steam Game Coordinator...</p>
+                    </div>
+                  </Show>
+                </Alert>
+              }
+            >
               <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
                 <For each={props.filteredItems}>
                   {(item) => (
                     <button
                       type="button"
                       class={`cursor-pointer rounded-2xl border-2 p-3 text-left transition duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`}
-                      aria-pressed={props.selectedItem?.id === item.id}
+                      aria-pressed={props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id)}
                       onClick={(event) => { event.stopPropagation(); props.onSelectItem(item); }}
                     >
                       <TradeLockIndicator item={item} />

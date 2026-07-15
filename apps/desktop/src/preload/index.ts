@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { ResultAsync, err, ok } from "neverthrow";
+import { ResultAsync, err, ok, fromThrowable } from "neverthrow";
 import type { AppError } from "@cs-inv-edit/app";
 import { backendSchemas } from "@cs-inv-edit/contracts";
 import type { SafeParseSchema } from "@cs-inv-edit/app";
@@ -20,6 +20,8 @@ const api = {
   health: () => invokeResult(backendSchemas.health, "backend:health"),
   inventory: () => invokeResult(backendSchemas.inventory, "backend:inventory"),
   refreshInventory: () => invokeResult(backendSchemas.receipt, "backend:refreshInventory"),
+  gameInventory: (game: "tf2" | "dota2") => invokeResult(backendSchemas.gameInventory, "backend:gameInventory", game),
+  refreshGameInventory: (game: "tf2" | "dota2") => invokeResult(backendSchemas.receipt, "backend:refreshGameInventory", game),
   armory: () => invokeResult(backendSchemas.armory, "backend:armory"),
   refreshArmory: () => invokeResult(backendSchemas.receipt, "backend:refreshArmory"),
   redeemArmory: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:redeemArmory", input),
@@ -29,6 +31,15 @@ const api = {
   settings: () => invokeResult(backendSchemas.settings, "backend:settings"),
   steamStatus: () => invokeResult(backendSchemas.connection, "backend:steamStatus"),
   connectSteam: (input?: unknown) => invokeResult(backendSchemas.connection, "backend:connectSteam", input),
+  startSteamQR: () => invokeResult(backendSchemas.connection, "backend:startSteamQR"),
+  watchSteamStatus: (listener: (status: unknown) => void) => {
+    const socket = new WebSocket("ws://127.0.0.1:7331/steam/status/ws");
+    const parse = fromThrowable(JSON.parse, (cause) => cause);
+    socket.onmessage = (event) => parse(String(event.data)).map((value) => backendSchemas.connection.safeParse(value)).map((result) => {
+      if (result.success) listener(result.data);
+    });
+    return () => socket.close();
+  },
   submitSteamGuard: (input?: unknown) => invokeResult(backendSchemas.connection, "backend:submitSteamGuard", input),
   disconnectSteam: () => invokeResult(backendSchemas.connection, "backend:disconnectSteam"),
   applyNameTag: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:applyNameTag", input),

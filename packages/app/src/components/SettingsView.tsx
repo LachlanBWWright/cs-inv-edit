@@ -86,6 +86,15 @@ export function SettingsView(props: SettingsViewProps) {
         </section>
 
         <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
+          <h4 class="text-sm font-semibold text-slate-100">Armory purchase pacing</h4>
+          <p class="mt-1 text-xs text-slate-500">Delay between protobuf purchase messages during a bulk buy.</p>
+          <label class="mt-3 flex items-center gap-3 text-sm">
+            <Input type="number" min="1" max="60" class="w-24" value={String(draft()?.armoryPurchasePacingSeconds ?? 5)} onInput={(event) => setDraft((current) => current ? { ...current, armoryPurchasePacingSeconds: Math.min(60, Math.max(1, Number((event.currentTarget as HTMLInputElement).value) || 5)) } : current)} />
+            <span class="text-slate-400">seconds</span>
+          </label>
+        </section>
+
+        <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
           <h4 class="text-sm font-semibold text-slate-100">Backend</h4>
           <div class="mt-3 space-y-3 text-sm text-slate-400">
             <label class="flex flex-col gap-2">

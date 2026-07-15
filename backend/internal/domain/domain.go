@@ -1,12 +1,13 @@
 package domain
 
 type ConnectionStatus struct {
-	State       string   `json:"state"`
-	Detail      string   `json:"detail,omitempty"`
-	SteamID     string   `json:"steamId,omitempty"`
-	AccountName string   `json:"accountName,omitempty"`
-	AvatarURL   string   `json:"avatarUrl,omitempty"`
-	Diagnostics []string `json:"diagnostics,omitempty"`
+	State          string   `json:"state"`
+	Detail         string   `json:"detail,omitempty"`
+	SteamID        string   `json:"steamId,omitempty"`
+	AccountName    string   `json:"accountName,omitempty"`
+	AvatarURL      string   `json:"avatarUrl,omitempty"`
+	Diagnostics    []string `json:"diagnostics,omitempty"`
+	QRChallengeURL string   `json:"qrChallengeUrl,omitempty"`
 }
 
 type Sticker struct {
@@ -35,6 +36,8 @@ type InventoryItem struct {
 	Kind               string        `json:"kind"`
 	Defindex           *uint32       `json:"defindex,omitempty"`
 	PaintWear          *float64      `json:"paintWear,omitempty"`
+	PaintWearMin       *float64      `json:"paintWearMin,omitempty"`
+	PaintWearMax       *float64      `json:"paintWearMax,omitempty"`
 	Stickers           []Sticker     `json:"stickers,omitempty"`
 	AppliedItems       []AppliedItem `json:"appliedItems,omitempty"`
 	IsStatTrak         bool          `json:"isStatTrak,omitempty"`
@@ -45,6 +48,7 @@ type InventoryItem struct {
 	CasketID           *string       `json:"casketId,omitempty"`
 	Collection         string        `json:"collection,omitempty"`
 	CollectionItems    []RelatedItem `json:"collectionItems,omitempty"`
+	TradeUpItems       []RelatedItem `json:"tradeUpItems,omitempty"`
 	ContainerItems     []RelatedItem `json:"containerItems,omitempty"`
 	Exterior           string        `json:"exterior,omitempty"`
 	Rarity             string        `json:"rarity,omitempty"`
@@ -58,9 +62,16 @@ type InventoryItem struct {
 }
 
 type RelatedItem struct {
-	Name       string `json:"name"`
-	MarketName string `json:"marketName,omitempty"`
-	Rarity     string `json:"rarity,omitempty"`
+	Name        string   `json:"name"`
+	MarketName  string   `json:"marketName,omitempty"`
+	ListingName string   `json:"listingName,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Rarity      string   `json:"rarity,omitempty"`
+	ImageURL    string   `json:"imageUrl,omitempty"`
+	Price       string   `json:"price,omitempty"`
+	PaintWear   *float64 `json:"paintWear,omitempty"`
+	WearMin     *float64 `json:"wearMin,omitempty"`
+	WearMax     *float64 `json:"wearMax,omitempty"`
 }
 
 type InventorySnapshot struct {
@@ -109,6 +120,75 @@ type FeatureFlags struct {
 	EnableGifting          bool `json:"enableGifting"`
 	EnableArmoryRead       bool `json:"enableArmoryRead"`
 	EnableArmoryRedemption bool `json:"enableArmoryRedemption"`
+	EnableTF2Inventory     bool `json:"enableTf2Inventory"`
+	EnableDota2Inventory   bool `json:"enableDota2Inventory"`
+}
+
+type EconomyTag struct {
+	Category     string `json:"category"`
+	InternalName string `json:"internalName"`
+	Name         string `json:"name"`
+}
+
+type EconomyItemDetails struct {
+	Game              string            `json:"game"`
+	Level             uint32            `json:"level"`
+	QualityID         uint32            `json:"qualityId"`
+	InventoryPosition uint32            `json:"inventoryPosition"`
+	OriginID          uint32            `json:"originId"`
+	Style             uint32            `json:"style"`
+	Flags             uint32            `json:"flags"`
+	CustomName        string            `json:"customName,omitempty"`
+	CustomDescription string            `json:"customDescription,omitempty"`
+	Attributes        map[string]uint32 `json:"attributes"`
+	AttributeBytes    map[string]string `json:"attributeBytes,omitempty"`
+	EquippedStates    []EquippedState   `json:"equippedStates,omitempty"`
+	InteriorItemID    string            `json:"interiorItemId,omitempty"`
+	SchemaQuality     string            `json:"schemaQuality,omitempty"`
+	EquipSlot         string            `json:"equipSlot,omitempty"`
+	UsableClasses     []string          `json:"usableClasses,omitempty"`
+	Capabilities      map[string]string `json:"capabilities,omitempty"`
+	Hero              string            `json:"hero,omitempty"`
+	Slot              string            `json:"slot,omitempty"`
+}
+
+type EquippedState struct {
+	Class uint32 `json:"class"`
+	Slot  uint32 `json:"slot"`
+}
+
+type EconomyInventoryItem struct {
+	Game         string             `json:"game"`
+	AppID        uint32             `json:"appId"`
+	ContextID    string             `json:"contextId,omitempty"`
+	AssetID      string             `json:"assetId"`
+	ClassID      string             `json:"classId,omitempty"`
+	InstanceID   string             `json:"instanceId,omitempty"`
+	DefinitionID *uint32            `json:"definitionId,omitempty"`
+	Name         string             `json:"name"`
+	MarketName   string             `json:"marketName,omitempty"`
+	ImageURL     string             `json:"imageUrl,omitempty"`
+	Quantity     uint64             `json:"quantity"`
+	Type         string             `json:"type,omitempty"`
+	Rarity       string             `json:"rarity,omitempty"`
+	Quality      string             `json:"quality,omitempty"`
+	Tradable     bool               `json:"tradable"`
+	Marketable   bool               `json:"marketable"`
+	Tags         []EconomyTag       `json:"tags"`
+	Descriptions []string           `json:"descriptions,omitempty"`
+	Details      EconomyItemDetails `json:"details"`
+}
+
+type GameInventorySnapshot struct {
+	Game           string                 `json:"game"`
+	AppID          uint32                 `json:"appId"`
+	Items          []EconomyInventoryItem `json:"items"`
+	RefreshedAt    string                 `json:"refreshedAt"`
+	Status         string                 `json:"status"`
+	Message        string                 `json:"message,omitempty"`
+	Error          string                 `json:"error,omitempty"`
+	SchemaRevision string                 `json:"schemaRevision,omitempty"`
+	Diagnostics    []string               `json:"diagnostics"`
 }
 
 type ItemDebug struct {
@@ -126,11 +206,12 @@ type ItemDebug struct {
 }
 
 type Settings struct {
-	BackendURL             string            `json:"backendUrl"`
-	ValidationMode         bool              `json:"validationMode"`
-	SacrificialAccountMode bool              `json:"sacrificialAccountMode"`
-	FeatureFlags           FeatureFlags      `json:"featureFlags"`
-	Animations             AnimationSettings `json:"animations"`
+	BackendURL                  string            `json:"backendUrl"`
+	ValidationMode              bool              `json:"validationMode"`
+	SacrificialAccountMode      bool              `json:"sacrificialAccountMode"`
+	FeatureFlags                FeatureFlags      `json:"featureFlags"`
+	Animations                  AnimationSettings `json:"animations"`
+	ArmoryPurchasePacingSeconds uint32            `json:"armoryPurchasePacingSeconds"`
 }
 
 type AnimationSettings struct {

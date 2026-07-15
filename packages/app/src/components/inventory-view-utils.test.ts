@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rarityBorderClass, resolveSelectedInventoryItem } from "./inventory-view-utils.js";
+import { rarityBorderClass, resolveSelectedInventoryItem, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 
 describe("rarityBorderClass", () => {
   it("maps common CS2 rarity tiers to distinct border colors", () => {
@@ -44,6 +44,13 @@ describe("rarityBorderClass", () => {
 
   it("falls back to a neutral border for unknown rarities", () => {
     expect(rarityBorderClass("Unknown")).toBe("rarity-outline");
+  });
+});
+
+describe("sortRelatedItemsByRarity", () => {
+  it("sorts collection previews from highest to lowest rarity", () => {
+    const sorted = sortRelatedItemsByRarity([{ name: "Common", rarity: "common" }, { name: "Ancient", rarity: "ancient" }, { name: "Rare", rarity: "rare" }]);
+    expect(sorted.map((item) => item.name)).toEqual(["Ancient", "Rare", "Common"]);
   });
 });
 

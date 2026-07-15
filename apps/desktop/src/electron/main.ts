@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ResultAsync } from "neverthrow";
 import { postJsonResult, requestJsonResult, type AppError, type SafeParseSchema } from "@cs-inv-edit/app";
-import { backendSchemas } from "@cs-inv-edit/contracts";
+import { backendSchemas, economyGameSchema } from "@cs-inv-edit/contracts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendURL = "http://127.0.0.1:7331";
@@ -85,6 +85,14 @@ function postJson<T>(pathName: string, schema: SafeParseSchema<T>, input?: unkno
 ipcMain.handle("backend:health", async () => requestJson("/health", backendSchemas.health));
 ipcMain.handle("backend:inventory", async () => requestJson("/inventory", backendSchemas.inventory));
 ipcMain.handle("backend:refreshInventory", async () => requestJson("/inventory/refresh", backendSchemas.receipt, { method: "POST" }));
+ipcMain.handle("backend:gameInventory", async (_event, game: unknown) => {
+  const parsed = economyGameSchema.safeParse(game);
+  return parsed.success ? requestJson(`/games/${parsed.data}/inventory`, backendSchemas.gameInventory) : { ok: false as const, error: { message: "Invalid economy game IPC argument", cause: parsed.error } };
+});
+ipcMain.handle("backend:refreshGameInventory", async (_event, game: unknown) => {
+  const parsed = economyGameSchema.safeParse(game);
+  return parsed.success ? requestJson(`/games/${parsed.data}/inventory/refresh`, backendSchemas.receipt, { method: "POST" }) : { ok: false as const, error: { message: "Invalid economy game IPC argument", cause: parsed.error } };
+});
 ipcMain.handle("backend:armory", async () => requestJson("/armory", backendSchemas.armory));
 ipcMain.handle("backend:refreshArmory", async () => requestJson("/armory/refresh", backendSchemas.receipt, { method: "POST" }));
 ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) => postJson("/armory/redeem", backendSchemas.receipt, input));
@@ -94,6 +102,7 @@ ipcMain.handle("backend:events", async () => requestJson("/events", backendSchem
 ipcMain.handle("backend:settings", async () => requestJson("/settings", backendSchemas.settings));
 ipcMain.handle("backend:steamStatus", async () => requestJson("/steam/status", backendSchemas.connection));
 ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) => postJson("/steam/connect", backendSchemas.connection, input));
+ipcMain.handle("backend:startSteamQR", async () => postJson("/steam/qr", backendSchemas.connection, {}));
 ipcMain.handle("backend:submitSteamGuard", async (_event, input?: unknown) => postJson("/steam/guard", backendSchemas.connection, input));
 ipcMain.handle("backend:disconnectSteam", async () => requestJson("/steam/disconnect", backendSchemas.connection, { method: "POST" }));
 ipcMain.handle("backend:applyNameTag", async (_event, input?: unknown) => postJson("/nametags/apply", backendSchemas.receipt, input));

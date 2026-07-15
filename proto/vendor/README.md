@@ -20,3 +20,11 @@ Use those files as the local authoritative source for CS2 protobuf message struc
 - `Protobufs/cstrike15_gcmessages.proto` defines CS2-specific GC messages that retain legacy CS:GO naming.
 
 Do not infer binary layouts when a message exists in the submodule. If generated bindings need a smaller local subset, derive it mechanically from these files and regenerate; do not hand-edit generated Go output.
+
+Additional pinned tracker submodules support the feature-gated read-only
+inventory modes:
+
+- `gametracking-tf2/` → `https://github.com/SteamTracking/GameTracking-TF2.git`
+- `gametracking-dota2/` → `https://github.com/SteamTracking/GameTracking-Dota2.git`
+
+See `docs/multi-game-economy-sources.md` for the exact source and update rules.

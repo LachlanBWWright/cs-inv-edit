@@ -78,6 +78,23 @@ func TestEncodeGamesPlayedPacketAdvertisesCS2(t *testing.T) {
 	}
 }
 
+func TestEncodeGamesPlayedPacketKeepsCS2ActiveWithAnotherEconomyGame(t *testing.T) {
+	packet, err := encodeGamesPlayedPacketForApps([]uint32{730, 440})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body steampb.CMsgClientGamesPlayed
+	if _, err := steammsg.DecodePacket(packet, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.GetGamesPlayed()) != 2 || body.GetGamesPlayed()[0].GetGameId() != 730 || body.GetGamesPlayed()[1].GetGameId() != 440 {
+		t.Fatalf("games played = %#v", body.GetGamesPlayed())
+	}
+	if body.GetGamesPlayed()[0].GetGameExtraInfo() != "Counter-Strike 2" || body.GetGamesPlayed()[1].GetGameExtraInfo() != "Team Fortress 2" {
+		t.Fatalf("games played labels = %#v", body.GetGamesPlayed())
+	}
+}
+
 func TestGCHandlerDecodesClientFromGC(t *testing.T) {
 	events := make(chan GCEvent, 1)
 	handler := NewGCHandler(events)

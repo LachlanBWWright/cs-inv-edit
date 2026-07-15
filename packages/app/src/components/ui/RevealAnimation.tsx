@@ -91,10 +91,11 @@ export function RevealAnimation(props: RevealAnimationProps) {
 }
 
 function ResultCard(props: { item: RevealItem; compact?: boolean }) {
+  const [imageFailed, setImageFailed] = createSignal(false);
   return (
     <div class={`reveal-item rarity-outline ${rarityBorderClass(props.item.rarity)} ${props.compact ? "is-compact" : ""}`}>
-      <Show when={props.item.imageUrl} fallback={<div class="reveal-item-placeholder">?</div>}>
-        <img src={props.item.imageUrl} alt="" />
+      <Show when={props.item.imageUrl && !imageFailed()} fallback={<div class="reveal-item-placeholder">?</div>}>
+        <img src={props.item.imageUrl} alt="" referrerpolicy="no-referrer" onError={() => setImageFailed(true)} />
       </Show>
       <p>{props.item.name}</p>
     </div>

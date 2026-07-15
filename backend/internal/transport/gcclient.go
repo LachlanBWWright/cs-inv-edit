@@ -13,6 +13,7 @@ import (
 
 type SteamGCClient struct {
 	mu          sync.Mutex
+	requestMu   sync.Mutex
 	conn        *steamcm.SteamConnection
 	events      chan GCEvent
 	state       GCConnectionState
