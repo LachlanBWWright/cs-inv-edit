@@ -94,6 +94,7 @@ ipcMain.handle("backend:refreshGameInventory", async (_event, game: unknown) => 
   return parsed.success ? requestJson(`/games/${parsed.data}/inventory/refresh`, backendSchemas.receipt, { method: "POST" }) : { ok: false as const, error: { message: "Invalid economy game IPC argument", cause: parsed.error } };
 });
 ipcMain.handle("backend:armory", async () => requestJson("/armory", backendSchemas.armory));
+ipcMain.handle("backend:marketPreview", async (_event, marketName: string) => requestJson(`/market/preview?marketName=${encodeURIComponent(marketName)}`, backendSchemas.marketPreview));
 ipcMain.handle("backend:refreshArmory", async () => requestJson("/armory/refresh", backendSchemas.receipt, { method: "POST" }));
 ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) => postJson("/armory/redeem", backendSchemas.receipt, input));
 ipcMain.handle("backend:submitOperation", async (_event, type: string, input?: unknown) => requestJson(`/operations/${encodeURIComponent(type)}`, backendSchemas.receipt, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));

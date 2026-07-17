@@ -23,6 +23,7 @@ const api = {
   gameInventory: (game: "tf2" | "dota2") => invokeResult(backendSchemas.gameInventory, "backend:gameInventory", game),
   refreshGameInventory: (game: "tf2" | "dota2") => invokeResult(backendSchemas.receipt, "backend:refreshGameInventory", game),
   armory: () => invokeResult(backendSchemas.armory, "backend:armory"),
+  marketPreview: (marketName: string) => invokeResult(backendSchemas.marketPreview, "backend:marketPreview", marketName),
   refreshArmory: () => invokeResult(backendSchemas.receipt, "backend:refreshArmory"),
   redeemArmory: (input: unknown) => invokeResult(backendSchemas.receipt, "backend:redeemArmory", input),
   submitOperation: (type: string, input?: unknown) => invokeResult(backendSchemas.receipt, "backend:submitOperation", type, input),

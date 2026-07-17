@@ -25,6 +25,7 @@ function createHttpBackendClient(): AppBackendClient {
     gameInventory: (game) => createRequestResult<GameInventorySnapshot>(`/games/${game}/inventory`, backendSchemas.gameInventory),
     refreshGameInventory: (game) => createRequestResult<OperationReceipt>(`/games/${game}/inventory/refresh`, backendSchemas.receipt, { method: "POST" }),
     armory: () => createRequestResult<ArmorySnapshot>("/armory", backendSchemas.armory),
+    marketPreview: (marketName) => createRequestResult(`/market/preview?marketName=${encodeURIComponent(marketName)}`, backendSchemas.marketPreview),
     refreshArmory: () => createRequestResult<OperationReceipt>("/armory/refresh", backendSchemas.receipt, { method: "POST" }),
     redeemArmory: (input) => createPostResult<OperationReceipt>("/armory/redeem", backendSchemas.receipt, input),
     submitOperation: (type, input) => createPostResult<OperationReceipt>(`/operations/${encodeURIComponent(type)}`, backendSchemas.receipt, input),

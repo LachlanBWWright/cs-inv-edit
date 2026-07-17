@@ -29,6 +29,7 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/armory", h.armory)
 	h.mux.HandleFunc("/armory/refresh", h.armoryRefresh)
 	h.mux.HandleFunc("/armory/redeem", h.armoryRedeem)
+	h.mux.HandleFunc("/market/preview", h.marketPreview)
 	h.mux.HandleFunc("/operations", h.operations)
 	h.mux.HandleFunc("/operations/", h.operationRoot)
 	h.mux.HandleFunc("/operations/{type}", h.operation)
@@ -101,6 +102,18 @@ func (h *Handler) armoryRefresh(w http.ResponseWriter, _ *http.Request) {
 }
 func (h *Handler) armoryRedeem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperationDirect(r, h.service.RedeemArmory))
+}
+func (h *Handler) marketPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "market preview requires GET")
+		return
+	}
+	preview, err := h.service.MarketPreview(r.URL.Query().Get("marketName"))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, preview)
 }
 
 func (h *Handler) handleBodyOperationDirect(r *http.Request, submit func(map[string]any) operations.Receipt) operations.Receipt {

@@ -2,6 +2,7 @@ package econ
 
 import (
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -281,6 +282,136 @@ func TestMarketSearchQueriesAvoidLiteralWeaponSeparator(t *testing.T) {
 	queries := marketSearchQueries("M4A4 | Converter (Minimal Wear)")
 	if len(queries) != 2 || queries[0] != "Converter (Minimal Wear)" || queries[1] != "M4A4 | Converter (Minimal Wear)" {
 		t.Fatalf("market queries = %#v", queries)
+	}
+}
+
+func TestSteamIconURLNormalizesSteamDescriptionShapes(t *testing.T) {
+	tests := map[string]string{
+		"token":                "https://community.fastly.steamstatic.com/economy/image/token",
+		"/economy/image/token": "https://community.fastly.steamstatic.com/economy/image/token",
+		"//community.fastly.steamstatic.com/icon":   "https://community.fastly.steamstatic.com/icon",
+		"https://steamcommunity.example/image/icon": "https://steamcommunity.example/image/icon",
+		" https://cdn.example/icon&amp;x=1 ":        "https://cdn.example/icon&x=1",
+	}
+	for input, want := range tests {
+		if got := steamIconURL(input); got != want {
+			t.Errorf("steamIconURL(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestAddMarketDescriptionIndexesImageByAllSteamNames(t *testing.T) {
+	description := MarketDescription{
+		HashName:       "AK-47 | Redline (Field-Tested)",
+		MarketHashName: "AK-47 | Redline (Field-Tested)",
+		MarketName:     "AK-47 | Redline (Field-Tested)",
+		IconURL:        "https://community.fastly.steamstatic.com/economy/image/token",
+	}
+	got := make(map[string]MarketDescription)
+	addMarketDescription(got, "requested name", description)
+	for _, name := range []string{"requested name", description.HashName, description.MarketHashName, description.MarketName} {
+		if got[name].IconURL != description.IconURL {
+			t.Errorf("market description was not indexed by %q", name)
+		}
+	}
+}
+
+func TestTrackedImageIndexIsPrimaryForWeaponFinish(t *testing.T) {
+	const trackedURL = "https://cdn.steamstatic.com/apps/730/icons/econ/default_generated/weapon_ak47_redline_light.hash.png"
+	schema := &Schema{
+		paintKits: map[uint32]paintKitDefinition{282: {Name: "redline"}},
+		imageURLs: map[string]string{
+			"econ/default_generated/weapon_ak47_redline_light": trackedURL,
+		},
+	}
+	item := itemDefinition{Name: "weapon_ak47", Image: "econ/weapons/base_weapons/weapon_ak47"}
+	got := schema.itemImageURL(item, 282, nil)
+	if got != trackedURL {
+		t.Fatalf("tracked finish image = %q, want %q", got, trackedURL)
+	}
+	metadata := Metadata{ImageURL: got}.WithInventoryDescription(InventoryDescription{IconURLLarge: "https://steam.example/fallback.png"})
+	if metadata.ImageURL != trackedURL {
+		t.Fatalf("Steam fallback replaced tracked image: %q", metadata.ImageURL)
+	}
+}
+
+func TestImageDiagnosticsSourceTracksSteamFallback(t *testing.T) {
+	metadata := Metadata{}.WithInventoryDescription(InventoryDescription{IconURL: "https://steam.example/inventory.png"})
+	if metadata.ImageSource != "steam-inventory-description" {
+		t.Fatalf("inventory image source = %q", metadata.ImageSource)
+	}
+	metadata = Metadata{}.WithMarketDescription(MarketDescription{IconURL: "https://steam.example/market.png"})
+	if metadata.ImageSource != "steam-market-description" {
+		t.Fatalf("market image source = %q", metadata.ImageSource)
+	}
+}
+
+func TestTrackedWeaponFinishImageUsesWearTier(t *testing.T) {
+	schema := &Schema{
+		paintKits: map[uint32]paintKitDefinition{282: {Name: "cu_ak47_cobra"}},
+		imageURLs: map[string]string{
+			"econ/default_generated/weapon_ak47_cu_ak47_cobra_light": "https://cdn.example/light.png",
+			"econ/default_generated/weapon_ak47_cu_ak47_cobra_heavy": "https://cdn.example/heavy.png",
+		},
+	}
+	item := itemDefinition{Name: "weapon_ak47"}
+	attributes := map[uint32]uint32{8: math.Float32bits(0.6)}
+	if got := schema.itemImageURL(item, 282, attributes); got != "https://cdn.example/heavy.png" {
+		t.Fatalf("tracked finish image = %q, want heavy wear image", got)
+	}
+}
+
+func TestCollectibleImageIsNotReplacedByMatchingStickerAttribute(t *testing.T) {
+	const coinKey = "econ/status_icons/operation_shattered_web"
+	const coinURL = "https://cdn.example/operation-shattered-web.png"
+	schema := &Schema{
+		stickerKits: map[uint32]stickerKitDefinition{
+			1: {Material: "dreamhack2013/very_early_sticker"},
+		},
+		imageURLs: map[string]string{
+			coinKey: coinURL,
+			"econ/stickers/dreamhack2013/very_early_sticker": "https://cdn.example/dreamhack-sticker.png",
+		},
+	}
+	coin := itemDefinition{Name: "shattered_web_challenge_coin", ItemClass: "collectible_item", Image: coinKey}
+	imageURL, imageKey := schema.itemImageLookup(coin, 0, map[uint32]uint32{113: 1, 999: 1})
+	if imageURL != coinURL || imageKey != coinKey {
+		t.Fatalf("collectible image lookup = (%q, %q), want (%q, %q)", imageURL, imageKey, coinURL, coinKey)
+	}
+}
+
+func TestSpecialDefinitionMatchingUsesProtocolAttributeIDs(t *testing.T) {
+	schema := &Schema{
+		stickerKits:      map[uint32]stickerKitDefinition{7: {Name: "sticker"}},
+		musicDefinitions: map[uint32]musicDefinition{8: {Name: "music"}},
+		keychains:        map[uint32]keychainDefinition{9: {Name: "keychain"}},
+	}
+	attributes := map[uint32]uint32{900: 7, 901: 8, 902: 9}
+	if schema.matchStickerKit(attributes) != nil || schema.matchMusicDefinition(attributes) != nil || schema.matchKeychain(attributes) != nil {
+		t.Fatal("unrelated attribute values matched special item definitions")
+	}
+}
+
+func TestTrackedImageRejectsNonHTTPSURLs(t *testing.T) {
+	for _, value := range []string{"", "http://cdn.example/image.png", "javascript:alert(1)", "not a URL"} {
+		if validTrackedImageURL(value) {
+			t.Errorf("validTrackedImageURL(%q) = true", value)
+		}
+	}
+}
+
+func TestLiveImageIndexTakesPrecedenceOverEmbeddedFallback(t *testing.T) {
+	got := preferredImageURLs(`{"live/key":"https://cdn.example/live.png"}`)
+	if len(got) != 1 || got["live/key"] != "https://cdn.example/live.png" {
+		t.Fatalf("preferred image index = %#v", got)
+	}
+}
+
+func TestInvalidLiveImageIndexUsesEmbeddedFallback(t *testing.T) {
+	got := preferredImageURLs(`not json`)
+	key := "econ/weapons/base_weapons/weapon_ak47"
+	if !validTrackedImageURL(got[key]) {
+		t.Fatalf("embedded image fallback did not contain a valid %q URL", key)
 	}
 }
 

@@ -16,6 +16,7 @@ import type {
   OperationEvent,
   OperationReceipt,
   RemoveItemNameRequest,
+  RelatedItemDto,
   SetItemNameRequest,
   SettingsData,
   SteamAccountProfile,
@@ -43,6 +44,7 @@ export interface AppViewProps {
   accounts: SteamAccountProfile[];
   accountUsername: string;
   inventory: InventorySnapshot | undefined;
+  inventoryLoading: boolean;
   tf2Inventory: GameInventorySnapshot | undefined;
   dota2Inventory: GameInventorySnapshot | undefined;
   armory: ArmorySnapshot | undefined;
@@ -71,6 +73,7 @@ export interface AppViewProps {
   onInventoryRefresh: () => void;
   onGameInventoryRefresh: (game: "tf2" | "dota2") => void;
   onArmoryRefresh: () => Promise<unknown>;
+  onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
   onInventoryRename: (input: SetItemNameRequest) => Promise<unknown>;
   onRemoveName: (input: RemoveItemNameRequest) => Promise<unknown>;
@@ -139,6 +142,7 @@ export function AppView(props: AppViewProps) {
           <InventoryView
 			mode={isInventoryScreen(props.view) ? props.view : "inventory"}
             inventory={props.inventory}
+            loading={props.inventoryLoading}
             selectedItemId={props.selectedItemId}
             setSelectedItemId={props.setSelectedItemId}
             connection={props.connection}
@@ -150,6 +154,7 @@ export function AppView(props: AppViewProps) {
             compactMode={props.compactMode}
             setCompactMode={props.setCompactMode}
             onRefresh={props.onInventoryRefresh}
+            onMarketPreview={props.onMarketPreview}
             onRename={props.onInventoryRename}
             onRemoveName={props.onRemoveName}
             onOpenContainer={props.onOpenContainer}
@@ -167,7 +172,7 @@ export function AppView(props: AppViewProps) {
             onRefresh={() => props.onGameInventoryRefresh(props.view === "tf2-inventory" ? "tf2" : "dota2")}
           />
         </Match>
-        <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onRedeem={props.onArmoryRedeem} /></Match>
+        <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onMarketPreview={props.onMarketPreview} onRedeem={props.onArmoryRedeem} /></Match>
         </Switch>
       </section>
 

@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal } from "solid-js";
 import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
 import { Button } from "./ui/Button.js";
 import { Input } from "./ui/Input.js";
@@ -96,6 +96,7 @@ export interface InventoryDetailsPanelProps {
   onRenameSubmit: () => Promise<void> | void;
   onRemoveName: () => Promise<void> | void;
   onOpenContainer: () => Promise<void> | void;
+  onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onCloseRename: () => void;
   onDraftNameChange: (value: string) => void;
   onSelectedToolChange: (value: string) => void;
@@ -103,6 +104,23 @@ export interface InventoryDetailsPanelProps {
 
 export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
   const [contentsDialog, setContentsDialog] = createSignal<{ title: string; description: string; items: RelatedItemDto[]; context: RelatedItemPreviewContext }>();
+  const [selectedMarketPreview, setSelectedMarketPreview] = createSignal<RelatedItemDto>();
+  const [selectedMarketLoading, setSelectedMarketLoading] = createSignal(false);
+  let requestedMarketName = "";
+  createEffect(() => {
+    const selected = props.selectedItem;
+    const marketName = selected?.marketName ?? "";
+    if (!marketName || selected?.marketPrice || requestedMarketName === marketName) return;
+    requestedMarketName = marketName;
+    setSelectedMarketPreview(undefined);
+    setSelectedMarketLoading(true);
+    void props.onMarketPreview(marketName).then((preview) => {
+      if (requestedMarketName === marketName) {
+        setSelectedMarketPreview(preview);
+        setSelectedMarketLoading(false);
+      }
+    });
+  });
   const contentsOdds = () => containerItemOdds(contentsDialog()?.items ?? []);
 
   return (
@@ -153,7 +171,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                       <p class="mt-1 font-mono font-medium text-slate-100">{formatFloat(selected.paintWear!)}</p>
                     </div>
                   </Show>
-                  <Show when={selected.marketPrice}>
+                  <Show when={selected.marketPrice || selectedMarketPreview()?.price || selectedMarketLoading()}>
                     <div>
                       <p class="text-xs uppercase tracking-wide text-slate-500">Market</p>
                       <Show
@@ -166,7 +184,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          {selected.marketPrice}
+                          {selected.marketPrice || selectedMarketPreview()?.price || "Loading…"}
                         </a>
                       </Show>
                     </div>
@@ -311,7 +329,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
           </div>
         </Show>
         <div class="grid gap-2 sm:grid-cols-2">
-          <For each={sortRelatedItemsByRarity(contentsDialog()?.items ?? [])}>{(item) => <RelatedItemPreview item={item} context={contentsDialog()?.context} probability={contentsDialog()?.context === "container" ? contentsOdds().get(item) : undefined} />}</For>
+          <For each={sortRelatedItemsByRarity(contentsDialog()?.items ?? [])}>{(item) => <RelatedItemPreview item={item} context={contentsDialog()?.context} probability={contentsDialog()?.context === "container" ? contentsOdds().get(item) : undefined} onRequestMarketPreview={props.onMarketPreview} />}</For>
         </div>
       </Show>
     </Dialog>

@@ -1,12 +1,16 @@
 package econ
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -18,9 +22,16 @@ import (
 )
 
 const (
-	itemsGameURL = "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/game/csgo/pak01_dir/scripts/items/items_game.txt"
-	englishURL   = "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/game/csgo/pak01_dir/resource/csgo_english.txt"
+	itemsGameURL  = "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/game/csgo/pak01_dir/scripts/items/items_game.txt"
+	englishURL    = "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/game/csgo/pak01_dir/resource/csgo_english.txt"
+	imageIndexURL = "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/refs/heads/main/static/images.json"
 )
+
+// fallbackImageIndex is generated from the pinned counter-strike-image-tracker
+// submodule so packaged builds retain images when the live index is unavailable.
+//
+//go:embed assets/counter-strike-images.json.gz
+var fallbackImageIndex []byte
 
 type Provider struct {
 	client       *http.Client
@@ -34,6 +45,8 @@ type Metadata struct {
 	Kind              string
 	Rarity            string
 	ImageURL          string
+	ImageSource       string
+	ImageKey          string
 	MarketPrice       MarketPrice
 	ToolType          string
 	IsNameTagTool     bool
@@ -113,6 +126,7 @@ type Schema struct {
 	collectionByItem   map[string]string
 	lootLists          map[string][]string
 	revolvingLootLists map[string]string
+	imageURLs          map[string]string
 	armoryOffers       []ArmoryOffer
 }
 
@@ -181,13 +195,29 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 	if p.client == nil {
 		p.client = &http.Client{Timeout: 15 * time.Second}
 	}
-	itemsText, err := p.fetch(ctx, itemsGameURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch CS2 items_game schema: %w", err)
+	var itemsText, englishText string
+	var itemsErr, englishErr error
+	var imageURLs map[string]string
+	var wait sync.WaitGroup
+	wait.Add(3)
+	go func() {
+		defer wait.Done()
+		itemsText, itemsErr = p.fetch(ctx, itemsGameURL)
+	}()
+	go func() {
+		defer wait.Done()
+		englishText, englishErr = p.fetch(ctx, englishURL)
+	}()
+	go func() {
+		defer wait.Done()
+		imageURLs = p.loadImageURLs(ctx)
+	}()
+	wait.Wait()
+	if itemsErr != nil {
+		return nil, fmt.Errorf("fetch CS2 items_game schema: %w", itemsErr)
 	}
-	englishText, err := p.fetch(ctx, englishURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch CS2 English localization: %w", err)
+	if englishErr != nil {
+		return nil, fmt.Errorf("fetch CS2 English localization: %w", englishErr)
 	}
 	itemsRoot, err := parseKeyValues(itemsText)
 	if err != nil {
@@ -208,6 +238,7 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		collectionByItem:   make(map[string]string),
 		lootLists:          make(map[string][]string),
 		revolvingLootLists: make(map[string]string),
+		imageURLs:          imageURLs,
 	}
 	schema.parseItems(itemsRoot)
 	schema.armoryOffers = parseArmoryOffers(itemsText, schema)
@@ -215,6 +246,39 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		return nil, fmt.Errorf("CS2 items_game schema contained no item definitions")
 	}
 	return schema, nil
+}
+
+func (p *Provider) loadImageURLs(ctx context.Context) map[string]string {
+	if imageText, err := p.fetch(ctx, imageIndexURL); err == nil {
+		return preferredImageURLs(imageText)
+	}
+	return preferredImageURLs("")
+}
+
+func preferredImageURLs(liveImageIndex string) map[string]string {
+	if liveImageIndex != "" {
+		if imageURLs, err := decodeImageURLs(strings.NewReader(liveImageIndex)); err == nil {
+			return imageURLs
+		}
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(fallbackImageIndex))
+	if err != nil {
+		return make(map[string]string)
+	}
+	defer reader.Close()
+	imageURLs, err := decodeImageURLs(reader)
+	if err != nil {
+		return make(map[string]string)
+	}
+	return imageURLs
+}
+
+func decodeImageURLs(source io.Reader) (map[string]string, error) {
+	imageURLs := make(map[string]string)
+	if err := json.NewDecoder(source).Decode(&imageURLs); err != nil {
+		return nil, err
+	}
+	return imageURLs, nil
 }
 
 func (s *Schema) ArmoryOffers() []ArmoryOffer {
@@ -385,34 +449,70 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 	out := make(map[string]MarketDescription)
 	var errs []string
 	seen := make(map[string]bool)
+	var unique []string
 	for _, marketName := range marketNames {
 		marketName = strings.TrimSpace(marketName)
 		if marketName == "" || seen[marketName] {
 			continue
 		}
 		seen[marketName] = true
-		desc, err := p.fetchMarketDescription(ctx, marketName, false)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", marketName, err))
+		p.previewMu.Lock()
+		cached, ok := p.previewCache[marketName]
+		p.previewMu.Unlock()
+		if ok {
+			addMarketDescription(out, marketName, cached)
 			continue
 		}
-		if desc.IconURL != "" || desc.IconURLLarge != "" {
-			out[marketName] = desc
-			if desc.HashName != "" {
-				out[desc.HashName] = desc
+		unique = append(unique, marketName)
+	}
+	var mu sync.Mutex
+	var wait sync.WaitGroup
+	workers := make(chan struct{}, 4)
+	for _, marketName := range unique {
+		wait.Add(1)
+		go func(name string) {
+			defer wait.Done()
+			select {
+			case workers <- struct{}{}:
+			case <-ctx.Done():
+				return
 			}
-			if desc.MarketHashName != "" {
-				out[desc.MarketHashName] = desc
+			defer func() { <-workers }()
+			desc, err := p.fetchMarketDescription(ctx, name, false)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", name, err))
+				return
 			}
-			if desc.MarketName != "" {
-				out[desc.MarketName] = desc
+			addMarketDescription(out, name, desc)
+			p.previewMu.Lock()
+			if p.previewCache == nil {
+				p.previewCache = make(map[string]MarketDescription)
 			}
-		}
+			p.previewCache[name] = desc
+			p.previewMu.Unlock()
+		}(marketName)
+	}
+	wait.Wait()
+	if ctx.Err() != nil && len(out) == 0 {
+		return out, fmt.Errorf("fetch Steam market descriptions: %w", ctx.Err())
 	}
 	if len(errs) > 0 && len(out) == 0 {
 		return out, fmt.Errorf("fetch Steam market descriptions: %s", strings.Join(errs, "; "))
 	}
 	return out, nil
+}
+
+func addMarketDescription(out map[string]MarketDescription, requestedName string, desc MarketDescription) {
+	if desc.IconURL == "" && desc.IconURLLarge == "" {
+		return
+	}
+	for _, name := range []string{requestedName, desc.HashName, desc.MarketHashName, desc.MarketName} {
+		if name != "" {
+			out[name] = desc
+		}
+	}
 }
 
 func (p *Provider) LoadPreviewDescriptions(ctx context.Context, marketNames []string) (map[string]MarketDescription, error) {
@@ -724,11 +824,15 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 }
 
 func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind string, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {
+	imageURL, imageKey := s.itemImageLookup(item, paintKit, attributes)
 	return Metadata{
 		Name:            name,
 		MarketName:      marketName,
 		Kind:            kind,
 		Rarity:          rarity,
+		ImageURL:        imageURL,
+		ImageSource:     imageSource(imageURL, "counter-strike-image-tracker"),
+		ImageKey:        imageKey,
 		ToolType:        item.ToolType,
 		IsNameTagTool:   strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
 		Collection:      s.collectionNameFor(item.Name, paintKit),
@@ -739,6 +843,60 @@ func (s *Schema) metadataResult(item itemDefinition, name string, marketName str
 		PaintWearMin:    wearMin,
 		PaintWearMax:    wearMax,
 	}
+}
+
+func (s *Schema) itemImageURL(item itemDefinition, paintKit uint32, attributes map[uint32]uint32) string {
+	imageURL, _ := s.itemImageLookup(item, paintKit, attributes)
+	return imageURL
+}
+
+func (s *Schema) itemImageLookup(item itemDefinition, paintKit uint32, attributes map[uint32]uint32) (string, string) {
+	var candidates []string
+	itemName := s.localize(item.ItemName)
+	if paint, ok := s.paintKits[paintKit]; ok && paintKit != 0 && strings.HasPrefix(item.Name, "weapon_") {
+		prefix := "econ/default_generated/" + item.Name + "_" + paint.Name + "_"
+		tiers := []string{"light", "medium", "heavy"}
+		if wearBits, ok := attributes[8]; ok {
+			wear := math.Float32frombits(wearBits)
+			switch {
+			case wear >= 0.38:
+				tiers = []string{"heavy", "medium", "light"}
+			case wear >= 0.15:
+				tiers = []string{"medium", "light", "heavy"}
+			}
+		}
+		for _, tier := range tiers {
+			candidates = append(candidates, prefix+tier)
+		}
+	}
+	if sticker := s.matchStickerKit(attributes); sticker != nil && (isGenericStickerItem(item, itemName) || isGenericGraffitiItem(item, itemName)) {
+		candidates = append(candidates, "econ/stickers/"+strings.TrimPrefix(sticker.Material, "econ/stickers/"))
+	}
+	if music := s.matchMusicDefinition(attributes); music != nil && isGenericMusicItem(item, itemName) {
+		candidates = append(candidates, music.Image)
+	}
+	if keychain := s.matchKeychain(attributes); keychain != nil && isGenericKeychainItem(item, itemName) {
+		candidates = append(candidates, keychain.Image)
+	}
+	candidates = append(candidates, item.Image)
+	for _, key := range candidates {
+		if imageURL := s.imageURLs[strings.TrimSpace(key)]; validTrackedImageURL(imageURL) {
+			return imageURL, strings.TrimSpace(key)
+		}
+	}
+	return "", ""
+}
+
+func imageSource(imageURL string, source string) string {
+	if imageURL == "" {
+		return ""
+	}
+	return source
+}
+
+func validTrackedImageURL(imageURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(imageURL))
+	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
 }
 
 func schemaTradable(item itemDefinition) *bool {
@@ -800,10 +958,12 @@ func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
 	if marketName != "" && !wouldDiscardWeaponFinish(m, marketName) {
 		m.MarketName = marketName
 	}
-	if desc.IconURLLarge != "" {
+	if m.ImageURL == "" && desc.IconURLLarge != "" {
 		m.ImageURL = desc.IconURLLarge
-	} else if desc.IconURL != "" {
+		m.ImageSource = "steam-inventory-description"
+	} else if m.ImageURL == "" && desc.IconURL != "" {
 		m.ImageURL = desc.IconURL
+		m.ImageSource = "steam-inventory-description"
 	}
 	if desc.Type != "" && m.Kind == "unknown" {
 		m.Kind = kindFromSteamType(desc.Type)
@@ -832,10 +992,12 @@ func (m Metadata) WithMarketDescription(desc MarketDescription) Metadata {
 	} else if desc.HashName != "" {
 		m.MarketName = desc.HashName
 	}
-	if desc.IconURLLarge != "" {
+	if m.ImageURL == "" && desc.IconURLLarge != "" {
 		m.ImageURL = desc.IconURLLarge
-	} else if desc.IconURL != "" {
+		m.ImageSource = "steam-market-description"
+	} else if m.ImageURL == "" && desc.IconURL != "" {
 		m.ImageURL = desc.IconURL
+		m.ImageSource = "steam-market-description"
 	}
 	if desc.Type != "" && (m.Kind == "" || m.Kind == "unknown") {
 		m.Kind = kindFromSteamType(desc.Type)
@@ -1076,14 +1238,15 @@ func (s *Schema) relatedItems(keys []string) []RelatedItem {
 			continue
 		}
 		baseName := firstNonEmpty(s.localize(item.ItemName), item.Name)
-		related := RelatedItem{Name: baseName, MarketName: baseName, Kind: itemKind(item), Rarity: item.Rarity}
-		for _, paint := range s.paintKits {
+		related := RelatedItem{Name: baseName, MarketName: baseName, Kind: itemKind(item), Rarity: item.Rarity, ImageURL: s.itemImageURL(item, 0, nil)}
+		for paintKit, paint := range s.paintKits {
 			if paint.Name == paintName {
 				paintDisplay := firstNonEmpty(s.localize(paint.Description), paint.Name)
 				related.MarketName = baseName + " | " + paintDisplay
 				related.Rarity = firstNonEmpty(paint.Rarity, related.Rarity)
 				related.WearMin = paint.WearMin
 				related.WearMax = paint.WearMax
+				related.ImageURL = firstNonEmpty(s.itemImageURL(item, paintKit, nil), related.ImageURL)
 				break
 			}
 		}
@@ -1115,7 +1278,8 @@ func (s *Schema) relatedSpecialItem(variantName string, itemName string) (Relate
 			} else if itemName == "spray" || strings.HasPrefix(sticker.Name, "spray_") {
 				prefix = "Sealed Graffiti | "
 			}
-			return RelatedItem{Name: name, MarketName: prefix + name, Kind: itemName, Rarity: sticker.Rarity}, true
+			imageURL := s.imageURL("econ/stickers/" + strings.TrimPrefix(sticker.Material, "econ/stickers/"))
+			return RelatedItem{Name: name, MarketName: prefix + name, Kind: itemName, Rarity: sticker.Rarity, ImageURL: imageURL}, true
 		}
 	}
 	if itemName == "keychain" {
@@ -1124,10 +1288,18 @@ func (s *Schema) relatedSpecialItem(variantName string, itemName string) (Relate
 				continue
 			}
 			name := firstNonEmpty(s.localize(keychain.ItemName), humanizeIdentifier(keychain.Name))
-			return RelatedItem{Name: name, MarketName: "Charm | " + name, Kind: "keychain", Rarity: keychain.Rarity}, true
+			return RelatedItem{Name: name, MarketName: "Charm | " + name, Kind: "keychain", Rarity: keychain.Rarity, ImageURL: s.imageURL(keychain.Image)}, true
 		}
 	}
 	return RelatedItem{}, false
+}
+
+func (s *Schema) imageURL(key string) string {
+	imageURL := s.imageURLs[strings.TrimSpace(key)]
+	if validTrackedImageURL(imageURL) {
+		return imageURL
+	}
+	return ""
 }
 
 func rarityRank(rarity string) int {
@@ -1167,7 +1339,7 @@ func ApplyRelatedItemDescriptions(items []RelatedItem, descriptions map[string]M
 	out := append([]RelatedItem(nil), items...)
 	for index := range out {
 		if description, ok := descriptions[out[index].MarketName]; ok {
-			out[index].ImageURL = firstNonEmpty(description.IconURLLarge, description.IconURL)
+			out[index].ImageURL = firstNonEmpty(out[index].ImageURL, description.IconURLLarge, description.IconURL)
 			out[index].Price = description.Price.SellPriceText
 			out[index].ListingName = firstNonEmpty(description.HashName, description.MarketHashName, description.MarketName)
 		}
@@ -1268,28 +1440,22 @@ func (s *Schema) localize(token string) string {
 }
 
 func (s *Schema) matchStickerKit(attributes map[uint32]uint32) *stickerKitDefinition {
-	for _, value := range attributes {
-		if sticker, ok := s.stickerKits[value]; ok {
-			return &sticker
-		}
+	if sticker, ok := s.stickerKits[attributes[113]]; ok {
+		return &sticker
 	}
 	return nil
 }
 
 func (s *Schema) matchMusicDefinition(attributes map[uint32]uint32) *musicDefinition {
-	for _, value := range attributes {
-		if music, ok := s.musicDefinitions[value]; ok {
-			return &music
-		}
+	if music, ok := s.musicDefinitions[attributes[166]]; ok {
+		return &music
 	}
 	return nil
 }
 
 func (s *Schema) matchKeychain(attributes map[uint32]uint32) *keychainDefinition {
-	for _, value := range attributes {
-		if keychain, ok := s.keychains[value]; ok {
-			return &keychain
-		}
+	if keychain, ok := s.keychains[attributes[299]]; ok {
+		return &keychain
 	}
 	return nil
 }
@@ -1371,13 +1537,20 @@ func isWeaponItem(item itemDefinition) bool {
 }
 
 func steamIconURL(icon string) string {
+	icon = strings.TrimSpace(html.UnescapeString(icon))
 	if icon == "" {
 		return ""
 	}
-	if strings.HasPrefix(icon, "http://") || strings.HasPrefix(icon, "https://") {
+	lower := strings.ToLower(icon)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		return icon
 	}
-	return "https://community.fastly.steamstatic.com/economy/image/" + strings.TrimPrefix(icon, "/")
+	if strings.HasPrefix(icon, "//") {
+		return "https:" + icon
+	}
+	icon = strings.TrimLeft(icon, "/")
+	icon = strings.TrimPrefix(icon, "economy/image/")
+	return "https://community.fastly.steamstatic.com/economy/image/" + icon
 }
 
 func firstNonEmpty(values ...string) string {

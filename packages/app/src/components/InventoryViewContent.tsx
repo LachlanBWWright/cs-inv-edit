@@ -7,6 +7,15 @@ import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
 import { TradeLockIndicator } from "./TradeLockIndicator.js";
 import type { InventoryMode } from "../view.js";
+import { LoadingProgress, type LoadingStage } from "./ui/LoadingProgress.js";
+
+const inventoryLoadingStages: readonly LoadingStage[] = [
+  { afterSeconds: 0, label: "Contacting the CS2 Game Coordinator", detail: "Requesting the authoritative owned-item SOCache for this Steam account." },
+  { afterSeconds: 8, label: "Waiting for inventory data", detail: "The Game Coordinator can take several retries before it sends the inventory snapshot." },
+  { afterSeconds: 20, label: "Resolving current CS2 item metadata", detail: "Loading the live item schema, localization, and tracked image index." },
+  { afterSeconds: 35, label: "Enriching item previews", detail: "Matching names, images, collections, containers, and available Steam market metadata." },
+  { afterSeconds: 65, label: "Still working—Steam is responding slowly", detail: "The request remains active. Image and market lookups are bounded, but Steam may throttle metadata requests." },
+];
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -51,6 +60,7 @@ export interface InventoryViewContentProps {
   canUseNameTagOn: boolean;
   compactMode: "icons" | "concise" | "detailed";
   onRefresh: () => void;
+  onMarketPreview: (marketName: string) => Promise<import("@cs-inv-edit/contracts").RelatedItemDto | undefined>;
   onQueryChange: (value: string) => void;
   onKindFilterChange: (value: "all" | InventoryItemDto["kind"]) => void;
   onCompactModeChange: (value: "icons" | "concise" | "detailed") => void;
@@ -171,13 +181,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
               fallback={
                 <Alert class="flex h-full min-h-48 items-center justify-center">
                   <Show when={props.inventoryLoading} fallback={<p>No inventory items are loaded.</p>}>
-                    <div class="flex flex-col items-center gap-4 text-center" role="status" aria-live="polite">
-                      <span
-                        class="h-9 w-9 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-300"
-                        aria-hidden="true"
-                      />
-                      <p>Loading CS2 inventory from Steam Game Coordinator...</p>
-                    </div>
+                    <LoadingProgress active={props.inventoryLoading} title="Loading CS2 inventory" stages={inventoryLoadingStages} currentStage={props.inventory?.message} />
                   </Show>
                 </Alert>
               }
@@ -219,6 +223,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
             onRenameSubmit={props.onRenameSubmit}
             onRemoveName={props.onRemoveName}
             onOpenContainer={props.onOpenContainer}
+            onMarketPreview={props.onMarketPreview}
             onCloseRename={props.onCloseRename}
             onDraftNameChange={props.onDraftNameChange}
             onSelectedToolChange={props.onSelectedToolChange}

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ArmorySnapshot, ConnectionStatus, GameInventorySnapshot, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, SettingsData } from "./index.js";
 
-const relatedItemSchema = z.object({ name: z.string(), marketName: z.string().optional(), listingName: z.string().optional(), kind: z.string().optional(), rarity: z.string().optional(), imageUrl: z.string().optional(), price: z.string().optional(), paintWear: z.number().optional(), wearMin: z.number().optional(), wearMax: z.number().optional() });
+export const relatedItemSchema = z.object({ name: z.string(), marketName: z.string().optional(), listingName: z.string().optional(), kind: z.string().optional(), rarity: z.string().optional(), imageUrl: z.string().optional(), price: z.string().optional(), paintWear: z.number().optional(), wearMin: z.number().optional(), wearMax: z.number().optional() });
 const appliedItemSchema = z.object({ kind: z.enum(["sticker", "charm", "patch"]), slot: z.number().optional(), id: z.number().optional(), name: z.string(), imageUrl: z.string().optional() });
 const itemDebugSchema = z.object({
   gcId: z.string().optional(), gcOriginalId: z.string().optional(), gcDefIndex: z.number().optional(), gcInventory: z.number().optional(), gcQuantity: z.number().optional(), gcQuality: z.number().optional(), gcRarity: z.number().optional(), gcPaintKit: z.number().optional(),
@@ -55,5 +55,5 @@ export const settingsDataSchema: z.ZodType<SettingsData> = z.object({
 export const backendSchemas = {
   health: healthStatusSchema, inventory: inventorySnapshotSchema, armory: armorySnapshotSchema,
   receipt: operationReceiptSchema, receipts: operationReceiptsSchema, events: operationEventsSchema,
-  settings: settingsDataSchema, connection: connectionStatusSchema, gameInventory: gameInventorySnapshotSchema,
+  settings: settingsDataSchema, connection: connectionStatusSchema, gameInventory: gameInventorySnapshotSchema, marketPreview: relatedItemSchema,
 } as const;

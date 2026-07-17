@@ -1,5 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
-import type { ArmoryRedeemRequest, ArmorySnapshot, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
+import type { ArmoryRedeemRequest, ArmorySnapshot, OperationReceipt, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 import { Card } from "./ui/Card.js";
@@ -8,8 +8,17 @@ import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
 import { Dialog } from "./ui/Dialog.js";
 import { sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 import { RelatedItemPreview } from "./RelatedItemPreview.js";
+import { LoadingProgress, type LoadingStage } from "./ui/LoadingProgress.js";
 
-export function ArmoryView(props: { armory?: ArmorySnapshot; settings?: SettingsData; onRefresh: () => Promise<unknown>; onRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt> }) {
+const armoryLoadingStages: readonly LoadingStage[] = [
+  { afterSeconds: 0, label: "Requesting Armory account state", detail: "Reading the star balance and account generation from the CS2 Game Coordinator." },
+  { afterSeconds: 8, label: "Waiting for the Game Coordinator", detail: "CS2 may need several hello retries before returning the current Armory state." },
+  { afterSeconds: 18, label: "Building the current offer catalogue", detail: "Parsing the live CS2 schema and matching the active universal Armory offers." },
+  { afterSeconds: 35, label: "Resolving offer contents and images", detail: "Loading collection contents, rarity information, and tracked preview images." },
+  { afterSeconds: 65, label: "Still working—external metadata is slow", detail: "The request remains active while bounded Steam metadata lookups finish or time out." },
+];
+
+export function ArmoryView(props: { armory?: ArmorySnapshot; settings?: SettingsData; onRefresh: () => Promise<unknown>; onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>; onRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt> }) {
   const [confirming, setConfirming] = createSignal<number>();
   const [busy, setBusy] = createSignal(false);
   const [reveal, setReveal] = createSignal<{ result: RevealItem; candidates: RevealItem[]; complete: () => void }>();
@@ -49,6 +58,11 @@ export function ArmoryView(props: { armory?: ArmorySnapshot; settings?: Settings
         <div><p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">CS2 Armory</p><h1 class="mt-1 text-3xl font-semibold">{ready() ? `${props.armory?.balance ?? 0} stars` : "Armory stars"}</h1><p class="mt-2 text-sm text-slate-400">Star balance comes from the GC; offers come from the current live CS2 item schema.</p></div>
         <Button onClick={() => void props.onRefresh()}>Refresh Armory</Button>
       </div>
+      <Show when={!props.armory || props.armory.status === "loading"}>
+        <div class="flex justify-center rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4">
+          <LoadingProgress active={!props.armory || props.armory.status === "loading"} title="Loading CS2 Armory" stages={armoryLoadingStages} currentStage={props.armory?.message} />
+        </div>
+      </Show>
       <Show when={props.armory?.status === "requires_connection"}><Alert variant="warning">Connect and refresh inventory before loading Armory state.</Alert></Show>
       <Show when={props.armory?.status === "error"}><Alert variant="danger">{props.armory?.message}</Alert></Show>
       <For each={diagnostics()}>{(line) => <Alert variant="warning">{line}</Alert>}</For>
@@ -65,7 +79,7 @@ export function ArmoryView(props: { armory?: ArmorySnapshot; settings?: Settings
     <Dialog open={!!contentsOffer()} title={contentsOffer()?.name || "Armory collection"} description="Possible items available from this Armory offer" onOpenChange={(open) => { if (!open) setContentsOffer(undefined); }}>
       <Show when={(contentsOffer()?.items?.length ?? 0) > 0} fallback={<p class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">No item contents were found in the current CS2 schema.</p>}>
         <div class="grid gap-2 sm:grid-cols-2">
-          <For each={sortRelatedItemsByRarity(contentsOffer()?.items ?? [])}>{(item) => <RelatedItemPreview item={item} context="collection" />}</For>
+          <For each={sortRelatedItemsByRarity(contentsOffer()?.items ?? [])}>{(item) => <RelatedItemPreview item={item} context="collection" onRequestMarketPreview={props.onMarketPreview} />}</For>
         </div>
       </Show>
     </Dialog>

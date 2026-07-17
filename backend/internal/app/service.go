@@ -238,6 +238,30 @@ func (s *Service) Armory() domain.ArmorySnapshot {
 	return cloneArmory(s.armory)
 }
 
+func (s *Service) MarketPreview(marketName string) (domain.RelatedItem, error) {
+	marketName = strings.TrimSpace(marketName)
+	if marketName == "" || len(marketName) > 256 {
+		return domain.RelatedItem{}, fmt.Errorf("a valid market name is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	descriptions, err := s.econProvider.LoadPreviewDescriptions(ctx, []string{marketName})
+	if err != nil {
+		return domain.RelatedItem{}, err
+	}
+	description, ok := descriptions[marketName]
+	if !ok {
+		return domain.RelatedItem{}, fmt.Errorf("Steam Market returned no matching listing for %q", marketName)
+	}
+	return domain.RelatedItem{
+		Name:        marketName,
+		MarketName:  marketName,
+		ListingName: firstNonEmptyApp(description.HashName, description.MarketHashName, description.MarketName),
+		ImageURL:    firstNonEmptyApp(description.IconURLLarge, description.IconURL),
+		Price:       description.Price.SellPriceText,
+	}, nil
+}
+
 func (s *Service) RefreshArmory() operations.Receipt {
 	receipt := s.newReceipt("armory.refresh")
 	s.mu.Lock()
@@ -255,13 +279,14 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		return receipt
 	}
 	s.armory.Status = "loading"
+	s.armory.Message = "Waiting for CS2 Game Coordinator Armory state"
 	s.mu.Unlock()
 	gcCtx, cancelGC := context.WithTimeout(context.Background(), 10*time.Second)
 	state, err := s.gcClient.RequestArmory(gcCtx)
 	cancelGC()
 	var catalog []econ.ArmoryOffer
-	var catalogDiagnostics []string
 	if err == nil {
+		s.setArmoryLoadingStage("Armory balance received; loading the current CS2 item schema")
 		metadataCtx, cancelMetadata := context.WithTimeout(context.Background(), 20*time.Second)
 		metadata, metadataErr := s.econProvider.Load(metadataCtx)
 		cancelMetadata()
@@ -272,20 +297,10 @@ func (s *Service) RefreshArmory() operations.Receipt {
 			if len(catalog) == 0 {
 				err = fmt.Errorf("live CS2 items_game contained no xpshop redeemable goods")
 			} else {
-				var previewNames []string
-				for _, offer := range catalog {
-					previewNames = append(previewNames, econ.RelatedItemMarketNames(offer.Items)...)
-				}
-				previewCtx, cancelPreviews := context.WithTimeout(context.Background(), 60*time.Second)
-				previewDescriptions, previewErr := s.econProvider.LoadPreviewDescriptions(previewCtx, previewNames)
-				cancelPreviews()
-				log.Printf("[previews] armory requested=%d resolved=%d error=%v", len(previewNames), len(previewDescriptions), previewErr)
-				if previewErr != nil {
-					catalogDiagnostics = append(catalogDiagnostics, fmt.Sprintf("Steam resolved %d of %d requested Armory preview records; unresolved items have no fabricated image or listing link. See the backend [previews] log for details.", len(previewDescriptions), len(previewNames)))
-				}
-				for index := range catalog {
-					catalog[index].Items = econ.ApplyRelatedItemDescriptions(catalog[index].Items, previewDescriptions)
-				}
+				s.setArmoryLoadingStage(fmt.Sprintf("Building %d Armory offers and tracked item previews", len(catalog)))
+				// The tracked image index already resolves catalogue previews. Do not
+				// burst hundreds of optional Steam Market searches here: Steam returns
+				// HTTP 429 and delays the entire Armory response for up to a minute.
 			}
 		}
 	}
@@ -298,11 +313,18 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		return receipt
 	}
 	s.armory = armoryFromGC(state, catalog)
-	s.armory.Diagnostics = append(s.armory.Diagnostics, catalogDiagnostics...)
 	s.mu.Unlock()
 	receipt.State, receipt.Message = "completed", "Armory star balance refreshed"
 	s.addEvent(receipt, receipt.State, receipt.Message)
 	return receipt
+}
+
+func (s *Service) setArmoryLoadingStage(message string) {
+	s.mu.Lock()
+	if s.armory.Status == "loading" {
+		s.armory.Message = message
+	}
+	s.mu.Unlock()
 }
 
 func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
@@ -406,7 +428,7 @@ func (s *Service) RefreshInventory() operations.Receipt {
 	s.inventory.RefreshedAt = now()
 	s.mu.Unlock()
 
-	snapshot, err := s.fetchInventory()
+	snapshot, err := s.fetchInventory(s.setInventoryLoadingStage)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1027,33 +1049,62 @@ func inventoryError(message string, diagnostics []string) domain.InventorySnapsh
 	return domain.InventorySnapshot{RefreshedAt: now(), Status: "error", Message: message, Error: message, Diagnostics: append([]string(nil), diagnostics...), Items: []domain.InventoryItem{}}
 }
 
-func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
+func (s *Service) setInventoryLoadingStage(message string) {
+	s.mu.Lock()
+	if s.inventory.Status == "loading" {
+		s.inventory.Message = message
+	}
+	s.mu.Unlock()
+}
+
+func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapshot, error) {
+	report := func(message string) {
+		if progress != nil {
+			progress(message)
+		}
+	}
 	s.mu.Lock()
 	steamID := s.connection.SteamID
 	includeDebug := s.settings.FeatureFlags.EnableInventoryDebug
 	s.mu.Unlock()
-	gcCtx, cancelGC := context.WithTimeout(context.Background(), 20*time.Second)
+	report("Waiting for CS2 Game Coordinator inventory data")
+	gcCtx, cancelGC := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancelGC()
 	gcItems, err := s.gcClient.RequestInventory(gcCtx)
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("CS2 GC inventory request failed: %w", err)
 	}
+	report(fmt.Sprintf("Received %d owned items; loading schema and Steam descriptions", len(gcItems)))
 	schemaCtx, cancelSchema := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancelSchema()
-	metadata, err := s.econProvider.Load(schemaCtx)
+	descriptionCtx, cancelDescriptions := context.WithTimeout(context.Background(), 20*time.Second)
+	var metadata *econ.Schema
+	var schemaErr error
+	var descriptions map[string]econ.InventoryDescription
+	var descriptionErr error
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		metadata, schemaErr = s.econProvider.Load(schemaCtx)
+	}()
+	go func() {
+		defer wait.Done()
+		descriptions, descriptionErr = s.econProvider.LoadInventoryDescriptions(descriptionCtx, steamID)
+	}()
+	wait.Wait()
+	cancelSchema()
+	cancelDescriptions()
+	err = schemaErr
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("CS2 item metadata refresh failed: %w", err)
 	}
-	descriptionCtx, cancelDescriptions := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancelDescriptions()
-	descriptions, descriptionErr := s.econProvider.LoadInventoryDescriptions(descriptionCtx, steamID)
+	report("Matching owned items to names, images, collections, and float ranges")
 	type pendingItem struct {
 		item               transport.GCInventoryItem
 		metadata           econ.Metadata
 		descriptionMatched bool
 	}
 	pendingItems := make([]pendingItem, 0, len(gcItems))
-	marketNames := make([]string, 0, len(gcItems))
 	descriptionMatches := 0
 	for _, item := range gcItems {
 		if item.DefIndex == 0 {
@@ -1071,26 +1122,10 @@ func (s *Service) fetchInventory() (domain.InventorySnapshot, error) {
 		}
 		itemMetadata.MarketName = instanceMarketName(itemMetadata.MarketName, item)
 		pendingItems = append(pendingItems, pendingItem{item: item, metadata: itemMetadata, descriptionMatched: descriptionMatched})
-		if itemMetadata.MarketName != "" {
-			marketNames = append(marketNames, itemMetadata.MarketName)
-		}
 	}
-	marketCtx, cancelMarket := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancelMarket()
-	marketDescriptions, marketErr := s.econProvider.LoadMarketDescriptions(marketCtx, marketNames)
-	var previewNames []string
-	for _, pending := range pendingItems {
-		previewNames = append(previewNames, econ.RelatedItemMarketNames(pending.metadata.CollectionItems)...)
-		previewNames = append(previewNames, tradeUpPreviewMarketNames(pending.metadata.TradeUpItems, pending.item, pending.metadata.PaintWearMin, pending.metadata.PaintWearMax)...)
-		previewNames = append(previewNames, econ.RelatedItemMarketNames(pending.metadata.ContainerItems)...)
-	}
-	previewCtx, cancelPreviews := context.WithTimeout(context.Background(), 60*time.Second)
-	previewDescriptions, previewErr := s.econProvider.LoadPreviewDescriptions(previewCtx, previewNames)
-	cancelPreviews()
-	log.Printf("[previews] inventory related requested=%d resolved=%d error=%v", len(previewNames), len(previewDescriptions), previewErr)
-	for name, description := range previewDescriptions {
-		marketDescriptions[name] = description
-	}
+	report("Finalizing inventory; Market prices will load when items are selected")
+	marketDescriptions := make(map[string]econ.MarketDescription)
+	var marketErr error
 	items := make([]domain.InventoryItem, 0, len(pendingItems))
 	for _, pending := range pendingItems {
 		item := pending.item
@@ -1247,7 +1282,7 @@ func domainTradeUpItems(items []econ.RelatedItem, input transport.GCInventoryIte
 		out[index].PaintWear = wear
 		out[index].MarketName = tradeUpOutcomeMarketName(out[index].MarketName, input.Quality, wear)
 		if description, ok := descriptions[out[index].MarketName]; ok {
-			out[index].ImageURL = firstNonEmptyApp(description.IconURLLarge, description.IconURL)
+			out[index].ImageURL = firstNonEmptyApp(out[index].ImageURL, description.IconURLLarge, description.IconURL)
 			out[index].Price = description.Price.SellPriceText
 			out[index].ListingName = firstNonEmptyApp(description.HashName, description.MarketHashName, description.MarketName)
 		}
@@ -1410,7 +1445,10 @@ func inventoryItemDiagnostics(item transport.GCInventoryItem, metadata econ.Meta
 	if marketErr != nil {
 		marketStatus = fmt.Sprintf("unavailable: %v", marketErr)
 	}
-	diagnostics = append(diagnostics, fmt.Sprintf("Steam market overlay: %s; image_url=%q", marketStatus, metadata.ImageURL))
+	diagnostics = append(diagnostics, fmt.Sprintf(
+		"Steam market overlay: %s; image lookup: source=%q, tracker_key=%q, image_url=%q",
+		marketStatus, metadata.ImageSource, metadata.ImageKey, metadata.ImageURL,
+	))
 	diagnostics = append(diagnostics, fmt.Sprintf(
 		"Market result: sell_price=%d, sell_price_text=%q, sale_price_text=%q, sell_listings=%d, tradable_after=%q",
 		metadata.MarketPrice.SellPrice, metadata.MarketPrice.SellPriceText, metadata.MarketPrice.SalePriceText, metadata.MarketPrice.SellListings, metadata.TradableAfter,
@@ -1560,7 +1598,7 @@ func (s *Service) reconcileContainerOpenOnce(before domain.InventorySnapshot) (d
 	for _, item := range before.Items {
 		beforeIDs[item.ID] = struct{}{}
 	}
-	snapshot, err := s.fetchInventory()
+	snapshot, err := s.fetchInventory(nil)
 	if err != nil {
 		return domain.InventorySnapshot{}, nil, fmt.Errorf("post-open inventory refresh failed: %w", err)
 	}

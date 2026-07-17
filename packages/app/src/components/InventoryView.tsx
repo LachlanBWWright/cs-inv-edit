@@ -1,5 +1,5 @@
 import { createMemo, createSignal } from "solid-js";
-import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
+import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
 import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
 import { itemDisplayName, itemKey, itemKindLabel, resolveSelectedInventoryItem } from "./inventory-view-utils.js";
@@ -9,6 +9,7 @@ import type { InventoryMode } from "../view.js";
 export interface InventoryViewProps {
   mode: InventoryMode;
   inventory: InventorySnapshot | undefined;
+  loading?: boolean;
   selectedItemId: string | undefined;
   setSelectedItemId: (id: string | undefined) => void;
   connection: ConnectionStatus | undefined;
@@ -20,6 +21,7 @@ export interface InventoryViewProps {
   compactMode: "icons" | "concise" | "detailed";
   setCompactMode: (value: "icons" | "concise" | "detailed") => void;
   onRefresh: () => void;
+  onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onRename: (input: { subjectItemId: string; toolItemId: string; name: string }) => Promise<unknown>;
   onRemoveName: (input: { itemId: string }) => Promise<unknown>;
   onOpenContainer: (input: { itemId: string }) => Promise<unknown>;
@@ -91,7 +93,7 @@ export function InventoryView(props: InventoryViewProps) {
   const connected = () => props.connection?.state === "connected";
   const inventoryError = () => props.inventory?.error || props.inventory?.message;
   const inventoryDiagnostics = () => props.inventory?.diagnostics ?? [];
-  const inventoryLoading = () => props.inventory?.status === "loading" || (connected() && props.inventory?.status === "requires_connection");
+  const inventoryLoading = () => !!props.loading || props.inventory?.status === "loading" || (connected() && props.inventory?.status === "requires_connection");
 
   const openRenameEditor = (item: InventoryItemDto) => {
     setDraftName(item.customName || item.name);
@@ -233,6 +235,7 @@ export function InventoryView(props: InventoryViewProps) {
       canOpenContainer={!!selectedItem() && (selectedItem()?.kind === "container" || selectedLabel().includes("container") || selectedLabel().includes("capsule") || selectedLabel().includes("case"))}
       canUseNameTagOn={selectedItem()?.kind === "weapon_skin" && nameTagTools().length > 0}
       onRefresh={props.onRefresh}
+      onMarketPreview={props.onMarketPreview}
       onQueryChange={props.setQuery}
       onKindFilterChange={props.setKindFilter}
       compactMode={props.compactMode}

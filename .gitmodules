@@ -7,3 +7,7 @@
 [submodule "proto/vendor/gametracking-dota2"]
 	path = proto/vendor/gametracking-dota2
 	url = https://github.com/SteamTracking/GameTracking-Dota2.git
+[submodule "vendor/counter-strike-image-tracker"]
+	path = vendor/counter-strike-image-tracker
+	url = https://github.com/ByMykel/counter-strike-image-tracker.git
+	shallow = true

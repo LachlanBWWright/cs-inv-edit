@@ -12,6 +12,7 @@ import type {
   GameInventorySnapshot,
   HealthStatus,
   InventorySnapshot,
+  RelatedItemDto,
   OperationEvent,
   OperationReceipt,
   RemoveItemNameRequest,
@@ -32,6 +33,7 @@ export interface AppBackendClient {
   gameInventory(game: EconomyGame): BackendResult<GameInventorySnapshot>;
   refreshGameInventory(game: EconomyGame): BackendResult<OperationReceipt>;
   armory(): BackendResult<ArmorySnapshot>;
+  marketPreview(marketName: string): BackendResult<RelatedItemDto>;
   refreshArmory(): BackendResult<OperationReceipt>;
   redeemArmory(input: ArmoryRedeemRequest): BackendResult<OperationReceipt>;
   submitOperation(type: string, input?: unknown): BackendResult<OperationReceipt>;

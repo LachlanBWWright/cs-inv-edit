@@ -119,3 +119,17 @@ func TestGameClientHelloUsesPinnedVersionsAndDotaSource2(t *testing.T) {
 		t.Fatalf("Dota hello=%#v err=%v", dota, err)
 	}
 }
+
+func TestCS2ClientHelloUsesPinnedGameTrackingVersion(t *testing.T) {
+	body, err := cs2ClientHello()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hello cs2pb.CMsgClientHello
+	if err := proto.Unmarshal(body, &hello); err != nil {
+		t.Fatal(err)
+	}
+	if hello.GetVersion() != cs2ClientVersion || hello.GetVersion() != 2000875 {
+		t.Fatalf("CS2 ClientHello version = %d, want pinned steam.inf version %d", hello.GetVersion(), cs2ClientVersion)
+	}
+}

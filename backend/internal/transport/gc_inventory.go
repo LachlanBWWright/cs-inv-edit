@@ -19,6 +19,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// cs2ClientVersion must match game/csgo/steam.inf in the pinned
+// proto/vendor/gametracking-cs2 revision.
+const cs2ClientVersion uint32 = 2000875
+
 func (s *SteamGCClient) SendGamesPlayed(_ context.Context, appID uint32) error {
 	return s.sendGamesPlayed([]uint32{appID})
 }
@@ -255,12 +259,7 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 		return nil, trace.Error(wrapped)
 	}
 	trace.Add("cs2 games played presence sent")
-	body, err := proto.Marshal(&cs2pb.CMsgClientHello{
-		Version:           proto.Uint32(2000244),
-		ClientSessionNeed: proto.Uint32(0),
-		ClientLauncher:    proto.Uint32(0),
-		SteamLauncher:     proto.Uint32(0),
-	})
+	body, err := cs2ClientHello()
 	if err != nil {
 		return nil, err
 	}
@@ -269,22 +268,24 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 		wrapped := fmt.Errorf("cs2 gc client hello send failed: %w", err)
 		return nil, trace.Error(wrapped)
 	}
-	trace.Add(fmt.Sprintf("cs2 gc ClientHello sent emsg=%d", helloEMsg))
+	trace.Add(fmt.Sprintf("cs2 gc ClientHello sent emsg=%d client_version=%d", helloEMsg, cs2ClientVersion))
 	helloRetry := time.NewTimer(time.Second)
 	defer helloRetry.Stop()
 	helloRetryDelay := time.Second
+	helloRetryCount := 0
 	statusNoSessionCount := 0
 	for {
 		select {
 		case <-ctx.Done():
-			wrapped := fmt.Errorf("cs2 gc inventory timed out waiting for ClientWelcome: %w", ctx.Err())
+			wrapped := fmt.Errorf("cs2 gc inventory timed out waiting for ClientWelcome after %d ClientHello retries (client_version=%d): %w", helloRetryCount, cs2ClientVersion, ctx.Err())
 			return nil, trace.Error(wrapped)
 		case <-helloRetry.C:
 			if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
 				wrapped := fmt.Errorf("cs2 gc client hello retry failed: %w", err)
 				return nil, trace.Error(wrapped)
 			}
-			trace.Add(fmt.Sprintf("cs2 gc ClientHello retry sent emsg=%d delay=%s", helloEMsg, helloRetryDelay))
+			helloRetryCount++
+			trace.Add(fmt.Sprintf("cs2 gc ClientHello retry sent emsg=%d delay=%s retry=%d", helloEMsg, helloRetryDelay, helloRetryCount))
 			helloRetryDelay *= 2
 			if helloRetryDelay > 8*time.Second {
 				helloRetryDelay = 8 * time.Second
@@ -346,6 +347,15 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 			}
 		}
 	}
+}
+
+func cs2ClientHello() ([]byte, error) {
+	return proto.Marshal(&cs2pb.CMsgClientHello{
+		Version:           proto.Uint32(cs2ClientVersion),
+		ClientSessionNeed: proto.Uint32(0),
+		ClientLauncher:    proto.Uint32(0),
+		SteamLauncher:     proto.Uint32(0),
+	})
 }
 
 func (s *SteamGCClient) RequestArmory(ctx context.Context) (GCArmorySnapshot, error) {

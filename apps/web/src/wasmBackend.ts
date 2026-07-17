@@ -126,6 +126,7 @@ export function createWasmBackendClient(): AppBackendClient {
     gameInventory: (game) => errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
     refreshGameInventory: (game) => errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
     armory: () => okAsync({ balance: 0, generationTime: 0, itemIds: [], offers: [], refreshedAt: new Date().toISOString(), status: "requires_connection" as const }),
+    marketPreview: () => errAsync({ message: "Steam Market previews are unavailable in WASM mode" }),
     refreshArmory: () => okAsync(createReceipt("armory.refresh", "failed", "WASM mode cannot read live GC Armory state.")),
     redeemArmory: () => okAsync(createReceipt("armory.redeem", "blocked_by_feature_flag", "WASM mode cannot purchase Armory items.")),
     submitOperation: (_type, _input) => okAsync(createReceipt(_type, "completed", "WASM mode accepts the request and returns a placeholder receipt.")),
