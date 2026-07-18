@@ -94,6 +94,20 @@ func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) 
 					trace.Add(fmt.Sprintf("appid=%d welcome inventory_items=%d", appID, len(items)))
 					return items, nil
 				}
+				if appID == 570 {
+					refreshes, decodeErr := dotaWelcomeSOCacheRefreshes(message.Body)
+					if decodeErr != nil {
+						return nil, trace.Error(decodeErr)
+					}
+					for _, refresh := range refreshes {
+						if sendErr := s.SendProtoToGC(ctx, appID, 28, refresh); sendErr != nil {
+							return nil, trace.Error(fmt.Errorf("appid=%d send welcome SOCache subscription refresh: %w", appID, sendErr))
+						}
+					}
+					if len(refreshes) > 0 {
+						trace.Add(fmt.Sprintf("appid=%d welcome SOCache subscription_refreshes=%d", appID, len(refreshes)))
+					}
+				}
 			case 24:
 				items, found, decodeErr := decodeGenericSubscribedInventory(appID, message.Body)
 				if decodeErr != nil {
@@ -103,9 +117,48 @@ func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) 
 					trace.Add(fmt.Sprintf("appid=%d subscribed inventory_items=%d welcome_seen=%t", appID, len(items), welcomeSeen))
 					return items, nil
 				}
+			case 27:
+				refresh, decodeErr := gameSOCacheSubscriptionRefresh(message.Body)
+				if decodeErr != nil {
+					return nil, trace.Error(fmt.Errorf("appid=%d decode SOCache subscription check: %w", appID, decodeErr))
+				}
+				if sendErr := s.SendProtoToGC(ctx, appID, 28, refresh); sendErr != nil {
+					return nil, trace.Error(fmt.Errorf("appid=%d send SOCache subscription refresh: %w", appID, sendErr))
+				}
+				trace.Add(fmt.Sprintf("appid=%d SOCache subscription refresh sent emsg=28", appID))
 			}
 		}
 	}
+}
+
+func gameSOCacheSubscriptionRefresh(body []byte) ([]byte, error) {
+	var check multigamepb.CMsgSOCacheSubscriptionCheck
+	if err := proto.Unmarshal(body, &check); err != nil {
+		return nil, err
+	}
+	if check.Owner == nil && check.OwnerSoid == nil {
+		return nil, fmt.Errorf("SOCache subscription check omitted owner identity")
+	}
+	return proto.Marshal(&multigamepb.CMsgSOCacheSubscriptionRefresh{Owner: check.Owner, OwnerSoid: check.OwnerSoid})
+}
+
+func dotaWelcomeSOCacheRefreshes(body []byte) ([][]byte, error) {
+	var welcome multigamepb.CMsgClientWelcome
+	if err := proto.Unmarshal(body, &welcome); err != nil {
+		return nil, err
+	}
+	refreshes := make([][]byte, 0, len(welcome.GetUptodateSubscribedCaches()))
+	for _, check := range welcome.GetUptodateSubscribedCaches() {
+		if check.GetOwnerSoid() == nil {
+			return nil, fmt.Errorf("Dota 2 welcome SOCache subscription check omitted owner_soid")
+		}
+		body, err := proto.Marshal(&multigamepb.CMsgSOCacheSubscriptionRefresh{OwnerSoid: check.OwnerSoid})
+		if err != nil {
+			return nil, err
+		}
+		refreshes = append(refreshes, body)
+	}
+	return refreshes, nil
 }
 
 func gameClientHello(appID uint32) ([]byte, error) {
@@ -230,6 +283,9 @@ func (s *SteamGCClient) sendToGC(appID uint32, emsg uint32, body []byte, protobu
 	}
 	if err := conn.SendPacket(packet); err != nil {
 		return err
+	}
+	if protobufPayload {
+		s.recordGCProtocol("sent", appID, emsg, body)
 	}
 	diagnosticEMsg := emsg
 	if protobufPayload {
@@ -482,7 +538,12 @@ func decodeArmoryFromClientWelcome(body []byte) (GCArmorySnapshot, error) {
 					continue
 				}
 				if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.GetTypeId() {
-					return GCArmorySnapshot{}, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+					if result.XpShopTypeID == observedXpShopTypeID {
+						continue
+					}
+					if objectType.GetTypeId() != observedXpShopTypeID {
+						return GCArmorySnapshot{}, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+					}
 				}
 				result.XpShopTypeID = objectType.GetTypeId()
 				applyXpShopState(&result, state)
@@ -505,7 +566,12 @@ func decodeXpShopSubscribedCache(result *GCArmorySnapshot, subscribed *cs2pb.CMs
 				continue
 			}
 			if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.GetTypeId() {
-				return false, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+				if result.XpShopTypeID == observedXpShopTypeID {
+					continue
+				}
+				if objectType.GetTypeId() != observedXpShopTypeID {
+					return false, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+				}
 			}
 			result.XpShopTypeID = objectType.GetTypeId()
 			applyXpShopState(result, state)
@@ -514,6 +580,12 @@ func decodeXpShopSubscribedCache(result *GCArmorySnapshot, subscribed *cs2pb.CMs
 	}
 	return false, nil
 }
+
+// CS2 currently publishes CSOAccountXpShop as SO type 6. The protobuf schema
+// does not declare SO type IDs, so retain structural discovery as a fallback,
+// but prefer the observed type when another account object has the same wire
+// shape (for example, an object that only exists on accounts with credits).
+const observedXpShopTypeID int32 = 6
 
 func decodeIncrementalArmoryObject(result *GCArmorySnapshot, typeID int32, data []byte) bool {
 	state, valid, reason := decodeXpShopCandidate(data)
@@ -674,9 +746,11 @@ func encodeGCClientPacket(appID uint32, emsg uint32, body []byte, protobufPayloa
 }
 
 func encodeGCProtoPayload(emsg uint32, body []byte) ([]byte, error) {
-	headerBytes, err := proto.Marshal(&steampb.CMsgProtoBufHeader{
-		JobidSource: proto.Uint64(^uint64(0)),
-	})
+	// SteamKit's protobuf GC client leaves the default job IDs unset. Proto2
+	// getters still report UINT64_MAX, but the wire header is empty. Explicitly
+	// serializing UINT64_MAX changes the header from 0 to 9 bytes and is not
+	// byte-equivalent to the official/SteamKit GC envelope.
+	headerBytes, err := proto.Marshal(&steampb.CMsgProtoBufHeader{})
 	if err != nil {
 		return nil, err
 	}
@@ -814,7 +888,11 @@ func encodeGamesPlayedPacket(appID uint32) (*steammsg.Packet, error) {
 
 func encodeGamesPlayedPacketForApps(appIDs []uint32) (*steammsg.Packet, error) {
 	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientGamesPlayed)
-	msg := &steampb.CMsgClientGamesPlayed{}
+	// Match the SteamClient/Linux identity used by authentication and ClientLogon.
+	// Leaving this absent makes the later game-session announcement disagree with
+	// the CM session that owns it, which matters for messages routed to the active
+	// game client (including microtransaction authorization handoffs).
+	msg := &steampb.CMsgClientGamesPlayed{ClientOsType: proto.Uint32(20)}
 	labels := map[uint32]string{730: "Counter-Strike 2", 440: "Team Fortress 2", 570: "Dota 2"}
 	seen := make(map[uint32]bool)
 	for _, appID := range appIDs {

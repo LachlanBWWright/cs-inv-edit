@@ -13,11 +13,18 @@ import type {
   HealthStatus,
   InventorySnapshot,
   RelatedItemDto,
+  PriceScanRequest,
+  PriceScanResult,
   OperationEvent,
   OperationReceipt,
   RemoveItemNameRequest,
   SetItemNameRequest,
   SettingsData,
+  StoreSnapshot,
+  SteamTradesSnapshot,
+  PurchaseSession,
+  ProtocolTraceEntry,
+  InitializeStorePurchaseRequest,
   UseItemRequest,
   UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
@@ -34,11 +41,20 @@ export interface AppBackendClient {
   refreshGameInventory(game: EconomyGame): BackendResult<OperationReceipt>;
   armory(): BackendResult<ArmorySnapshot>;
   marketPreview(marketName: string): BackendResult<RelatedItemDto>;
+  scanPrices(input: PriceScanRequest): BackendResult<PriceScanResult>;
   refreshArmory(): BackendResult<OperationReceipt>;
   redeemArmory(input: ArmoryRedeemRequest): BackendResult<OperationReceipt>;
+  store(): BackendResult<StoreSnapshot>;
+  refreshStore(): BackendResult<OperationReceipt>;
+  trades(): BackendResult<SteamTradesSnapshot>;
+  refreshTrades(): BackendResult<SteamTradesSnapshot>;
+  initializeStorePurchase(input: InitializeStorePurchaseRequest): BackendResult<PurchaseSession>;
+  storePurchase(id: string): BackendResult<PurchaseSession>;
+  reconcileStorePurchase(id: string): BackendResult<PurchaseSession>;
   submitOperation(type: string, input?: unknown): BackendResult<OperationReceipt>;
   operations(): BackendResult<OperationReceipt[]>;
   events(): BackendResult<OperationEvent[]>;
+  protocolTrace?(after: number): BackendResult<ProtocolTraceEntry[]>;
   settings(): BackendResult<SettingsData>;
   steamStatus?(): BackendResult<ConnectionStatus>;
   connectSteam?(input?: unknown): BackendResult<ConnectionStatus>;

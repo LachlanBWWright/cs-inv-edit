@@ -28,3 +28,12 @@ inventory modes:
 - `gametracking-dota2/` → `https://github.com/SteamTracking/GameTracking-Dota2.git`
 
 See `docs/multi-game-economy-sources.md` for the exact source and update rules.
+
+Steam platform protobufs that are not owned by an individual game's tracker
+are pinned separately:
+
+- `steam-protobufs/` → `https://github.com/SteamTracking/Protobufs.git`
+
+Use `steam-protobufs/steam/` for Steam client unified services such as
+authentication, notifications, and the economy service. Keep game-specific GC
+messages sourced from the corresponding `gametracking-*` submodule instead.

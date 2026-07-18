@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { ResultAsync } from "neverthrow";
+import { Result, ResultAsync } from "neverthrow";
 import { postJsonResult, requestJsonResult, type AppError, type SafeParseSchema } from "@cs-inv-edit/app";
 import { backendSchemas, economyGameSchema } from "@cs-inv-edit/contracts";
 
@@ -58,11 +58,28 @@ async function createWindow() {
     },
   });
 
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalURL(url)) {
+      void ResultAsync.fromPromise(shell.openExternal(url), () => undefined);
+    }
+    return { action: "deny" };
+  });
+
   if (process.env.VITE_DEV_SERVER_URL) {
     await win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
     await win.loadFile(path.resolve(__dirname, "../renderer/index.html"));
   }
+}
+
+function isAllowedExternalURL(raw: string): boolean {
+  return Result.fromThrowable(() => new URL(raw), () => undefined)().match((url) => {
+    if (url.protocol === "steam:") return /^steam:\/\/rungame\/730\/[^/]*\/\+csgo_econ_action_preview%20/i.test(raw);
+    if (url.protocol !== "https:" || url.username !== "" || url.password !== "" || url.hostname === "") return false;
+    const host = url.hostname.toLowerCase();
+    if (/^[\d.:]+$/.test(host)) return false;
+    return host === "steampowered.com" || host.endsWith(".steampowered.com") || host === "steamcommunity.com" || host.endsWith(".steamcommunity.com");
+  }, () => false);
 }
 
 type IpcResult<T> = { ok: true; value: T } | { ok: false; error: AppError };
@@ -95,11 +112,23 @@ ipcMain.handle("backend:refreshGameInventory", async (_event, game: unknown) => 
 });
 ipcMain.handle("backend:armory", async () => requestJson("/armory", backendSchemas.armory));
 ipcMain.handle("backend:marketPreview", async (_event, marketName: string) => requestJson(`/market/preview?marketName=${encodeURIComponent(marketName)}`, backendSchemas.marketPreview));
+ipcMain.handle("backend:scanPrices", async (_event, input: unknown) => postJson("/prices/scan", backendSchemas.priceScan, input));
 ipcMain.handle("backend:refreshArmory", async () => requestJson("/armory/refresh", backendSchemas.receipt, { method: "POST" }));
 ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) => postJson("/armory/redeem", backendSchemas.receipt, input));
+ipcMain.handle("backend:store", async () => requestJson("/store", backendSchemas.store));
+ipcMain.handle("backend:refreshStore", async () => requestJson("/store/refresh", backendSchemas.receipt, { method: "POST" }));
+ipcMain.handle("backend:trades", async () => requestJson("/trades", backendSchemas.trades));
+ipcMain.handle("backend:refreshTrades", async () => requestJson("/trades/refresh", backendSchemas.trades, { method: "POST" }));
+ipcMain.handle("backend:initializeStorePurchase", async (_event, input?: unknown) => {
+  const parsed = backendSchemas.initializeStorePurchase.safeParse(input);
+  return parsed.success ? postJson("/store/purchases", backendSchemas.purchaseSession, parsed.data) : { ok: false as const, error: { message: "Invalid store purchase IPC argument", cause: parsed.error } };
+});
+ipcMain.handle("backend:storePurchase", async (_event, id: string) => requestJson(`/store/purchases/${encodeURIComponent(id)}`, backendSchemas.purchaseSession));
+ipcMain.handle("backend:reconcileStorePurchase", async (_event, id: string) => requestJson(`/store/purchases/${encodeURIComponent(id)}/reconcile`, backendSchemas.purchaseSession, { method: "POST" }));
 ipcMain.handle("backend:submitOperation", async (_event, type: string, input?: unknown) => requestJson(`/operations/${encodeURIComponent(type)}`, backendSchemas.receipt, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}) }));
 ipcMain.handle("backend:operations", async () => requestJson("/operations", backendSchemas.receipts));
 ipcMain.handle("backend:events", async () => requestJson("/events", backendSchemas.events));
+ipcMain.handle("backend:protocolTrace", async (_event, after: number) => requestJson(`/protocol-trace?after=${encodeURIComponent(String(after))}`, backendSchemas.protocolTrace));
 ipcMain.handle("backend:settings", async () => requestJson("/settings", backendSchemas.settings));
 ipcMain.handle("backend:steamStatus", async () => requestJson("/steam/status", backendSchemas.connection));
 ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) => postJson("/steam/connect", backendSchemas.connection, input));

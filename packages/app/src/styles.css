@@ -206,7 +206,7 @@ body {
   display: flex;
   gap: 12px;
   width: max-content;
-  transform: translateX(0);
+  transform: translateX(-88px);
 }
 
 .reveal-reel.is-rolling {
@@ -246,3 +246,25 @@ body {
 .wear-color-well-worn { background-color: rgb(249 115 22); }
 .wear-color-battle-scarred { background-color: rgb(225 29 72); }
 .wear-color-impossible { background-color: rgb(51 65 85 / 0.9); }
+
+.contract-overlay { position: fixed; inset: 0; z-index: 85; display: grid; place-items: center; padding: 1rem; background: rgb(8 12 14 / .94); }
+.contract-desk { width: min(920px, 96vw); padding: clamp(1rem, 4vw, 3rem); background: radial-gradient(circle at 30% 20%, #5c4d38, #211c16 72%); box-shadow: 0 32px 100px #000; }
+.contract-paper { position: relative; min-height: 560px; overflow: hidden; padding: clamp(2rem, 6vw, 5rem); color: #24221d; background-color: #d8d0b9; background-image: repeating-linear-gradient(0deg, transparent 0 27px, rgb(59 54 42 / .07) 28px), radial-gradient(circle at 20% 10%, #eee8d5, transparent 55%); box-shadow: 4px 8px 24px rgb(0 0 0 / .55); font-family: Georgia, "Times New Roman", serif; transform: rotate(-.35deg); }
+.contract-paper::after { position: absolute; inset: 0; content: ""; pointer-events: none; box-shadow: inset 0 0 50px rgb(70 55 35 / .25); }
+.contract-paper h2 { margin: .35rem 0 2rem; font-size: clamp(2rem, 5vw, 3.8rem); font-weight: 500; letter-spacing: -.035em; }
+.contract-kicker { margin: 0; font-size: .7rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+.contract-copy { max-width: 650px; font-size: clamp(.9rem, 2vw, 1.1rem); line-height: 1.75; }
+.contract-rule { height: 1px; margin: 2rem 0 1rem; background: rgb(36 34 29 / .35); }
+.contract-sign-label { margin: 0 0 .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.contract-canvas { position: relative; z-index: 1; display: block; width: 100%; height: 150px; cursor: crosshair; touch-action: none; border: 1px solid rgb(36 34 29 / .35); border-bottom: 2px solid #24221d; background: rgb(255 252 239 / .2); }
+.contract-actions { position: relative; z-index: 2; display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1rem; font-family: Inter, sans-serif; }
+.contract-actions button, .contract-result button { border: 1px solid #39352b; padding: .65rem 1rem; font-size: .8rem; font-weight: 700; text-transform: uppercase; }
+.contract-clear { background: transparent; }
+.contract-submit, .contract-result button { color: #eee8d5; background: #34372e; }
+.contract-submit:disabled { cursor: not-allowed; opacity: .4; }
+.contract-seal { position: absolute; top: 3rem; right: 3rem; display: grid; width: 64px; height: 64px; place-items: center; border: 3px double #7b2d29; border-radius: 50%; color: #7b2d29; font-weight: 800; transform: rotate(8deg); opacity: .75; }
+.contract-result { display: grid; min-height: 330px; place-items: center; align-content: center; gap: 1rem; text-align: center; }
+.contract-result p { margin: 0; font-size: .75rem; letter-spacing: .18em; text-transform: uppercase; }
+.contract-result strong { font-size: clamp(1.5rem, 4vw, 2.5rem); }
+.contract-result img { width: min(360px, 70vw); height: 180px; object-fit: contain; }
+@media (max-width: 540px) { .contract-paper { min-height: 520px; padding: 2rem 1.25rem; } .contract-seal { top: 1.25rem; right: 1.25rem; width: 45px; height: 45px; } }

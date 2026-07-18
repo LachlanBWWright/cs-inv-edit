@@ -85,6 +85,38 @@ func TestLoadRejectsCommunityAppIDMismatch(t *testing.T) {
 	}
 }
 
+func TestSteamInventoryUsesApp753Context6AsAuthoritativeOwnership(t *testing.T) {
+	var requestedPath string
+	var loginCookie *http.Cookie
+	provider := NewProvider()
+	provider.communityBase = "https://inventory.test"
+	provider.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requestedPath = request.URL.Path
+		loginCookie, _ = request.Cookie("steamLoginSecure")
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{
+			"success":1,
+			"assets":[{"appid":753,"contextid":"6","assetid":"10","classid":"20","instanceid":"0","amount":"2"}],
+			"descriptions":[{"appid":753,"classid":"20","instanceid":"0","name":"Test Emoticon","market_hash_name":"Test Emoticon","type":"Emoticon","icon_url":"token","tradable":1,"marketable":1,"tags":[{"category":"item_class","internal_name":"item_class_4","localized_tag_name":"Emoticon"}]}]
+		}`))}, nil
+	})}
+	snapshot, err := provider.LoadAuthenticated(context.Background(), "7656119", games["steam"], "web-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestedPath != "/inventory/7656119/753/6" {
+		t.Fatalf("path=%q, want Steam Community context 6", requestedPath)
+	}
+	if loginCookie == nil || loginCookie.Value != "7656119||web-token" {
+		t.Fatalf("authenticated Steam cookie=%#v", loginCookie)
+	}
+	if len(snapshot.Items) != 1 || snapshot.Items[0].Name != "Test Emoticon" || snapshot.Items[0].Quantity != 2 || snapshot.Items[0].ContextID != "6" {
+		t.Fatalf("Steam snapshot=%#v", snapshot)
+	}
+	if !strings.Contains(strings.Join(snapshot.Diagnostics, "\n"), "authoritative") {
+		t.Fatalf("Steam diagnostics=%#v", snapshot.Diagnostics)
+	}
+}
+
 func TestCommunityOverlayIsPositivelyCached(t *testing.T) {
 	calls := 0
 	provider := NewProvider()

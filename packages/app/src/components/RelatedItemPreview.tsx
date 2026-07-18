@@ -2,6 +2,7 @@ import { Show, createSignal } from "solid-js";
 import type { RelatedItemDto } from "@cs-inv-edit/contracts";
 import { rarityBorderClass } from "./inventory-view-utils.js";
 import { formatProbability, isWeaponFinish, steamMarketSearchURL, steamMarketURL } from "./related-item-preview-utils.js";
+import { WearRangeBar } from "./ui/WearRangeBar.js";
 
 export type RelatedItemPreviewContext = "collection" | "container" | "trade-up";
 
@@ -25,9 +26,12 @@ export function RelatedItemPreview(props: { item: RelatedItemDto; context?: Rela
 
   return <details class={`group rounded-xl border-2 bg-slate-900/80 ${rarityBorderClass(item().rarity)}`} onToggle={(event) => { if (event.currentTarget.open) void requestMarketPreview(); }}>
     <summary class="flex cursor-pointer list-none items-center gap-3 p-3 marker:content-none">
-      <Show when={item().imageUrl && !failed()} fallback={<div class="flex h-12 w-16 shrink-0 items-center justify-center rounded bg-slate-950 text-xs font-semibold text-slate-600">{label().slice(0, 2).toUpperCase()}</div>}>
-        <img class="h-12 w-16 shrink-0 rounded bg-slate-950 object-contain" src={item().imageUrl} alt={label()} loading="lazy" referrerpolicy="no-referrer" onError={() => setFailed(true)} />
-      </Show>
+      <div class="w-24 shrink-0">
+        <Show when={item().imageUrl && !failed()} fallback={<div class="mx-auto flex h-12 w-16 items-center justify-center rounded bg-slate-950 text-xs font-semibold text-slate-600">{label().slice(0, 2).toUpperCase()}</div>}>
+          <img class="mx-auto h-12 w-16 rounded bg-slate-950 object-contain" src={item().imageUrl} alt={label()} loading="lazy" referrerpolicy="no-referrer" onError={() => setFailed(true)} />
+        </Show>
+        <Show when={props.context === "collection" && isWeaponFinish(item())}><WearRangeBar compact min={item().wearMin} max={item().wearMax} /></Show>
+      </div>
       <div class="min-w-0 flex-1">
         <p class="truncate font-medium text-slate-100">{label()}</p>
         <Show when={props.context === "container" && props.probability !== undefined}>

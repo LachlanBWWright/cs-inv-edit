@@ -11,3 +11,6 @@
 	path = vendor/counter-strike-image-tracker
 	url = https://github.com/ByMykel/counter-strike-image-tracker.git
 	shallow = true
+[submodule "proto/vendor/steam-protobufs"]
+	path = proto/vendor/steam-protobufs
+	url = https://github.com/SteamTracking/Protobufs.git

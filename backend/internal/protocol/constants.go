@@ -1,6 +1,9 @@
 package protocol
 
-import cs2pb "cs-inv-edit/backend/internal/proto/generated"
+import (
+	"cs-inv-edit/backend/internal/proto/gametracking"
+	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+)
 
 // SteamTracking/GameTracking-CS2 Protobufs/gcsystemmsgs.proto, enum ESOMsg.
 const (
@@ -9,6 +12,21 @@ const (
 	EMsgSOCacheSubscribed uint32 = 24
 	EMsgSOUpdateMultiple  uint32 = 26
 )
+
+var (
+	EMsgStoreGetUserData          = mustGameTrackingEnum("EGCItemMsg", "k_EMsgGCStoreGetUserData")
+	EMsgStoreGetUserDataResponse  = mustGameTrackingEnum("EGCItemMsg", "k_EMsgGCStoreGetUserDataResponse")
+	EMsgStorePurchaseInit         = mustGameTrackingEnum("EGCItemMsg", "k_EMsgGCStorePurchaseInit")
+	EMsgStorePurchaseInitResponse = mustGameTrackingEnum("EGCItemMsg", "k_EMsgGCStorePurchaseInitResponse")
+)
+
+func mustGameTrackingEnum(enumName, valueName string) uint32 {
+	value, err := gametracking.EnumValue(enumName, valueName)
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
 
 const AppIDCS2 = 730
 

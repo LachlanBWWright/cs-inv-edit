@@ -1,15 +1,18 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
 	"cs-inv-edit/backend/internal/app"
 	"cs-inv-edit/backend/internal/operations"
+	"cs-inv-edit/backend/pricescanner"
 	"golang.org/x/net/websocket"
 )
 
@@ -29,11 +32,20 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/armory", h.armory)
 	h.mux.HandleFunc("/armory/refresh", h.armoryRefresh)
 	h.mux.HandleFunc("/armory/redeem", h.armoryRedeem)
+	h.mux.HandleFunc("/store", h.store)
+	h.mux.HandleFunc("/store/refresh", h.storeRefresh)
+	h.mux.HandleFunc("/store/purchases", h.storePurchases)
+	h.mux.HandleFunc("/store/purchases/{id}", h.storePurchase)
+	h.mux.HandleFunc("/store/purchases/{id}/reconcile", h.storePurchaseReconcile)
+	h.mux.HandleFunc("/trades", h.trades)
+	h.mux.HandleFunc("/trades/refresh", h.tradesRefresh)
 	h.mux.HandleFunc("/market/preview", h.marketPreview)
+	h.mux.HandleFunc("/prices/scan", h.priceScan)
 	h.mux.HandleFunc("/operations", h.operations)
 	h.mux.HandleFunc("/operations/", h.operationRoot)
 	h.mux.HandleFunc("/operations/{type}", h.operation)
 	h.mux.HandleFunc("/events", h.events)
+	h.mux.HandleFunc("/protocol-trace", h.protocolTrace)
 	h.mux.HandleFunc("/settings", h.settings)
 	h.mux.HandleFunc("/steam/status", h.steamStatus)
 	h.mux.HandleFunc("/steam/connect", h.steamConnect)
@@ -62,7 +74,55 @@ func NewHandler(service *app.Service) http.Handler {
 	return h.withCORS(h.mux)
 }
 
+func (h *Handler) trades(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "trades route requires GET")
+		return
+	}
+	writeJSON(w, h.service.Trades())
+}
+
+func (h *Handler) tradesRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "trade refresh requires POST")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	writeJSON(w, h.service.RefreshTrades(ctx))
+}
+
+func (h *Handler) priceScan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "price scan requires POST")
+		return
+	}
+	var query pricescanner.Query
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&query); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid price scan request: "+err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	result, err := h.service.ScanPrices(ctx, query)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, result)
+}
+
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) { writeJSON(w, h.service.Health()) }
+func (h *Handler) protocolTrace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "protocol trace route requires GET")
+		return
+	}
+	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	writeJSON(w, h.service.ProtocolTrace(after))
+}
 func (h *Handler) inventory(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.Inventory())
 }
@@ -102,6 +162,51 @@ func (h *Handler) armoryRefresh(w http.ResponseWriter, _ *http.Request) {
 }
 func (h *Handler) armoryRedeem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperationDirect(r, h.service.RedeemArmory))
+}
+func (h *Handler) store(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "store route requires GET")
+		return
+	}
+	writeJSON(w, h.service.Store())
+}
+func (h *Handler) storeRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "store refresh requires POST")
+		return
+	}
+	writeJSON(w, h.service.RefreshStore())
+}
+func (h *Handler) storePurchases(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "store purchases require POST")
+		return
+	}
+	body, err := parseBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, h.service.InitializeStorePurchase(body))
+}
+func (h *Handler) storePurchase(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "store purchase route requires GET")
+		return
+	}
+	session, ok := h.service.StorePurchase(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "purchase session not found")
+		return
+	}
+	writeJSON(w, session)
+}
+func (h *Handler) storePurchaseReconcile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "store purchase reconciliation requires POST")
+		return
+	}
+	writeJSON(w, h.service.ReconcileStorePurchase(r.PathValue("id")))
 }
 func (h *Handler) marketPreview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

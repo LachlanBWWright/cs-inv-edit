@@ -1,7 +1,7 @@
 import { render } from "solid-js/web";
 import { fromThrowable } from "neverthrow";
 import { App, postJsonResult, requestJsonResult, type AppBackendClient, type SafeParseSchema } from "@cs-inv-edit/app";
-import type { ArmorySnapshot, ConnectionStatus, GameInventorySnapshot, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
+import type { ArmorySnapshot, ConnectionStatus, GameInventorySnapshot, HealthStatus, InventorySnapshot, OperationEvent, OperationReceipt, ProtocolTraceEntry, PurchaseSession, SettingsData, SteamTradesSnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
 import { backendSchemas } from "@cs-inv-edit/contracts";
 import "@cs-inv-edit/app/styles.css";
 import { createWasmBackendClient } from "./wasmBackend.js";
@@ -26,11 +26,20 @@ function createHttpBackendClient(): AppBackendClient {
     refreshGameInventory: (game) => createRequestResult<OperationReceipt>(`/games/${game}/inventory/refresh`, backendSchemas.receipt, { method: "POST" }),
     armory: () => createRequestResult<ArmorySnapshot>("/armory", backendSchemas.armory),
     marketPreview: (marketName) => createRequestResult(`/market/preview?marketName=${encodeURIComponent(marketName)}`, backendSchemas.marketPreview),
+    scanPrices: (input) => createPostResult("/prices/scan", backendSchemas.priceScan, input),
     refreshArmory: () => createRequestResult<OperationReceipt>("/armory/refresh", backendSchemas.receipt, { method: "POST" }),
     redeemArmory: (input) => createPostResult<OperationReceipt>("/armory/redeem", backendSchemas.receipt, input),
+    store: () => createRequestResult<StoreSnapshot>("/store", backendSchemas.store),
+    refreshStore: () => createRequestResult<OperationReceipt>("/store/refresh", backendSchemas.receipt, { method: "POST" }),
+    trades: () => createRequestResult<SteamTradesSnapshot>("/trades", backendSchemas.trades),
+    refreshTrades: () => createRequestResult<SteamTradesSnapshot>("/trades/refresh", backendSchemas.trades, { method: "POST" }),
+    initializeStorePurchase: (input) => createPostResult<PurchaseSession>("/store/purchases", backendSchemas.purchaseSession, input),
+    storePurchase: (id) => createRequestResult<PurchaseSession>(`/store/purchases/${encodeURIComponent(id)}`, backendSchemas.purchaseSession),
+    reconcileStorePurchase: (id) => createRequestResult<PurchaseSession>(`/store/purchases/${encodeURIComponent(id)}/reconcile`, backendSchemas.purchaseSession, { method: "POST" }),
     submitOperation: (type, input) => createPostResult<OperationReceipt>(`/operations/${encodeURIComponent(type)}`, backendSchemas.receipt, input),
     operations: () => createRequestResult<OperationReceipt[]>("/operations", backendSchemas.receipts),
     events: () => createRequestResult<OperationEvent[]>("/events", backendSchemas.events),
+    protocolTrace: (after) => createRequestResult<ProtocolTraceEntry[]>(`/protocol-trace?after=${after}`, backendSchemas.protocolTrace),
     settings: () => createRequestResult<SettingsData>("/settings", backendSchemas.settings),
     steamStatus: () => createRequestResult<ConnectionStatus>("/steam/status", backendSchemas.connection),
     connectSteam: (input) => createPostResult<ConnectionStatus>("/steam/connect", backendSchemas.connection, input),

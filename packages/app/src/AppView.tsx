@@ -15,18 +15,25 @@ import type {
   InventorySnapshot,
   OperationEvent,
   OperationReceipt,
+  OpenContainerRequest,
   RemoveItemNameRequest,
   RelatedItemDto,
   SetItemNameRequest,
   SettingsData,
+  StoreSnapshot,
+  PurchaseSession,
+  InitializeStorePurchaseRequest,
   SteamAccountProfile,
+  SteamTradesSnapshot,
   UseItemRequest,
   UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
 import { AccountView } from "./components/AccountView.js";
 import { ArmoryView } from "./components/ArmoryView.js";
+import { StoreView } from "./components/StoreView.js";
 import { InventoryView } from "./components/InventoryView.js";
 import { GameInventoryView } from "./components/GameInventoryView.js";
+import { TradesView } from "./components/TradesView.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Alert } from "./components/ui/Alert.js";
 import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
@@ -45,9 +52,12 @@ export interface AppViewProps {
   accountUsername: string;
   inventory: InventorySnapshot | undefined;
   inventoryLoading: boolean;
+  steamInventory: GameInventorySnapshot | undefined;
   tf2Inventory: GameInventorySnapshot | undefined;
   dota2Inventory: GameInventorySnapshot | undefined;
   armory: ArmorySnapshot | undefined;
+  store: StoreSnapshot | undefined;
+  trades: SteamTradesSnapshot | undefined;
   settings: SettingsData | undefined;
   query: string;
   setQuery: (value: string) => void;
@@ -71,13 +81,17 @@ export interface AppViewProps {
   onDisconnect: () => Promise<void>;
   onToast: (toast: Omit<ToastItem, "id">) => void;
   onInventoryRefresh: () => void;
-  onGameInventoryRefresh: (game: "tf2" | "dota2") => void;
+  onGameInventoryRefresh: (game: "steam" | "tf2" | "dota2") => void;
   onArmoryRefresh: () => Promise<unknown>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
+  onStoreRefresh: () => Promise<unknown>;
+  onStorePurchase: (input: InitializeStorePurchaseRequest) => Promise<PurchaseSession>;
+  onStoreReconcile: (id: string) => Promise<PurchaseSession>;
+  onTradesRefresh: () => Promise<unknown>;
   onInventoryRename: (input: SetItemNameRequest) => Promise<unknown>;
   onRemoveName: (input: RemoveItemNameRequest) => Promise<unknown>;
-  onOpenContainer: (input: { itemId: string }) => Promise<unknown>;
+  onOpenContainer: (input: OpenContainerRequest) => Promise<unknown>;
   onStorageSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
   onTradeUpSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
   onStickerSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
@@ -163,16 +177,18 @@ export function AppView(props: AppViewProps) {
         </Match>
         <Match when={isEconomyInventoryScreen(props.view)}>
           <GameInventoryView
-			game={props.view === "tf2-inventory" ? "tf2" : "dota2"}
-            snapshot={props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
+			game={props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2"}
+            snapshot={props.view === "steam-inventory" ? props.steamInventory : props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
             query={props.query}
             selectedAssetId={props.selectedItemId}
             setSelectedAssetId={props.setSelectedItemId}
             compactMode={props.compactMode}
-            onRefresh={() => props.onGameInventoryRefresh(props.view === "tf2-inventory" ? "tf2" : "dota2")}
+            onRefresh={() => props.onGameInventoryRefresh(props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2")}
           />
         </Match>
         <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onMarketPreview={props.onMarketPreview} onRedeem={props.onArmoryRedeem} /></Match>
+        <Match when={props.view === "store"}><StoreView store={props.store} settings={props.settings} onRefresh={props.onStoreRefresh} onPurchase={props.onStorePurchase} onReconcile={props.onStoreReconcile} /></Match>
+        <Match when={props.view === "trades"}><TradesView snapshot={props.trades} onRefresh={props.onTradesRefresh} onReconnect={() => props.setView("account")} /></Match>
         </Switch>
       </section>
 

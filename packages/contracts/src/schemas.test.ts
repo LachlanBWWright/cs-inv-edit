@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gameInventorySnapshotSchema, settingsDataSchema } from "./schemas.js";
+import { gameInventorySnapshotSchema, settingsDataSchema, storeSnapshotSchema } from "./schemas.js";
 
 const item = {
   game: "tf2",
@@ -14,6 +14,11 @@ const item = {
 } as const;
 
 describe("gameInventorySnapshotSchema", () => {
+  it("accepts Steam Community items from AppID 753", () => {
+    expect(gameInventorySnapshotSchema.safeParse({
+      game: "steam", appId: 753, items: [{ ...item, game: "steam", appId: 753, details: { ...item.details, game: "steam" } }], refreshedAt: "now", status: "ready", diagnostics: [],
+    }).success).toBe(true);
+  });
   it("accepts a consistent TF2 snapshot", () => {
     expect(gameInventorySnapshotSchema.safeParse({
       game: "tf2", appId: 440, items: [item], refreshedAt: "now", status: "ready", diagnostics: [],
@@ -33,6 +38,12 @@ describe("gameInventorySnapshotSchema", () => {
   });
 });
 
+it("normalizes a legacy null store offer list", () => {
+  const parsed = storeSnapshotSchema.safeParse({ status: "requires_connection", offers: null, refreshedAt: "now" });
+  expect(parsed.success).toBe(true);
+  if (parsed.success) expect(parsed.data.offers).toEqual([]);
+});
+
 it("migrates older settings payloads with multi-game flags disabled", () => {
   const parsed = settingsDataSchema.safeParse({
     backendUrl: "http://127.0.0.1:7331",
@@ -47,5 +58,5 @@ it("migrates older settings payloads with multi-game flags disabled", () => {
     },
   });
   expect(parsed.success).toBe(true);
-  if (parsed.success) expect(parsed.data.featureFlags).toMatchObject({ enableTf2Inventory: false, enableDota2Inventory: false });
+  if (parsed.success) expect(parsed.data.featureFlags).toMatchObject({ showStorageUnitItems: false, enableSteamInventory: true, enableTf2Inventory: true, enableDota2Inventory: false });
 });

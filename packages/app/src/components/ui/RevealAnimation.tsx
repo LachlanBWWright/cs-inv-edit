@@ -1,25 +1,43 @@
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
 import type { RevealAnimationMode } from "@cs-inv-edit/contracts";
 import { rarityBorderClass } from "../inventory-view-utils.js";
+import { generateCappedWear, weightedRandomItem } from "../related-item-preview-utils.js";
+import { WearRangeBar } from "./WearRangeBar.js";
 
 export interface RevealItem {
   name: string;
   imageUrl?: string;
   rarity?: string;
+  kind?: string;
+  wear?: number;
+  wearMin?: number;
+  wearMax?: number;
+  isStatTrak?: boolean;
+  supportsStatTrak?: boolean;
 }
 
 export interface RevealAnimationProps {
   open: boolean;
   mode: RevealAnimationMode;
+  immediate?: boolean;
   title: string;
   candidates: RevealItem[];
   result: RevealItem;
   onComplete: () => void;
 }
 
-function randomCandidate(items: RevealItem[], fallback: RevealItem) {
-  if (items.length === 0) return fallback;
-  return items[Math.floor(Math.random() * items.length)] ?? fallback;
+export function randomRevealCandidate(items: RevealItem[], fallback: RevealItem, random = Math.random) {
+  return weightedRandomItem(items, random) ?? fallback;
+}
+
+export function generateRevealMiss(item: RevealItem, random = Math.random): RevealItem {
+  const isSkin = item.kind === "weapon_skin" || item.wearMin !== undefined || item.wearMax !== undefined;
+  return {
+    ...item,
+    isStatTrak: isSkin && item.supportsStatTrak === true && random() < 0.1,
+    wear: isSkin ? item.wear ?? generateCappedWear(item.wearMin, item.wearMax, random) : undefined,
+  };
 }
 
 export function RevealAnimation(props: RevealAnimationProps) {
@@ -36,18 +54,27 @@ export function RevealAnimation(props: RevealAnimationProps) {
     setRolling(false);
     const timers: number[] = [];
 
-    if (props.mode === "countdown") {
+    if (props.immediate) {
+      setRevealed(true);
+      timers.push(window.setTimeout(props.onComplete, 2200));
+    } else if (props.mode === "countdown") {
       timers.push(window.setInterval(() => setCount((value) => Math.max(0, value - 1)), 1000));
       timers.push(window.setTimeout(() => setRevealed(true), 3000));
       timers.push(window.setTimeout(props.onComplete, 4300));
     } else if (props.mode === "slot-machine") {
-      const leadItems = 28 + Math.floor(Math.random() * 18);
+      // Vary both how much of the reel passes the marker and where the marker
+      // stops within the winning card. The square-root transform produces a
+      // U-shaped distribution: borders are more likely, but the centre remains
+      // possible, and the marker never targets the gap between cards.
+      const leadItems = 22 + Math.floor(Math.random() * 30);
       const tailItems = 4;
-      const nextReel = Array.from({ length: leadItems + tailItems + 1 }, () => randomCandidate(props.candidates, props.result));
+      const nextReel = Array.from({ length: leadItems + tailItems + 1 }, () => generateRevealMiss(randomRevealCandidate(props.candidates, props.result)));
       nextReel[leadItems] = props.result;
-      const duration = 4300 + Math.floor(Math.random() * 2600);
+      const landingDirection = Math.random() < 0.5 ? -1 : 1;
+      const landingJitter = landingDirection * Math.sqrt(Math.random()) * 88;
+      const duration = 3900 + leadItems * 55 + Math.floor(Math.random() * 1200);
       setReel(nextReel);
-      setTravel({ duration, offset: leadItems * 188 + 88 });
+      setTravel({ duration, offset: leadItems * 188 + 88 + landingJitter });
       timers.push(window.setTimeout(() => setRolling(true), 60 + Math.floor(Math.random() * 180)));
       timers.push(window.setTimeout(() => setRevealed(true), duration + 250));
       timers.push(window.setTimeout(props.onComplete, duration + 1550));
@@ -57,10 +84,14 @@ export function RevealAnimation(props: RevealAnimationProps) {
   });
 
   return (
-    <Show when={props.open && props.mode !== "none"}>
-      <div class="reveal-overlay" role="dialog" aria-modal="true" aria-label={props.title}>
-        <div class="reveal-panel">
+    <Portal>
+      <Show when={props.open && (props.mode !== "none" || props.immediate)}>
+        <div class="reveal-overlay" role="dialog" aria-modal="true" aria-label={props.title}>
+          <div class="reveal-panel">
           <p class="reveal-eyebrow">{props.title}</p>
+          <Show when={props.immediate}>
+            <div class="reveal-countdown"><ResultCard item={props.result} /></div>
+          </Show>
           <Show when={props.mode === "countdown"}>
             <div class="reveal-countdown">
               <Show when={!revealed()} fallback={<ResultCard item={props.result} />}>
@@ -84,20 +115,23 @@ export function RevealAnimation(props: RevealAnimationProps) {
             </div>
             <Show when={revealed()}><p class="reveal-result-name">{props.result.name}</p></Show>
           </Show>
+          </div>
         </div>
-      </div>
-    </Show>
+      </Show>
+    </Portal>
   );
 }
 
 function ResultCard(props: { item: RevealItem; compact?: boolean }) {
   const [imageFailed, setImageFailed] = createSignal(false);
   return (
-    <div class={`reveal-item rarity-outline ${rarityBorderClass(props.item.rarity)} ${props.compact ? "is-compact" : ""}`}>
+    <div class={`reveal-item rarity-outline relative ${rarityBorderClass(props.item.rarity)} ${props.compact ? "is-compact" : ""}`}>
+      <Show when={props.item.isStatTrak}><span class="absolute right-2 top-2 rounded bg-orange-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-300">StatTrak™</span></Show>
       <Show when={props.item.imageUrl && !imageFailed()} fallback={<div class="reveal-item-placeholder">?</div>}>
         <img src={props.item.imageUrl} alt="" referrerpolicy="no-referrer" onError={() => setImageFailed(true)} />
       </Show>
       <p>{props.item.name}</p>
+      <Show when={props.item.wear !== undefined}><WearRangeBar compact wear={props.item.wear!} min={props.item.wearMin} max={props.item.wearMax} /></Show>
     </div>
   );
 }

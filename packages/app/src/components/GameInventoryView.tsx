@@ -21,7 +21,7 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
 	const [viewport, setViewport] = createSignal({ width: 800, height: 600 });
 	let gridViewport: HTMLDivElement | undefined;
 	const snapshot = () => snapshotForGame(props.game, props.snapshot);
-	const title = () => props.game === "tf2" ? "Team Fortress 2 Inventory" : "Dota 2 Inventory";
+	const title = () => props.game === "steam" ? "Steam Inventory" : props.game === "tf2" ? "Team Fortress 2 Inventory" : "Dota 2 Inventory";
 	let filterGame = props.game;
 	createEffect(() => {
 		const nextGame = props.game;
@@ -65,7 +65,7 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
   return <div class="flex min-h-0 flex-1 flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div><h1 class="text-2xl font-semibold text-slate-50">{title()}</h1><p class="mt-1 text-sm text-slate-400">Read-only economy inventory · {snapshot()?.items.length ?? 0} assets</p><Show when={snapshot()}>{(value) => <p class="mt-1 text-xs text-slate-500">Last refresh: {new Date(value().refreshedAt).toLocaleString()}<Show when={value().schemaRevision}> · Schema: <span class="font-mono">{value().schemaRevision}</span></Show></p>}</Show></div>
-		<div class="flex items-center gap-2"><Show when={filterOptions().length}><label><span class="sr-only">Game-specific item filter</span><select class="h-9 max-w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={tagFilter()} onInput={(event) => setTagFilter(event.currentTarget.value)}><option value="">All {props.game === "tf2" ? "qualities and slots" : "rarities, heroes, and slots"}</option><For each={filterOptions()}>{([value, label]) => <option value={value}>{label}</option>}</For></select></label></Show><Button onClick={props.onRefresh}>Refresh</Button></div>
+		<div class="flex items-center gap-2"><Show when={filterOptions().length}><label><span class="sr-only">Inventory item filter</span><select class="h-9 max-w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={tagFilter()} onInput={(event) => setTagFilter(event.currentTarget.value)}><option value="">All item categories</option><For each={filterOptions()}>{([value, label]) => <option value={value}>{label}</option>}</For></select></label></Show><Button onClick={props.onRefresh}>Refresh</Button></div>
     </div>
 	<Show when={snapshot()?.status === "requires_connection"}><Alert variant="warning">Connect a Steam account, then refresh this inventory.</Alert></Show>
 	<Show when={snapshot()?.status === "loading"}><Alert>Loading {title()}…</Alert></Show>

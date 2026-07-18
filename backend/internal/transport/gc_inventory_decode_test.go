@@ -101,6 +101,70 @@ func TestTF2WelcomeCountryIsNotDecodedAsDotaSOCache(t *testing.T) {
 	}
 }
 
+func TestTF2SOCacheSubscriptionCheckBuildsAuthoritativeRefresh(t *testing.T) {
+	checkBody, err := proto.Marshal(&multigamepb.CMsgSOCacheSubscriptionCheck{
+		Owner:     proto.Uint64(76561198813914865),
+		Version:   proto.Uint64(1),
+		OwnerSoid: &multigamepb.CMsgSOIDOwner{Type: proto.Uint32(1), Id: proto.Uint64(1234)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshBody, err := gameSOCacheSubscriptionRefresh(checkBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refresh multigamepb.CMsgSOCacheSubscriptionRefresh
+	if err := proto.Unmarshal(refreshBody, &refresh); err != nil {
+		t.Fatal(err)
+	}
+	if refresh.GetOwner() != 76561198813914865 || refresh.GetOwnerSoid().GetType() != 1 || refresh.GetOwnerSoid().GetId() != 1234 {
+		t.Fatalf("SOCache refresh=%#v", refresh)
+	}
+}
+
+func TestDotaWelcomeUpToDateSOCacheBuildsRefresh(t *testing.T) {
+	welcomeBody, err := proto.Marshal(&multigamepb.CMsgClientWelcome{
+		UptodateSubscribedCaches: []*multigamepb.CMsgSOCacheSubscriptionCheck{{
+			Version:   proto.Uint64(9),
+			OwnerSoid: &multigamepb.CMsgSOIDOwner{Type: proto.Uint32(1), Id: proto.Uint64(7656119)},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshBodies, err := dotaWelcomeSOCacheRefreshes(welcomeBody)
+	if err != nil || len(refreshBodies) != 1 {
+		t.Fatalf("refreshes=%d err=%v", len(refreshBodies), err)
+	}
+	var refresh multigamepb.CMsgSOCacheSubscriptionRefresh
+	if err := proto.Unmarshal(refreshBodies[0], &refresh); err != nil {
+		t.Fatal(err)
+	}
+	if refresh.Owner != nil || refresh.GetOwnerSoid().GetType() != 1 || refresh.GetOwnerSoid().GetId() != 7656119 {
+		t.Fatalf("Dota SOCache refresh=%#v", refresh)
+	}
+}
+
+func TestDotaWelcomeOutOfDateInventoryDoesNotRequestRedundantRefresh(t *testing.T) {
+	itemBody, err := proto.Marshal(&multigamepb.CSOEconItem{Id: proto.Uint64(42), DefIndex: proto.Uint32(7)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	welcomeBody, err := proto.Marshal(&multigamepb.CMsgClientWelcome{OutofdateSubscribedCaches: []*multigamepb.CMsgSOCacheSubscribed{{Objects: []*multigamepb.CMsgSOCacheSubscribed_SubscribedType{{TypeId: proto.Int32(1), ObjectData: [][]byte{itemBody}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, found, err := decodeGameWelcomeInventory(570, welcomeBody)
+	if err != nil || !found || len(items) != 1 || items[0].ID != 42 {
+		t.Fatalf("items=%#v found=%t err=%v", items, found, err)
+	}
+	refreshes, err := dotaWelcomeSOCacheRefreshes(welcomeBody)
+	if err != nil || len(refreshes) != 0 {
+		t.Fatalf("unexpected refreshes=%d err=%v", len(refreshes), err)
+	}
+}
+
 func TestGameClientHelloUsesPinnedVersionsAndDotaSource2(t *testing.T) {
 	tf2Body, err := gameClientHello(440)
 	if err != nil {

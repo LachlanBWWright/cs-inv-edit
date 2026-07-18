@@ -2,12 +2,38 @@ package rpc
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"cs-inv-edit/backend/internal/app"
 )
+
+func TestStoreRouteAlwaysSerializesOffersAsArray(t *testing.T) {
+	service := app.NewService()
+	handler := NewHandler(service)
+	req := httptest.NewRequest(http.MethodGet, "/store", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Offers  json.RawMessage `json:"offers"`
+		Message string          `json:"message"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if string(payload.Offers) != "[]" {
+		t.Fatalf("offers=%s, want []", payload.Offers)
+	}
+	if !strings.Contains(payload.Message, "Connect Steam") {
+		t.Fatalf("message=%q, want connection guidance", payload.Message)
+	}
+}
 
 func TestHealthRoute(t *testing.T) {
 	service := app.NewService()
@@ -68,6 +94,9 @@ func TestNameTagApplyRoute(t *testing.T) {
 
 func TestDisabledMultiGameInventoryRouteIsBackendEnforced(t *testing.T) {
 	service := app.NewService()
+	settings := service.Settings()
+	settings.FeatureFlags.EnableTF2Inventory = false
+	service.UpdateSettings(settings)
 	handler := NewHandler(service)
 	req := httptest.NewRequest(http.MethodGet, "/games/tf2/inventory", nil)
 	rr := httptest.NewRecorder()
@@ -80,6 +109,26 @@ func TestDisabledMultiGameInventoryRouteIsBackendEnforced(t *testing.T) {
 	handler.ServeHTTP(cs2RR, cs2Req)
 	if cs2RR.Code != http.StatusOK {
 		t.Fatalf("CS2 route regressed: status=%d body=%q", cs2RR.Code, cs2RR.Body.String())
+	}
+}
+
+func TestTF2InventoryDefaultsEnabledAndSerializesDiagnosticsAsArray(t *testing.T) {
+	service := app.NewService()
+	handler := NewHandler(service)
+	req := httptest.NewRequest(http.MethodGet, "/games/tf2/inventory", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("TF2 status=%d body=%q", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Diagnostics json.RawMessage `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if string(payload.Diagnostics) != "[]" {
+		t.Fatalf("diagnostics=%s, want []", payload.Diagnostics)
 	}
 }
 

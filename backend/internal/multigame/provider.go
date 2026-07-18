@@ -18,13 +18,15 @@ import (
 )
 
 type Game struct {
-	ID    string
-	AppID uint32
+	ID        string
+	AppID     uint32
+	ContextID uint32
 }
 
 var games = map[string]Game{
-	"tf2":   {ID: "tf2", AppID: 440},
-	"dota2": {ID: "dota2", AppID: 570},
+	"steam": {ID: "steam", AppID: 753, ContextID: 6},
+	"tf2":   {ID: "tf2", AppID: 440, ContextID: 2},
+	"dota2": {ID: "dota2", AppID: 570, ContextID: 2},
 }
 
 func ParseGame(value string) (Game, bool) {
@@ -139,6 +141,14 @@ func (b *flexibleBool) UnmarshalJSON(data []byte) error {
 }
 
 func (p *Provider) Load(ctx context.Context, steamID string, game Game) (domain.GameInventorySnapshot, error) {
+	return p.load(ctx, steamID, game, "")
+}
+
+func (p *Provider) LoadAuthenticated(ctx context.Context, steamID string, game Game, webAccessToken string) (domain.GameInventorySnapshot, error) {
+	return p.load(ctx, steamID, game, strings.TrimSpace(webAccessToken))
+}
+
+func (p *Provider) load(ctx context.Context, steamID string, game Game, webAccessToken string) (domain.GameInventorySnapshot, error) {
 	if strings.TrimSpace(steamID) == "" {
 		return domain.GameInventorySnapshot{}, fmt.Errorf("SteamID is required")
 	}
@@ -157,7 +167,7 @@ func (p *Provider) Load(ctx context.Context, steamID string, game Game) (domain.
 	items := make([]domain.EconomyInventoryItem, 0)
 	startAssetID := ""
 	for {
-		current, err := p.fetchPage(ctx, steamID, game, startAssetID)
+		current, err := p.fetchPage(ctx, steamID, game, startAssetID, webAccessToken)
 		if err != nil {
 			return domain.GameInventorySnapshot{}, err
 		}
@@ -174,6 +184,9 @@ func (p *Provider) Load(ctx context.Context, steamID string, game Game) (domain.
 			}
 			if owned.AppID != 0 && uint32(owned.AppID) != game.AppID {
 				return domain.GameInventorySnapshot{}, fmt.Errorf("Steam asset AppID %d did not match requested AppID %d", owned.AppID, game.AppID)
+			}
+			if owned.ContextID != "" && owned.ContextID != strconv.FormatUint(uint64(game.ContextID), 10) {
+				return domain.GameInventorySnapshot{}, fmt.Errorf("Steam asset %s context %s did not match requested context %d", owned.AssetID, owned.ContextID, game.ContextID)
 			}
 			quantity, err := strconv.ParseUint(owned.Amount, 10, 64)
 			if err != nil || quantity == 0 {
@@ -223,12 +236,19 @@ func (p *Provider) Load(ctx context.Context, steamID string, game Game) (domain.
 
 	snapshot := domain.GameInventorySnapshot{
 		Game: game.ID, AppID: game.AppID, Items: items, Status: "ready", RefreshedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		Diagnostics: []string{"Steam Community descriptions loaded as a metadata overlay; Community assets are not accepted as authoritative ownership."},
+		Diagnostics: []string{communityInventoryDiagnostic(game)},
 	}
 	p.overlayMu.Lock()
 	p.overlays[cacheKey] = overlayCacheEntry{snapshot: cloneGameSnapshot(snapshot), expiresAt: time.Now().Add(5 * time.Minute)}
 	p.overlayMu.Unlock()
 	return snapshot, nil
+}
+
+func communityInventoryDiagnostic(game Game) string {
+	if game.ID == "steam" {
+		return "Steam Community AppID 753 context 6 is the authoritative source for owned Steam Community items."
+	}
+	return "Steam Community descriptions loaded as a metadata overlay; Community assets are not accepted as authoritative ownership."
 }
 
 func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, owned []OwnedItem) domain.GameInventorySnapshot {
@@ -379,19 +399,22 @@ func (p *Provider) fetchText(ctx context.Context, endpoint string) (string, erro
 	return string(body), nil
 }
 
-func (p *Provider) fetchPage(ctx context.Context, steamID string, game Game, startAssetID string) (page, error) {
+func (p *Provider) fetchPage(ctx context.Context, steamID string, game Game, startAssetID, webAccessToken string) (page, error) {
 	values := url.Values{}
 	values.Set("l", "english")
 	values.Set("count", "5000")
 	if startAssetID != "" {
 		values.Set("start_assetid", startAssetID)
 	}
-	endpoint := fmt.Sprintf("%s/inventory/%s/%d/2?%s", strings.TrimRight(p.communityBase, "/"), url.PathEscape(steamID), game.AppID, values.Encode())
+	endpoint := fmt.Sprintf("%s/inventory/%s/%d/%d?%s", strings.TrimRight(p.communityBase, "/"), url.PathEscape(steamID), game.AppID, game.ContextID, values.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return page{}, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; cs-inv-edit/0.0; multi-game inventory lookup)")
+	if webAccessToken != "" {
+		req.AddCookie(&http.Cookie{Name: "steamLoginSecure", Value: steamID + "||" + webAccessToken, Path: "/", Secure: true, HttpOnly: true})
+	}
 	resp, err := p.do(req)
 	if err != nil {
 		return page{}, fmt.Errorf("fetch %s inventory: %w", game.ID, err)
@@ -450,7 +473,7 @@ func (p *Provider) do(req *http.Request) (*http.Response, error) {
 
 func cloneGameSnapshot(snapshot domain.GameInventorySnapshot) domain.GameInventorySnapshot {
 	clone := snapshot
-	clone.Diagnostics = append([]string(nil), snapshot.Diagnostics...)
+	clone.Diagnostics = append([]string{}, snapshot.Diagnostics...)
 	clone.Items = make([]domain.EconomyInventoryItem, len(snapshot.Items))
 	for index, item := range snapshot.Items {
 		clone.Items[index] = item

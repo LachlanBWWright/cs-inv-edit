@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { ConnectionStatus } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
@@ -27,6 +27,8 @@ export function AccountView(props: AccountViewProps) {
   const [loading, setLoading] = createSignal(false);
   const [qrImage, setQRImage] = createSignal("");
   const [qrStartRequested, setQRStartRequested] = createSignal(false);
+  const [qrRequestPending, setQRRequestPending] = createSignal(false);
+  const [qrRequestSlow, setQRRequestSlow] = createSignal(false);
 
   createEffect(() => {
     setUsername(props.initialUsername ?? "");
@@ -43,8 +45,32 @@ export function AccountView(props: AccountViewProps) {
     const state = props.connection?.state;
     if (state === "connected" || state === "needs_steam_guard" || state === "awaiting_qr" || qrStartRequested()) return;
     setQRStartRequested(true);
-    void props.onStartSteamQR();
+    setQRRequestPending(true);
+    void fromAppPromise(props.onStartSteamQR(), "Failed to start Steam QR sign-in").match(
+      () => setQRRequestPending(false),
+      (error) => {
+        setQRRequestPending(false);
+        setStatus(appErrorMessage(error, "Failed to start Steam QR sign-in."));
+      },
+    );
   });
+
+  createEffect(() => {
+    if (!qrRequestPending()) {
+      setQRRequestSlow(false);
+      return;
+    }
+    const slowTimer = window.setTimeout(() => setQRRequestSlow(true), 5_000);
+    onCleanup(() => window.clearTimeout(slowTimer));
+  });
+
+  const qrLoadingText = () => {
+    if (props.connection?.qrChallengeUrl) return "Rendering secure QR code…";
+    if (qrRequestSlow()) return "Still waiting for Steam to create a sign-in session…";
+    if (qrRequestPending()) return "Connecting to Steam and requesting a sign-in session…";
+    if (props.connection?.state === "error") return props.connection.detail ?? "Steam could not create a QR sign-in session.";
+    return "Preparing QR sign-in…";
+  };
 
   const handleConnect = async (e: Event) => {
     e.preventDefault();
@@ -213,8 +239,8 @@ export function AccountView(props: AccountViewProps) {
                 <Show
                   when={qrImage()}
                   fallback={
-                    <div class="mt-5 flex h-48 w-48 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/60 text-sm text-slate-500" role="status">
-                      Generating QR code…
+                    <div class="mt-5 flex h-48 w-48 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/60 px-4 text-sm text-slate-400" role="status" aria-live="polite">
+                      {qrLoadingText()}
                     </div>
                   }
                 >

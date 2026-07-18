@@ -37,6 +37,9 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
 	if skin.Collection != "The Test Collection" || len(skin.CollectionItems) != 1 || skin.CollectionItems[0].MarketName != "AK-47 | Test Finish" {
 		t.Fatalf("skin collection metadata = %#v", skin)
 	}
+	if skin.Rarity != "mythical" || skin.CollectionItems[0].Rarity != "mythical" {
+		t.Fatalf("skin rarity = %q, collection item rarity = %q; want paint-kit rarity mythical", skin.Rarity, skin.CollectionItems[0].Rarity)
+	}
 	container := schema.Metadata(4001, 0, nil)
 	if len(container.ContainerItems) != 1 || container.ContainerItems[0].MarketName != "AK-47 | Test Finish" {
 		t.Fatalf("container contents = %#v", container.ContainerItems)

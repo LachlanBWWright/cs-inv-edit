@@ -74,6 +74,26 @@ func TestInventoryDescriptionCanRefineWeaponFinish(t *testing.T) {
 	}
 }
 
+func TestInventoryInspectURLUsesSteamPreviewActionAndExpandsAssetPlaceholders(t *testing.T) {
+	actions := []inventoryAction{
+		{Name: "Unrelated", Link: "https://example.invalid/"},
+		{Name: "Inspect in Game...", Link: "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S%owner_steamid%A%assetid%D123"},
+	}
+
+	link := expandInventoryInspectURL(inventoryInspectURL(actions), "76561198000000000", "123456789")
+	want := "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198000000000A123456789D123"
+	if link != want {
+		t.Fatalf("inspect link = %q, want %q", link, want)
+	}
+}
+
+func TestInventoryInspectURLRejectsOtherSteamCommands(t *testing.T) {
+	got := inventoryInspectURL([]inventoryAction{{Link: "steam://rungame/730/0/+connect%20example.invalid"}})
+	if got != "" {
+		t.Fatalf("inspect link = %q, want empty", got)
+	}
+}
+
 func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 	itemsRoot, err := parseKeyValues(`
 "items_game"
@@ -151,6 +171,13 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 			"item_name" "#CSGO_crate_patch_pack_example_capsule"
 			"item_class" "supply_crate"
 			"prefab" "patch_capsule"
+		}
+		"4001"
+		{
+			"name" "crate_valve_1"
+			"item_name" "#CSGO_crate_valve_1"
+			"item_class" "supply_crate"
+			"associated_items" { "1203" "1" }
 		}
 	}
 	"sticker_kits"
@@ -240,6 +267,13 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 	capsule := schema.Metadata(4599, 0, nil)
 	if capsule.Kind != "container" {
 		t.Fatalf("sticker capsule kind = %q, want container; metadata=%#v", capsule.Kind, capsule)
+	}
+	if len(capsule.RequiredKeyDefIndexes) != 0 {
+		t.Fatalf("keyless capsule required keys = %#v, want none", capsule.RequiredKeyDefIndexes)
+	}
+	caseMetadata := schema.Metadata(4001, 0, nil)
+	if len(caseMetadata.RequiredKeyDefIndexes) != 1 || caseMetadata.RequiredKeyDefIndexes[0] != 1203 {
+		t.Fatalf("case required keys = %#v, want [1203]", caseMetadata.RequiredKeyDefIndexes)
 	}
 	capsules := map[uint32]string{
 		4600: "graffiti capsule",
@@ -430,5 +464,12 @@ func TestTransientSteamMarketErrors(t *testing.T) {
 	}
 	if isTransientSteamMarketError(errors.New("no exact market result")) {
 		t.Fatal("an exact-match miss should not be retried")
+	}
+}
+
+func TestWithInventoryDescriptionPreservesMarketability(t *testing.T) {
+	metadata := (Metadata{}).WithInventoryDescription(InventoryDescription{Marketable: false})
+	if metadata.Marketable == nil || *metadata.Marketable {
+		t.Fatalf("marketable = %#v, want explicit false", metadata.Marketable)
 	}
 }

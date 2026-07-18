@@ -26,6 +26,34 @@ func TestDecodeArmoryFromXpShopCacheTypeSix(t *testing.T) {
 	}
 }
 
+func TestDecodeArmoryPrefersObservedXpShopTypeOverAmbiguousCandidate(t *testing.T) {
+	xpShop, _ := proto.Marshal(&cs2pb.CSOAccountXpShop{GenerationTime: proto.Uint32(1_723_456_789), RedeemableBalance: proto.Uint32(17)})
+	unrelated, _ := proto.Marshal(&cs2pb.CSOAccountXpShop{GenerationTime: proto.Uint32(9), RedeemableBalance: proto.Uint32(3)})
+	body, _ := proto.Marshal(&cs2pb.CMsgClientWelcome{OutofdateSubscribedCaches: []*cs2pb.CMsgSOCacheSubscribed{{Objects: []*cs2pb.CMsgSOCacheSubscribed_SubscribedType{
+		{TypeId: proto.Int32(15), ObjectData: [][]byte{unrelated}},
+		{TypeId: proto.Int32(observedXpShopTypeID), ObjectData: [][]byte{xpShop}},
+	}}}})
+
+	state, err := decodeArmoryFromClientWelcome(body)
+	if err != nil || state.XpShopTypeID != observedXpShopTypeID || state.GenerationTime != 1_723_456_789 || state.Balance != 17 {
+		t.Fatalf("observed XP Shop type was not preferred: state=%#v err=%v", state, err)
+	}
+}
+
+func TestDecodeArmoryIgnoresAmbiguousCandidateAfterObservedXpShopType(t *testing.T) {
+	xpShop, _ := proto.Marshal(&cs2pb.CSOAccountXpShop{GenerationTime: proto.Uint32(1_723_456_789), RedeemableBalance: proto.Uint32(17)})
+	unrelated, _ := proto.Marshal(&cs2pb.CSOAccountXpShop{GenerationTime: proto.Uint32(9), RedeemableBalance: proto.Uint32(3)})
+	body, _ := proto.Marshal(&cs2pb.CMsgClientWelcome{OutofdateSubscribedCaches: []*cs2pb.CMsgSOCacheSubscribed{{Objects: []*cs2pb.CMsgSOCacheSubscribed_SubscribedType{
+		{TypeId: proto.Int32(observedXpShopTypeID), ObjectData: [][]byte{xpShop}},
+		{TypeId: proto.Int32(15), ObjectData: [][]byte{unrelated}},
+	}}}})
+
+	state, err := decodeArmoryFromClientWelcome(body)
+	if err != nil || state.XpShopTypeID != observedXpShopTypeID || state.GenerationTime != 1_723_456_789 || state.Balance != 17 {
+		t.Fatalf("ambiguous candidate replaced observed XP Shop type: state=%#v err=%v", state, err)
+	}
+}
+
 func TestDecodeArmoryTreatsOriginalFieldThreeAsXpTracks(t *testing.T) {
 	// This is the reported wire shape: generation_time=1, balance=0 and one
 	// xp_tracks value. Generation time is an opaque uint32, not a Unix timestamp.

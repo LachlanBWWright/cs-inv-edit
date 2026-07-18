@@ -34,6 +34,18 @@ export function AccountSwitcher(props: AccountSwitcherProps) {
                 </div>
               </div>
               <div class="mt-3 flex flex-wrap gap-2">
+                <Show when={account.steamId}>
+                  {(steamId) => (
+                    <a
+                      class="rounded-md border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20"
+                      href={`https://steamcommunity.com/profiles/${encodeURIComponent(steamId())}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View Steam profile
+                    </a>
+                  )}
+                </Show>
                 <Show when={account.signedIn} fallback={<button class="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-medium text-cyan-200 hover:bg-cyan-500/20" onClick={() => props.onSignInAccount(account)}>Sign in</button>}>
                   <button class="rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-700" onClick={() => props.onSignOutAccount(account)}>Sign out</button>
                 </Show>

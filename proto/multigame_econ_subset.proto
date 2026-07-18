@@ -19,6 +19,7 @@ message CMsgClientWelcome {
   optional uint32 version = 1;
   optional bytes game_data = 2;
   repeated CMsgSOCacheSubscribed outofdate_subscribed_caches = 3;
+  repeated CMsgSOCacheSubscriptionCheck uptodate_subscribed_caches = 4;
 }
 
 message CMsgSOIDOwner {
@@ -34,6 +35,20 @@ message CMsgSOCacheSubscribed {
   repeated SubscribedType objects = 2;
   optional fixed64 version = 3;
   optional CMsgSOIDOwner owner_soid = 4;
+}
+
+message CMsgSOCacheSubscriptionCheck {
+  optional fixed64 owner = 1;
+  optional fixed64 version = 2;
+  optional CMsgSOIDOwner owner_soid = 3;
+  optional uint32 service_id = 4;
+  repeated uint32 service_list = 5;
+  optional fixed64 sync_version = 6;
+}
+
+message CMsgSOCacheSubscriptionRefresh {
+  optional fixed64 owner = 1;
+  optional CMsgSOIDOwner owner_soid = 2;
 }
 
 message CSOEconItemAttribute {

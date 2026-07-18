@@ -31,6 +31,7 @@ export interface InventoryItemDto {
   marketSellListings?: number;
   customName?: string;
   imageUrl?: string;
+  inspectUrl?: string;
   kind: "weapon_skin" | "sticker_item" | "container" | "storage_unit" | "tool_item" | "cs2_econ_item" | "unknown";
   defindex?: number;
   paintWear?: number;
@@ -46,11 +47,13 @@ export interface InventoryItemDto {
   rarity?: string;
   storageLocation?: string;
   toolType?: string;
+  requiredKeyDefIndexes?: number[];
   stickers?: StickerDto[];
   appliedItems?: AppliedItemDto[];
   isStatTrak?: boolean;
   isSouvenir?: boolean;
   tradable?: boolean;
+  marketable?: boolean;
   tradableAfter?: string;
   unsupportedFields?: string[];
   diagnostics?: string[];
@@ -72,6 +75,10 @@ export interface RelatedItemDto {
   wearMax?: number;
 }
 
+export interface PriceScanRequest { marketNames: string[]; currency: string; priceMultipliers?: Record<string, number> }
+export interface PriceQuoteDto { source: string; marketName: string; currency: string; amountMinor?: number; displayPrice: string; priceMultiplier: number; adjustedAmountMinor?: number; adjustedDisplayPrice?: string; listingCount?: number; url?: string; observedAt: string }
+export interface PriceScanResult { currency: string; items: Array<{ marketName: string; quotes: PriceQuoteDto[] }>; listings: PriceQuoteDto[]; errors: Array<{ source: string; message: string }>; scannedAt: string }
+
 export interface ItemDebugDto {
   gcId?: string;
   gcOriginalId?: string;
@@ -88,6 +95,7 @@ export interface ItemDebugDto {
 
 export interface InventorySnapshot {
   items: InventoryItemDto[];
+  collections?: Array<{ name: string; items: RelatedItemDto[] }>;
   refreshedAt: string;
   status?: "ready" | "requires_connection" | "loading" | "error";
   message?: string;
@@ -115,6 +123,55 @@ export interface ArmorySnapshot {
   status: "ready" | "requires_connection" | "loading" | "error";
   message?: string;
   diagnostics?: string[];
+}
+
+export interface StoreOfferDto {
+  id: string; itemLink: string; defIndex: number; name: string;
+  description?: string; imageUrl?: string; category?: string; rarity?: string;
+  currency: string; amountMinor: number; formattedPrice: string;
+  saleAmountMinor?: number; formattedSalePrice?: string;
+  requiresSupplementalData: boolean; supplementalDataKind?: string;
+  purchasable: boolean; unsupportedReason?: string;
+  items?: RelatedItemDto[];
+}
+
+export interface StoreSnapshot {
+  status: "ready" | "requires_connection" | "loading" | "error";
+  priceSheetVersion?: number; currency?: string; offers: StoreOfferDto[];
+  refreshedAt: string; message?: string; diagnostics?: string[];
+}
+
+export interface SteamTradeItemDto {
+  appId: number; contextId: string; assetId: string; amount: number;
+  name: string; marketName?: string; type?: string; imageUrl?: string;
+  tradable: boolean; marketable: boolean;
+}
+
+export interface SteamTradeDto {
+  id: string; direction: "received" | "sent" | "history"; partnerSteamId: string;
+  message?: string; state: string; createdAt?: string; updatedAt?: string; expiresAt?: string;
+  itemsToGive: SteamTradeItemDto[]; itemsToReceive: SteamTradeItemDto[];
+}
+
+export interface SteamTradesSnapshot {
+  status: "ready" | "requires_connection" | "requires_reauthentication" | "loading" | "error";
+  received: SteamTradeDto[]; sent: SteamTradeDto[]; history: SteamTradeDto[];
+  refreshedAt: string; message?: string;
+}
+
+export interface InitializeStorePurchaseRequest {
+  offerId: string; quantity: number; expectedPriceSheetVersion: number;
+  expectedAmountMinor: number; supplementalData?: string;
+}
+
+export type PurchaseSessionStatus = "initializing" | "awaiting_steam_authorization" | "awaiting_user" | "finalizing" | "completed" | "cancelled" | "failed" | "expired";
+export interface PurchaseSession {
+  id: string; status: PurchaseSessionStatus; offerId: string; defIndex: number;
+  name: string; quantity: number; currency: string; amountMinor: number;
+  formattedAmount: string; transactionId?: string; orderId?: string;
+  checkoutUrl?: string; purchasedItemIds?: string[]; createdAt: string;
+  expiresAt?: string; message?: string; diagnostics?: string[];
+  errorCode?: string; errorResult?: number;
 }
 
 export interface ArmoryRedeemRequest {
@@ -175,10 +232,27 @@ export interface OperationEvent {
   createdAt: string;
 }
 
+export interface ProtocolTraceEntry {
+  id: number;
+  timestamp: string;
+  direction: "sent" | "received";
+  layer: string;
+  appId?: number;
+  emsg: number;
+  name: string;
+  protobuf: boolean;
+  bodyBytes: number;
+  bodyHex: string;
+  decoded?: unknown;
+  decodeError?: string;
+}
+
 export interface FeatureFlags {
   enableStorageMutations: boolean;
   enableContainerOpening: boolean;
   enableInventoryDebug: boolean;
+  showStorageUnitItems: boolean;
+  enableProtocolConsole?: boolean;
   enableTradeups: boolean;
   enableStickerExtract: boolean;
   enableNameTags: boolean;
@@ -190,11 +264,14 @@ export interface FeatureFlags {
   enableGifting: boolean;
   enableArmoryRead?: boolean;
   enableArmoryRedemption?: boolean;
+  enableStoreRead?: boolean;
+  enableStorePurchases?: boolean;
   enableTf2Inventory: boolean;
   enableDota2Inventory: boolean;
+  enableSteamInventory: boolean;
 }
 
-export type EconomyGame = "tf2" | "dota2";
+export type EconomyGame = "steam" | "tf2" | "dota2";
 
 export interface EconomyTagDto {
   category: string;
@@ -256,7 +333,18 @@ export interface Dota2ItemDetails extends EconomyItemDetailsBase {
   capabilities?: never;
 }
 
+export interface SteamItemDetails extends EconomyItemDetailsBase {
+  game: "steam";
+  hero?: never;
+  slot?: never;
+  schemaQuality?: never;
+  equipSlot?: never;
+  usableClasses?: never;
+  capabilities?: never;
+}
+
 export type EconomyInventoryItemDto =
+  | (EconomyInventoryItemBase & { game: "steam"; appId: 753; details: SteamItemDetails })
   | (EconomyInventoryItemBase & { game: "tf2"; appId: 440; details: TF2ItemDetails })
   | (EconomyInventoryItemBase & { game: "dota2"; appId: 570; details: Dota2ItemDetails });
 
@@ -270,6 +358,7 @@ interface GameInventorySnapshotBase {
 }
 
 export type GameInventorySnapshot =
+  | (GameInventorySnapshotBase & { game: "steam"; appId: 753; items: Extract<EconomyInventoryItemDto, { game: "steam" }>[] })
   | (GameInventorySnapshotBase & { game: "tf2"; appId: 440; items: Extract<EconomyInventoryItemDto, { game: "tf2" }>[] })
   | (GameInventorySnapshotBase & { game: "dota2"; appId: 570; items: Extract<EconomyInventoryItemDto, { game: "dota2" }>[] });
 
@@ -283,10 +372,11 @@ export interface SettingsData {
 }
 
 export type RevealAnimationMode = "none" | "countdown" | "slot-machine";
+export type TradeUpAnimationMode = RevealAnimationMode | "contract-none" | "contract-countdown" | "contract-slot-machine";
 
 export interface AnimationSettings {
   container: RevealAnimationMode;
-  tradeUp: RevealAnimationMode;
+  tradeUp: TradeUpAnimationMode;
   armory: RevealAnimationMode;
 }
 
@@ -306,6 +396,11 @@ export interface SetItemNameRequest {
   subjectItemId: string;
   toolItemId: string;
   name: string;
+}
+
+export interface OpenContainerRequest {
+  itemId: string;
+  keyItemId?: string;
 }
 
 export interface RemoveItemNameRequest {

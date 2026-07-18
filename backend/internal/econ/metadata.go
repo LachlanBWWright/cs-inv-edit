@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	itemsGameURL  = "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/game/csgo/pak01_dir/scripts/items/items_game.txt"
-	englishURL    = "https://raw.githubusercontent.com/SteamDatabase/GameTracking-CS2/master/game/csgo/pak01_dir/resource/csgo_english.txt"
+	itemsGameURL  = "https://raw.githubusercontent.com/SteamTracking/GameTracking-CS2/master/game/csgo/pak01_dir/scripts/items/items_game.txt"
+	englishURL    = "https://raw.githubusercontent.com/SteamTracking/GameTracking-CS2/master/game/csgo/pak01_dir/resource/csgo_english.txt"
 	imageIndexURL = "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/refs/heads/main/static/images.json"
 )
 
@@ -40,25 +40,27 @@ type Provider struct {
 }
 
 type Metadata struct {
-	Name              string
-	MarketName        string
-	Kind              string
-	Rarity            string
-	ImageURL          string
-	ImageSource       string
-	ImageKey          string
-	MarketPrice       MarketPrice
-	ToolType          string
-	IsNameTagTool     bool
-	Collection        string
-	CollectionItems   []RelatedItem
-	TradeUpItems      []RelatedItem
-	ContainerItems    []RelatedItem
-	AppliedItemImages []string
-	Tradable          *bool
-	TradableAfter     string
-	PaintWearMin      *float64
-	PaintWearMax      *float64
+	Name                  string
+	MarketName            string
+	Kind                  string
+	Rarity                string
+	ImageURL              string
+	ImageSource           string
+	ImageKey              string
+	MarketPrice           MarketPrice
+	ToolType              string
+	RequiredKeyDefIndexes []uint32
+	IsNameTagTool         bool
+	Collection            string
+	CollectionItems       []RelatedItem
+	TradeUpItems          []RelatedItem
+	ContainerItems        []RelatedItem
+	AppliedItemImages     []string
+	Tradable              *bool
+	Marketable            *bool
+	TradableAfter         string
+	PaintWearMin          *float64
+	PaintWearMax          *float64
 }
 
 type RelatedItem struct {
@@ -102,6 +104,7 @@ type InventoryDescription struct {
 	Marketable        bool
 	AppliedItemImages []string
 	TradableAfter     string
+	InspectURL        string
 }
 
 type MarketDescription struct {
@@ -145,18 +148,45 @@ type collectionDefinition struct {
 	Items []string
 }
 
+type Collection struct {
+	Name  string
+	Items []RelatedItem
+}
+
+func (s *Schema) Collections() []Collection {
+	collections := make([]Collection, 0, len(s.collections))
+	for _, definition := range s.collections {
+		if definition.Name == "" || len(definition.Items) == 0 {
+			continue
+		}
+		collections = append(collections, Collection{Name: definition.Name, Items: s.relatedItems(definition.Items)})
+	}
+	sort.Slice(collections, func(i, j int) bool { return collections[i].Name < collections[j].Name })
+	return collections
+}
+
 type itemDefinition struct {
-	Name              string
-	ItemName          string
-	TypeName          string
-	ItemClass         string
-	Prefab            string
-	Rarity            string
-	Image             string
-	ToolType          string
-	Capabilities      map[string]string
-	LootList          string
-	SupplyCrateSeries string
+	Name                  string
+	ItemName              string
+	TypeName              string
+	ItemClass             string
+	Prefab                string
+	Rarity                string
+	Image                 string
+	ToolType              string
+	Capabilities          map[string]string
+	LootList              string
+	SupplyCrateSeries     string
+	RequiredKeyDefIndexes []uint32
+}
+
+func (s *Schema) MetadataByItemName(itemName string) (uint32, Metadata, bool) {
+	for defIndex, item := range s.items {
+		if item.Name == itemName {
+			return defIndex, s.Metadata(defIndex, 0, nil), true
+		}
+	}
+	return 0, Metadata{}, false
 }
 
 type paintKitDefinition struct {
@@ -379,6 +409,7 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 				Marketable:        desc.Marketable != 0,
 				AppliedItemImages: appliedItemImages(desc.Descriptions),
 				TradableAfter:     tradableAfter(desc.Descriptions),
+				InspectURL:        inventoryInspectURL(append(desc.Actions, desc.OwnerActions...)),
 			}
 		}
 		for _, asset := range page.Assets {
@@ -388,6 +419,7 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 				continue
 			}
 			desc.AssetID = asset.AssetID
+			desc.InspectURL = expandInventoryInspectURL(desc.InspectURL, steamID, asset.AssetID)
 			out[asset.AssetID] = desc
 			for _, name := range []string{desc.MarketHashName, desc.MarketName, desc.Name} {
 				for _, key := range inventoryDescriptionNameKeys(name) {
@@ -826,22 +858,23 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind string, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {
 	imageURL, imageKey := s.itemImageLookup(item, paintKit, attributes)
 	return Metadata{
-		Name:            name,
-		MarketName:      marketName,
-		Kind:            kind,
-		Rarity:          rarity,
-		ImageURL:        imageURL,
-		ImageSource:     imageSource(imageURL, "counter-strike-image-tracker"),
-		ImageKey:        imageKey,
-		ToolType:        item.ToolType,
-		IsNameTagTool:   strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
-		Collection:      s.collectionNameFor(item.Name, paintKit),
-		CollectionItems: s.collectionItemsFor(item.Name, paintKit),
-		TradeUpItems:    s.tradeUpItemsFor(item.Name, paintKit, rarity),
-		ContainerItems:  s.lootListItems(item.LootList, nil),
-		Tradable:        schemaTradable(item),
-		PaintWearMin:    wearMin,
-		PaintWearMax:    wearMax,
+		Name:                  name,
+		MarketName:            marketName,
+		Kind:                  kind,
+		Rarity:                rarity,
+		ImageURL:              imageURL,
+		ImageSource:           imageSource(imageURL, "counter-strike-image-tracker"),
+		ImageKey:              imageKey,
+		ToolType:              item.ToolType,
+		RequiredKeyDefIndexes: append([]uint32(nil), item.RequiredKeyDefIndexes...),
+		IsNameTagTool:         strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
+		Collection:            s.collectionNameFor(item.Name, paintKit),
+		CollectionItems:       s.collectionItemsFor(item.Name, paintKit),
+		TradeUpItems:          s.tradeUpItemsFor(item.Name, paintKit, rarity),
+		ContainerItems:        s.lootListItems(item.LootList, nil),
+		Tradable:              schemaTradable(item),
+		PaintWearMin:          wearMin,
+		PaintWearMax:          wearMax,
 	}
 }
 
@@ -950,6 +983,8 @@ func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
 	m.AppliedItemImages = append([]string(nil), desc.AppliedItemImages...)
 	tradable := desc.Tradable
 	m.Tradable = &tradable
+	marketable := desc.Marketable
+	m.Marketable = &marketable
 	m.TradableAfter = desc.TradableAfter
 	if desc.Name != "" {
 		m.Name = desc.Name
@@ -1015,18 +1050,23 @@ func (s *Schema) parseItems(root kvObject) {
 			continue
 		}
 		merged := mergePrefab(node.objectValue(), prefabs, nil)
+		requiredKeyDefIndexes := numericObjectKeys(merged.object("associated_items"))
+		if associatedItem, associatedErr := strconv.ParseUint(merged.string("associated_item"), 10, 32); associatedErr == nil && associatedItem != 0 {
+			requiredKeyDefIndexes = append(requiredKeyDefIndexes, uint32(associatedItem))
+		}
 		s.items[uint32(defIndex)] = itemDefinition{
-			Name:              merged.string("name"),
-			ItemName:          merged.string("item_name"),
-			TypeName:          merged.string("item_type_name"),
-			ItemClass:         merged.string("item_class"),
-			Prefab:            merged.string("prefab"),
-			Rarity:            merged.string("item_rarity"),
-			Image:             merged.string("image_inventory"),
-			ToolType:          merged.object("tool").string("type"),
-			Capabilities:      merged.object("capabilities").strings(),
-			LootList:          merged.string("loot_list_name"),
-			SupplyCrateSeries: merged.object("attributes").object("set supply crate series").string("value"),
+			Name:                  merged.string("name"),
+			ItemName:              merged.string("item_name"),
+			TypeName:              merged.string("item_type_name"),
+			ItemClass:             merged.string("item_class"),
+			Prefab:                merged.string("prefab"),
+			Rarity:                merged.string("item_rarity"),
+			Image:                 merged.string("image_inventory"),
+			ToolType:              merged.object("tool").string("type"),
+			Capabilities:          merged.object("capabilities").strings(),
+			LootList:              merged.string("loot_list_name"),
+			SupplyCrateSeries:     merged.object("attributes").object("set supply crate series").string("value"),
+			RequiredKeyDefIndexes: requiredKeyDefIndexes,
 		}
 	}
 	for key, node := range itemsGame.object("paint_kits") {
@@ -1035,12 +1075,17 @@ func (s *Schema) parseItems(root kvObject) {
 			continue
 		}
 		paint := node.objectValue()
+		paintKitRarities := itemsGame.object("paint_kits_rarity")
 		s.paintKits[uint32(paintKit)] = paintKitDefinition{
 			Name:        paint.string("name"),
 			Description: paint.string("description_tag"),
-			Rarity:      itemsGame.object("paint_kits_rarity").string(paint.string("name")),
-			WearMin:     optionalFloat(paint.string("wear_remap_min")),
-			WearMax:     optionalFloat(paint.string("wear_remap_max")),
+			// Live items_game indexes this table by the paint-kit name. Some
+			// schema snapshots index it by the numeric paint-kit id instead, so
+			// accept both representations rather than silently falling back to
+			// the base weapon's rarity for collection contents.
+			Rarity:  firstNonEmpty(paintKitRarities.string(paint.string("name")), paintKitRarities.string(key)),
+			WearMin: optionalFloat(paint.string("wear_remap_min")),
+			WearMax: optionalFloat(paint.string("wear_remap_max")),
 		}
 	}
 	for key, node := range itemsGame.object("sticker_kits") {
@@ -1082,6 +1127,18 @@ func (s *Schema) parseItems(root kvObject) {
 		}
 	}
 	s.parseCollections(itemsGame)
+}
+
+func numericObjectKeys(object kvObject) []uint32 {
+	values := make([]uint32, 0, len(object))
+	for key := range object {
+		value, err := strconv.ParseUint(key, 10, 32)
+		if err == nil && value != 0 {
+			values = append(values, uint32(value))
+		}
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	return values
 }
 
 func optionalFloat(value string) *float64 {
@@ -1616,6 +1673,30 @@ type inventoryDescription struct {
 	Tradable       int                        `json:"tradable"`
 	Marketable     int                        `json:"marketable"`
 	Descriptions   []inventoryDescriptionLine `json:"descriptions"`
+	Actions        []inventoryAction          `json:"actions"`
+	OwnerActions   []inventoryAction          `json:"owner_actions"`
+}
+
+type inventoryAction struct {
+	Name string `json:"name"`
+	Link string `json:"link"`
+}
+
+func inventoryInspectURL(actions []inventoryAction) string {
+	for _, action := range actions {
+		link := strings.TrimSpace(action.Link)
+		lower := strings.ToLower(link)
+		if strings.HasPrefix(lower, "steam://rungame/730/") && strings.Contains(lower, "/+csgo_econ_action_preview%20") {
+			return link
+		}
+	}
+	return ""
+}
+
+func expandInventoryInspectURL(link, steamID, assetID string) string {
+	link = strings.ReplaceAll(link, "%owner_steamid%", steamID)
+	link = strings.ReplaceAll(link, "%assetid%", assetID)
+	return link
 }
 
 type inventoryDescriptionLine struct {

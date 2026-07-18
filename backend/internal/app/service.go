@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,7 +20,10 @@ import (
 	"cs-inv-edit/backend/internal/operations"
 	cs2pb "cs-inv-edit/backend/internal/proto/generated"
 	"cs-inv-edit/backend/internal/protocol"
+	"cs-inv-edit/backend/internal/steamprofile"
+	"cs-inv-edit/backend/internal/steamtrade"
 	"cs-inv-edit/backend/internal/transport"
+	"cs-inv-edit/backend/pricescanner"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 	"google.golang.org/protobuf/proto"
 )
@@ -32,37 +36,58 @@ type HealthStatus struct {
 }
 
 type Service struct {
-	mu              sync.Mutex
-	events          []operations.Event
-	operations      []operations.Receipt
-	inventory       domain.InventorySnapshot
-	armory          domain.ArmorySnapshot
-	settings        domain.Settings
-	connection      domain.ConnectionStatus
-	gcClient        transport.GCClient
-	econProvider    *econ.Provider
-	multiProvider   *multigame.Provider
-	gameInventories map[string]domain.GameInventorySnapshot
-	gameRefreshes   map[string]uint64
-	gameCancels     map[string]context.CancelFunc
-	lastOperation   operations.Receipt
-	pendingUsername string
-	pendingPassword string
-	authCancel      context.CancelFunc
+	mu               sync.Mutex
+	events           []operations.Event
+	operations       []operations.Receipt
+	inventory        domain.InventorySnapshot
+	armory           domain.ArmorySnapshot
+	store            domain.StoreSnapshot
+	purchaseSessions map[string]domain.PurchaseSession
+	purchaseItemIDs  map[string][]uint64
+	storeCountry     string
+	storeCurrencyID  int32
+	settings         domain.Settings
+	connection       domain.ConnectionStatus
+	gcClient         transport.GCClient
+	econProvider     *econ.Provider
+	multiProvider    *multigame.Provider
+	gameInventories  map[string]domain.GameInventorySnapshot
+	gameRefreshes    map[string]uint64
+	gameCancels      map[string]context.CancelFunc
+	lastOperation    operations.Receipt
+	pendingUsername  string
+	pendingPassword  string
+	authCancel       context.CancelFunc
+	profileResolver  *steamprofile.Resolver
+	priceScanner     *pricescanner.Scanner
+	tradeAccessToken string
+	tradeProvider    *steamtrade.Provider
+	trades           steamtrade.Snapshot
 }
 
 func NewService() *Service {
 	service := &Service{
-		inventory:       emptyInventory(),
-		armory:          emptyArmory(),
-		settings:        defaultSettings(),
-		connection:      domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
-		gcClient:        transport.NewSteamGCClient(),
-		econProvider:    econ.NewProvider(),
-		multiProvider:   multigame.NewProvider(),
-		gameInventories: make(map[string]domain.GameInventorySnapshot),
-		gameRefreshes:   make(map[string]uint64),
-		gameCancels:     make(map[string]context.CancelFunc),
+		inventory:        emptyInventory(),
+		armory:           emptyArmory(),
+		store:            emptyStore(),
+		purchaseSessions: make(map[string]domain.PurchaseSession),
+		purchaseItemIDs:  make(map[string][]uint64),
+		settings:         defaultSettings(),
+		connection:       domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
+		gcClient:         transport.NewSteamGCClient(),
+		econProvider:     econ.NewProvider(),
+		multiProvider:    multigame.NewProvider(),
+		gameInventories:  make(map[string]domain.GameInventorySnapshot),
+		gameRefreshes:    make(map[string]uint64),
+		gameCancels:      make(map[string]context.CancelFunc),
+		profileResolver:  steamprofile.NewResolver(),
+		tradeProvider:    steamtrade.NewProvider(nil),
+		trades:           steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()},
+		priceScanner: pricescanner.New(
+			pricescanner.NewSteamProvider(nil),
+			pricescanner.NewSkinportProvider(nil),
+			pricescanner.NewCSFloatProvider(nil, os.Getenv("CSFLOAT_API_KEY")),
+		),
 	}
 	service.events = []operations.Event{{
 		OperationID: "system",
@@ -71,7 +96,51 @@ func NewService() *Service {
 		Message:     "backend started",
 		CreatedAt:   now(),
 	}}
+	service.gcClient.SetProtocolTracing(service.settings.FeatureFlags.EnableProtocolConsole)
 	return service
+}
+
+func (s *Service) Trades() steamtrade.Snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.trades
+}
+
+func (s *Service) RefreshTrades(ctx context.Context) steamtrade.Snapshot {
+	s.mu.Lock()
+	if s.connection.State != "connected" {
+		s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: "Connect a Steam account to view trades."}
+		out := s.trades
+		s.mu.Unlock()
+		return out
+	}
+	token := s.tradeAccessToken
+	s.mu.Unlock()
+	if token == "" {
+		return steamtrade.Snapshot{Status: "requires_reauthentication", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: "Sign in again to grant read-only access to Steam trades."}
+	}
+	snapshot, err := s.tradeProvider.Load(ctx, token)
+	if err != nil {
+		return steamtrade.Snapshot{Status: "error", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: err.Error()}
+	}
+	s.mu.Lock()
+	s.trades = snapshot
+	s.mu.Unlock()
+	return snapshot
+}
+
+func (s *Service) ScanPrices(ctx context.Context, query pricescanner.Query) (pricescanner.Result, error) {
+	return s.priceScanner.Scan(ctx, query)
+}
+
+func (s *Service) ProtocolTrace(after uint64) []transport.ProtocolTraceEntry {
+	s.mu.Lock()
+	enabled := s.settings.FeatureFlags.EnableProtocolConsole
+	s.mu.Unlock()
+	if !enabled {
+		return []transport.ProtocolTraceEntry{}
+	}
+	return s.gcClient.ProtocolTrace(after)
 }
 
 func (s *Service) Health() HealthStatus {
@@ -106,6 +175,8 @@ func (s *Service) GameInventory(gameID string) (domain.GameInventorySnapshot, bo
 	snapshot, ok := s.gameInventories[gameInventoryKey(s.connection.SteamID, game.ID)]
 	if !ok {
 		snapshot = emptyGameInventory(game.ID, game.AppID)
+		snapshot.Status = "loading"
+		snapshot.Message = "Waiting for the first " + game.ID + " inventory refresh"
 	}
 	return cloneGameInventory(snapshot), true, true
 }
@@ -133,6 +204,7 @@ func (s *Service) RefreshGameInventory(gameID string) operations.Receipt {
 		return receipt
 	}
 	steamID := s.connection.SteamID
+	webAccessToken := s.tradeAccessToken
 	key := gameInventoryKey(steamID, game.ID)
 	if cancel := s.gameCancels[key]; cancel != nil {
 		cancel()
@@ -151,20 +223,26 @@ func (s *Service) RefreshGameInventory(gameID string) operations.Receipt {
 	s.mu.Unlock()
 	defer cancelRefresh()
 
-	gcCtx, cancelGC := context.WithTimeout(refreshCtx, 30*time.Second)
-	gcItems, err := s.gcClient.RequestGameInventory(gcCtx, game.AppID)
-	cancelGC()
 	var snapshot domain.GameInventorySnapshot
-	if err == nil {
-		owned := make([]multigame.OwnedItem, 0, len(gcItems))
-		for _, item := range gcItems {
-			equipped := make([]domain.EquippedState, 0, len(item.EquippedStates))
-			for _, state := range item.EquippedStates {
-				equipped = append(equipped, domain.EquippedState{Class: state.Class, Slot: state.Slot})
+	var err error
+	if game.ID == "steam" {
+		snapshot, err = s.multiProvider.LoadAuthenticated(refreshCtx, steamID, game, webAccessToken)
+	} else {
+		gcCtx, cancelGC := context.WithTimeout(refreshCtx, 30*time.Second)
+		gcItems, gcErr := s.gcClient.RequestGameInventory(gcCtx, game.AppID)
+		cancelGC()
+		err = gcErr
+		if err == nil {
+			owned := make([]multigame.OwnedItem, 0, len(gcItems))
+			for _, item := range gcItems {
+				equipped := make([]domain.EquippedState, 0, len(item.EquippedStates))
+				for _, state := range item.EquippedStates {
+					equipped = append(equipped, domain.EquippedState{Class: state.Class, Slot: state.Slot})
+				}
+				owned = append(owned, multigame.OwnedItem{ID: item.ID, OriginalID: item.OriginalID, DefIndex: item.DefIndex, Quantity: item.Quantity, Quality: item.Quality, Inventory: item.Inventory, Level: item.Level, Flags: item.Flags, Origin: item.Origin, Style: item.Style, CustomName: item.CustomName, CustomDesc: item.CustomDesc, Attributes: item.Attributes, AttributeBytes: item.AttributeBytes, EquippedStates: equipped, InteriorItemID: item.InteriorItemID})
 			}
-			owned = append(owned, multigame.OwnedItem{ID: item.ID, OriginalID: item.OriginalID, DefIndex: item.DefIndex, Quantity: item.Quantity, Quality: item.Quality, Inventory: item.Inventory, Level: item.Level, Flags: item.Flags, Origin: item.Origin, Style: item.Style, CustomName: item.CustomName, CustomDesc: item.CustomDesc, Attributes: item.Attributes, AttributeBytes: item.AttributeBytes, EquippedStates: equipped, InteriorItemID: item.InteriorItemID})
+			snapshot = s.multiProvider.EnrichOwned(refreshCtx, steamID, game, owned)
 		}
-		snapshot = s.multiProvider.EnrichOwned(refreshCtx, steamID, game, owned)
 	}
 
 	s.mu.Lock()
@@ -223,6 +301,8 @@ func (s *Service) cancelAllGameRefreshesLocked() {
 
 func (s *Service) gameInventoryEnabledLocked(gameID string) bool {
 	switch gameID {
+	case "steam":
+		return s.settings.FeatureFlags.EnableSteamInventory
 	case "tf2":
 		return s.settings.FeatureFlags.EnableTF2Inventory
 	case "dota2":
@@ -236,6 +316,261 @@ func (s *Service) Armory() domain.ArmorySnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return cloneArmory(s.armory)
+}
+
+func (s *Service) Store() domain.StoreSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.settings.FeatureFlags.EnableStoreRead {
+		return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue."}
+	}
+	if s.connection.State == "connected" && s.store.Status == "requires_connection" {
+		store := cloneStore(s.store)
+		store.Message = "Steam is connected. Refresh the Store to load the current GC price sheet."
+		return store
+	}
+	return cloneStore(s.store)
+}
+
+func (s *Service) RefreshStore() operations.Receipt {
+	receipt := s.newReceipt("store.refresh")
+	s.mu.Lock()
+	if !s.settings.FeatureFlags.EnableStoreRead {
+		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue."}
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "blocked_by_feature_flag", "CS2 cash-store reads are disabled"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if s.connection.State != "connected" {
+		s.store = emptyStore()
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load the CS2 cash store"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	version := s.store.PriceSheetVersion
+	s.store.Status, s.store.Message = "loading", "Waiting for the CS2 Game Coordinator price sheet"
+	s.mu.Unlock()
+	welcomeCtx, cancelWelcome := context.WithTimeout(context.Background(), 20*time.Second)
+	_, err := s.gcClient.RequestInventory(welcomeCtx)
+	cancelWelcome()
+	if err != nil {
+		s.mu.Lock()
+		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: fmt.Sprintf("load authoritative CS2 store currency: %v", err)}
+		receipt.State, receipt.Message = "failed", s.store.Message
+		s.mu.Unlock()
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	data, err := s.gcClient.RequestStore(ctx, version, 0)
+	cancel()
+	var catalog econ.StoreCatalog
+	var schema *econ.Schema
+	if err == nil {
+		catalog, err = econ.ParseStorePriceSheet(data.PriceSheet)
+	}
+	if err == nil {
+		metadataCtx, metadataCancel := context.WithTimeout(context.Background(), 20*time.Second)
+		schema, err = s.econProvider.Load(metadataCtx)
+		metadataCancel()
+	}
+	s.mu.Lock()
+	if err != nil {
+		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: err.Error()}
+		receipt.State, receipt.Message = "failed", err.Error()
+		s.mu.Unlock()
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	currency := steamCurrencyCode(data.Currency)
+	diagnostics := []string{fmt.Sprintf("Authoritative Steam wallet store context: gc_currency_id=%d currency=%s wallet_country=%q", data.Currency, currency, data.Country)}
+	if strings.HasPrefix(currency, "CURRENCY_") {
+		currency = "USD"
+		diagnostics = append(diagnostics, "The GC did not return an account currency; displaying USD prices until Steam supplies one.")
+	}
+	offers := make([]domain.StoreOffer, 0, len(catalog.Offers))
+	for _, source := range catalog.Offers {
+		defIndex, meta, found := schema.MetadataByItemName(source.ItemLink)
+		if !found {
+			diagnostics = append(diagnostics, fmt.Sprintf("Store item_link %q was not found in the live items_game items table", source.ItemLink))
+			continue
+		}
+		amount, priced := source.Prices[currency]
+		if !priced {
+			diagnostics = append(diagnostics, fmt.Sprintf("Store offer %q has no %s price", source.ItemLink, currency))
+			continue
+		}
+		var saleAmount *uint64
+		if sale, onSale := source.SalePrices[currency]; onSale && sale < amount {
+			saleCopy := sale
+			saleAmount = &saleCopy
+		}
+		supported := !source.SupplementalDataRequired
+		imageURL := meta.ImageURL
+		if len(meta.ContainerItems) == 1 && meta.ContainerItems[0].ImageURL != "" {
+			imageURL = meta.ContainerItems[0].ImageURL
+		}
+		offers = append(offers, domain.StoreOffer{ID: source.ID, ItemLink: source.ItemLink, DefIndex: defIndex, Name: meta.Name, ImageURL: imageURL, Category: firstNonEmptyApp(source.Category, meta.Kind), Rarity: meta.Rarity, Currency: currency, AmountMinor: amount, FormattedPrice: formatStoreAmount(currency, amount), SaleAmountMinor: saleAmount, PurchaseType: source.PurchaseType, Items: domainRelatedItems(meta.ContainerItems), FormattedSalePrice: func() string {
+			if saleAmount == nil {
+				return ""
+			}
+			return formatStoreAmount(currency, *saleAmount)
+		}(), RequiresSupplementalData: source.SupplementalDataRequired, Purchasable: supported, UnsupportedReason: func() string {
+			if supported {
+				return ""
+			}
+			return "This offer requires unsupported supplemental purchase data."
+		}()})
+	}
+	if len(offers) == 0 {
+		err = fmt.Errorf("the GC price sheet contained %d entries, but none could be joined to live items_game metadata and %s prices", len(catalog.Offers), currency)
+		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: err.Error(), Diagnostics: diagnostics}
+		receipt.State, receipt.Message = "failed", err.Error()
+		s.mu.Unlock()
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	s.store = domain.StoreSnapshot{Status: "ready", PriceSheetVersion: data.PriceSheetVersion, Currency: currency, Offers: offers, RefreshedAt: now(), Diagnostics: diagnostics}
+	s.storeCountry, s.storeCurrencyID = data.Country, data.Currency
+	receipt.State, receipt.Message = "completed", "CS2 cash-store catalogue refreshed"
+	s.mu.Unlock()
+	s.addEvent(receipt, receipt.State, receipt.Message)
+	return receipt
+}
+
+func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseSession {
+	created := now()
+	failed := func(message string) domain.PurchaseSession {
+		return domain.PurchaseSession{ID: newID(), Status: "failed", OfferID: stringInput(input, "offerId"), Quantity: 1, Currency: "", FormattedAmount: "", CreatedAt: created, Message: message}
+	}
+	s.mu.Lock()
+	if !s.settings.FeatureFlags.EnableStorePurchases {
+		s.mu.Unlock()
+		return failed("CS2 cash-store purchases are disabled")
+	}
+	if s.connection.State != "connected" || s.store.Status != "ready" {
+		s.mu.Unlock()
+		return failed("refresh the connected CS2 cash store before purchasing")
+	}
+	offerID := stringInput(input, "offerId")
+	quantity64, qerr := requiredUint64Input(input, "quantity")
+	version64, verr := requiredUint64Input(input, "expectedPriceSheetVersion")
+	expected, aerr := requiredUint64Input(input, "expectedAmountMinor")
+	if err := firstError(qerr, verr, aerr); err != nil || quantity64 == 0 || quantity64 > 20 {
+		s.mu.Unlock()
+		return failed("invalid store purchase quantity; CS2 supports between 1 and 20 items per purchase")
+	}
+	var offer *domain.StoreOffer
+	for i := range s.store.Offers {
+		if s.store.Offers[i].ID == offerID {
+			offer = &s.store.Offers[i]
+			break
+		}
+	}
+	if offer == nil || !offer.Purchasable {
+		s.mu.Unlock()
+		return failed("store offer is unavailable or unsupported")
+	}
+	amount := offer.AmountMinor
+	if offer.SaleAmountMinor != nil {
+		amount = *offer.SaleAmountMinor
+	}
+	if uint32(version64) != s.store.PriceSheetVersion || expected != amount {
+		s.mu.Unlock()
+		return failed("The CS2 store price changed. Refresh the store and review the updated price before continuing.")
+	}
+	if amount == 0 || quantity64 > math.MaxUint64/amount {
+		s.mu.Unlock()
+		return failed("store purchase total is too large")
+	}
+	purchaseCurrency := s.storeCurrencyID
+	purchaseCountry := strings.TrimSpace(s.storeCountry)
+	if purchaseCountry == "" {
+		s.mu.Unlock()
+		return failed("the authoritative Steam wallet country is unavailable; refresh the store before purchasing")
+	}
+	if steamCurrencyCode(purchaseCurrency) != offer.Currency {
+		s.mu.Unlock()
+		return failed("the selected offer currency does not match the authoritative CS2 account currency; refresh the store")
+	}
+	sessionID := newID()
+	session := domain.PurchaseSession{ID: sessionID, Status: "initializing", OfferID: offer.ID, DefIndex: offer.DefIndex, Name: offer.Name, Quantity: uint32(quantity64), Currency: offer.Currency, AmountMinor: amount * quantity64, FormattedAmount: formatStoreAmount(offer.Currency, amount*quantity64), CreatedAt: created, ExpiresAt: time.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339), Message: "Initializing purchase with Steam"}
+	purchaseRequest := transport.StorePurchaseRequest{Country: purchaseCountry, Language: 0, Currency: purchaseCurrency, ItemDefID: offer.DefIndex, Quantity: uint32(quantity64), Cost: amount * quantity64, PurchaseType: offer.PurchaseType}
+	s.purchaseSessions[sessionID] = session
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	result, err := s.gcClient.InitializeStorePurchase(ctx, purchaseRequest)
+	cancel()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
+		session.Status, session.Message = "failed", err.Error()
+		session.Diagnostics = transport.DiagnosticsFromError(err)
+		var rejected transport.StorePurchaseRejectedError
+		if errors.As(err, &rejected) {
+			resultCode := rejected.Result
+			session.ErrorCode = rejected.Code()
+			session.ErrorResult = &resultCode
+			session.Diagnostics = append([]string{fmt.Sprintf("CS2 EPurchaseResult %d decoded as %s", resultCode, rejected.Code())}, session.Diagnostics...)
+		}
+	} else {
+		session.Status, session.Message, session.TransactionID, session.OrderID, session.CheckoutURL = "awaiting_user", "Steam confirmation link ready. Review and authorize the transaction on Steam.", strconv.FormatUint(result.TransactionID, 10), strconv.FormatUint(result.OrderID, 10), result.CheckoutURL
+		session.Diagnostics = append([]string(nil), result.Diagnostics...)
+		s.purchaseItemIDs[sessionID] = append([]uint64(nil), result.ItemIDs...)
+	}
+	s.purchaseSessions[sessionID] = session
+	return session
+}
+func (s *Service) ReconcileStorePurchase(id string) domain.PurchaseSession {
+	s.mu.Lock()
+	session, ok := s.purchaseSessions[id]
+	if !ok {
+		s.mu.Unlock()
+		return domain.PurchaseSession{ID: id, Status: "failed", Quantity: 1, CreatedAt: now(), Message: "purchase session not found"}
+	}
+	if session.Status != "awaiting_user" && session.Status != "finalizing" {
+		s.mu.Unlock()
+		return session
+	}
+	session.Status, session.Message = "finalizing", "Refreshing inventory to reconcile the Steam purchase"
+	s.purchaseSessions[id] = session
+	expected := append([]uint64(nil), s.purchaseItemIDs[id]...)
+	s.mu.Unlock()
+	receipt := s.RefreshInventory()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session = s.purchaseSessions[id]
+	if receipt.State != "completed" {
+		session.Status, session.Message = "awaiting_user", "Inventory refresh could not confirm the purchase; retry reconciliation after Steam finishes."
+		s.purchaseSessions[id] = session
+		return session
+	}
+	owned := make(map[string]struct{}, len(s.inventory.Items))
+	for _, item := range s.inventory.Items {
+		owned[item.ID] = struct{}{}
+	}
+	matched := make([]string, 0, len(expected))
+	for _, itemID := range expected {
+		idText := strconv.FormatUint(itemID, 10)
+		if _, ok := owned[idText]; ok {
+			matched = append(matched, idText)
+		}
+	}
+	if len(expected) > 0 && len(matched) == len(expected) {
+		session.Status, session.Message, session.PurchasedItemIDs = "completed", "Purchase confirmed in the GC-owned inventory.", matched
+	} else {
+		session.Status, session.Message = "awaiting_user", "Steam checkout is not yet reflected in the GC-owned inventory."
+	}
+	s.purchaseSessions[id] = session
+	return session
+}
+func (s *Service) StorePurchase(id string) (domain.PurchaseSession, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.purchaseSessions[id]
+	return session, ok
 }
 
 func (s *Service) MarketPreview(marketName string) (domain.RelatedItem, error) {
@@ -478,6 +813,12 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if value, ok := next["enableInventoryDebug"].(bool); ok {
 				flags.EnableInventoryDebug = value
 			}
+			if value, ok := next["showStorageUnitItems"].(bool); ok {
+				flags.ShowStorageUnitItems = value
+			}
+			if value, ok := next["enableProtocolConsole"].(bool); ok {
+				flags.EnableProtocolConsole = value
+			}
 			if value, ok := next["enableTradeups"].(bool); ok {
 				flags.EnableTradeups = value
 			}
@@ -511,18 +852,31 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if value, ok := next["enableArmoryRedemption"].(bool); ok {
 				flags.EnableArmoryRedemption = value
 			}
+			if value, ok := next["enableStoreRead"].(bool); ok {
+				flags.EnableStoreRead = value
+			}
+			if value, ok := next["enableStorePurchases"].(bool); ok {
+				flags.EnableStorePurchases = value
+			}
 			if value, ok := next["enableTf2Inventory"].(bool); ok {
 				flags.EnableTF2Inventory = value
 			}
 			if value, ok := next["enableDota2Inventory"].(bool); ok {
 				flags.EnableDota2Inventory = value
 			}
+			if value, ok := next["enableSteamInventory"].(bool); ok {
+				flags.EnableSteamInventory = value
+			}
 			s.settings.FeatureFlags = flags
+			s.gcClient.SetProtocolTracing(flags.EnableProtocolConsole)
 			if !flags.EnableTF2Inventory {
 				s.clearGameInventoriesLocked("tf2")
 			}
 			if !flags.EnableDota2Inventory {
 				s.clearGameInventoriesLocked("dota2")
+			}
+			if !flags.EnableSteamInventory {
+				s.clearGameInventoriesLocked("steam")
 			}
 			connected := s.connection.State == "connected"
 			s.mu.Unlock()
@@ -768,6 +1122,9 @@ func (s *Service) UpdateSettings(next domain.Settings) domain.Settings {
 	if !next.FeatureFlags.EnableDota2Inventory {
 		s.clearGameInventoriesLocked("dota2")
 	}
+	if !next.FeatureFlags.EnableSteamInventory {
+		s.clearGameInventoriesLocked("steam")
+	}
 	connected := s.connection.State == "connected"
 	s.mu.Unlock()
 	if connected && ((oldFlags.EnableTF2Inventory && !next.FeatureFlags.EnableTF2Inventory) || (oldFlags.EnableDota2Inventory && !next.FeatureFlags.EnableDota2Inventory)) {
@@ -826,9 +1183,12 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 		s.mu.Unlock()
 		return status
 	}
-	if err := s.gcClient.SendGamesPlayed(context.Background(), protocol.AppIDCS2); err != nil {
+	s.mu.Lock()
+	presenceApps := enabledPresenceApps(s.settings.FeatureFlags)
+	s.mu.Unlock()
+	if err := s.gcClient.SetGamesPlayed(context.Background(), presenceApps); err != nil {
 		s.mu.Lock()
-		s.connection = domain.ConnectionStatus{State: "error", Detail: "CS2 launch presence failed: " + err.Error(), AccountName: username}
+		s.connection = domain.ConnectionStatus{State: "error", Detail: "Steam game coordinator presence failed: " + err.Error(), AccountName: username}
 		status := s.connection
 		s.mu.Unlock()
 		return status
@@ -838,8 +1198,10 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 	s.pendingUsername = ""
 	s.pendingPassword = ""
 	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
+	s.tradeAccessToken = result.WebAccessToken
 	status := s.connection
 	s.mu.Unlock()
+	s.resolveSteamAvatar(fmt.Sprintf("%d", result.SteamID))
 	return status
 }
 
@@ -873,7 +1235,7 @@ func (s *Service) completeQRLogin(ctx context.Context, session transport.QRAuthS
 		s.setAuthError("Steam QR login", err)
 		return
 	}
-	result, err := s.gcClient.LogOn(ctx, transport.LogonCredentials{Username: auth.AccountName, AccessToken: auth.AccessToken})
+	result, err := s.gcClient.LogOn(ctx, transport.LogonCredentials{Username: auth.AccountName, AccessToken: auth.RefreshToken, WebAccessToken: auth.AccessToken})
 	if err != nil {
 		s.setAuthError("Steam QR CM logon", err)
 		return
@@ -900,8 +1262,11 @@ func (s *Service) completeCredentialMobileApproval(ctx context.Context, username
 }
 
 func (s *Service) finishSteamLogin(username string, result transport.LogonResult) {
-	if err := s.gcClient.SendGamesPlayed(context.Background(), protocol.AppIDCS2); err != nil {
-		s.setAuthError("CS2 launch presence", err)
+	s.mu.Lock()
+	presenceApps := enabledPresenceApps(s.settings.FeatureFlags)
+	s.mu.Unlock()
+	if err := s.gcClient.SetGamesPlayed(context.Background(), presenceApps); err != nil {
+		s.setAuthError("Steam game coordinator presence", err)
 		return
 	}
 	s.mu.Lock()
@@ -909,7 +1274,30 @@ func (s *Service) finishSteamLogin(username string, result transport.LogonResult
 	s.pendingUsername, s.pendingPassword = "", ""
 	s.authCancel = nil
 	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
+	s.tradeAccessToken = result.WebAccessToken
 	s.mu.Unlock()
+	s.resolveSteamAvatar(fmt.Sprintf("%d", result.SteamID))
+}
+
+func (s *Service) resolveSteamAvatar(steamID string) {
+	resolver := s.profileResolver
+	if resolver == nil || steamID == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		avatarURL, err := resolver.AvatarURL(ctx, steamID)
+		if err != nil {
+			log.Printf("Steam avatar lookup failed for %s: %v", steamID, err)
+			return
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.connection.State == "connected" && s.connection.SteamID == steamID {
+			s.connection.AvatarURL = avatarURL
+		}
+	}()
 }
 
 func (s *Service) setAuthError(stage string, err error) {
@@ -961,14 +1349,16 @@ func (s *Service) SubmitSteamGuard(input map[string]any) domain.ConnectionStatus
 		s.connection = domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam CM Steam Guard logon", err), AccountName: username, Diagnostics: transport.DiagnosticsFromError(err)}
 		return s.connection
 	}
-	if err := s.gcClient.SendGamesPlayed(context.Background(), protocol.AppIDCS2); err != nil {
-		s.connection = domain.ConnectionStatus{State: "error", Detail: "CS2 launch presence failed: " + err.Error(), AccountName: username}
+	if err := s.gcClient.SetGamesPlayed(context.Background(), enabledPresenceApps(s.settings.FeatureFlags)); err != nil {
+		s.connection = domain.ConnectionStatus{State: "error", Detail: "Steam game coordinator presence failed: " + err.Error(), AccountName: username}
 		return s.connection
 	}
 	s.cancelGameRefreshesForAccountChangeLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername = ""
 	s.pendingPassword = ""
 	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
+	s.tradeAccessToken = result.WebAccessToken
+	s.resolveSteamAvatar(fmt.Sprintf("%d", result.SteamID))
 	return s.connection
 }
 
@@ -985,6 +1375,8 @@ func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 		s.authCancel = nil
 	}
 	s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "disconnected"}
+	s.tradeAccessToken = ""
+	s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()}
 	s.inventory = emptyInventory()
 	s.clearAllGameInventoriesLocked()
 	s.pendingUsername = ""
@@ -1066,6 +1458,7 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 	s.mu.Lock()
 	steamID := s.connection.SteamID
 	includeDebug := s.settings.FeatureFlags.EnableInventoryDebug
+	showStorageUnitItems := s.settings.FeatureFlags.ShowStorageUnitItems
 	s.mu.Unlock()
 	report("Waiting for CS2 Game Coordinator inventory data")
 	gcCtx, cancelGC := context.WithTimeout(context.Background(), 45*time.Second)
@@ -1073,6 +1466,29 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 	gcItems, err := s.gcClient.RequestInventory(gcCtx)
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("CS2 GC inventory request failed: %w", err)
+	}
+	storageUnitsLoaded := 0
+	if showStorageUnitItems {
+		for _, item := range gcItems {
+			if item.DefIndex != 1201 || item.Attributes[270] == 0 {
+				continue
+			}
+			body, encodeErr := cs2pb.EncodeLoadCasketContents(item.ID)
+			if encodeErr != nil {
+				return domain.InventorySnapshot{}, fmt.Errorf("encode storage unit %d contents request: %w", item.ID, encodeErr)
+			}
+			if sendErr := s.gcClient.SendProtoToGC(gcCtx, protocol.AppIDCS2, protocol.EMsgCasketItemLoadContents, body); sendErr != nil {
+				return domain.InventorySnapshot{}, fmt.Errorf("load storage unit %d contents: %w", item.ID, sendErr)
+			}
+			storageUnitsLoaded++
+		}
+		if storageUnitsLoaded > 0 {
+			reloaded, reloadErr := s.gcClient.RequestInventory(gcCtx)
+			if reloadErr != nil {
+				return domain.InventorySnapshot{}, fmt.Errorf("refresh GC inventory after loading storage units: %w", reloadErr)
+			}
+			gcItems = mergeGCInventoryItems(gcItems, reloaded)
+		}
 	}
 	report(fmt.Sprintf("Received %d owned items; loading schema and Steam descriptions", len(gcItems)))
 	schemaCtx, cancelSchema := context.WithTimeout(context.Background(), 20*time.Second)
@@ -1103,6 +1519,7 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 		item               transport.GCInventoryItem
 		metadata           econ.Metadata
 		descriptionMatched bool
+		inspectURL         string
 	}
 	pendingItems := make([]pendingItem, 0, len(gcItems))
 	descriptionMatches := 0
@@ -1110,18 +1527,20 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 		if item.DefIndex == 0 {
 			continue
 		}
-		if item.Inventory == 0 {
+		if item.Inventory == 0 && (!showStorageUnitItems || gcItemCasketID(item) == 0) {
 			continue
 		}
 		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
 		descriptionMatched := false
+		inspectURL := ""
 		if description, ok := descriptionForGCItem(descriptions, item, itemMetadata); ok {
 			itemMetadata = itemMetadata.WithInventoryDescription(description)
 			descriptionMatched = true
+			inspectURL = description.InspectURL
 			descriptionMatches++
 		}
 		itemMetadata.MarketName = instanceMarketName(itemMetadata.MarketName, item)
-		pendingItems = append(pendingItems, pendingItem{item: item, metadata: itemMetadata, descriptionMatched: descriptionMatched})
+		pendingItems = append(pendingItems, pendingItem{item: item, metadata: itemMetadata, descriptionMatched: descriptionMatched, inspectURL: inspectURL})
 	}
 	report("Finalizing inventory; Market prices will load when items are selected")
 	marketDescriptions := make(map[string]econ.MarketDescription)
@@ -1141,30 +1560,40 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 			}
 		}
 		inventoryItem := domain.InventoryItem{
-			ID:                 fmt.Sprintf("%d", item.ID),
-			Name:               itemMetadata.Name,
-			MarketName:         itemMetadata.MarketName,
-			ImageURL:           itemMetadata.ImageURL,
-			Kind:               itemMetadata.Kind,
-			Defindex:           &defIndex,
-			PaintWearMin:       itemMetadata.PaintWearMin,
-			PaintWearMax:       itemMetadata.PaintWearMax,
-			Rarity:             itemMetadata.Rarity,
-			Collection:         itemMetadata.Collection,
-			CollectionItems:    domainRelatedItems(itemMetadata.CollectionItems),
-			TradeUpItems:       domainTradeUpItems(itemMetadata.TradeUpItems, item, itemMetadata.PaintWearMin, itemMetadata.PaintWearMax, marketDescriptions),
-			ContainerItems:     domainRelatedItems(itemMetadata.ContainerItems),
-			ToolType:           itemMetadata.ToolType,
-			IsNameTagTool:      itemMetadata.IsNameTagTool,
-			MarketPrice:        itemMetadata.MarketPrice.SellPriceText,
-			MarketSalePrice:    itemMetadata.MarketPrice.SalePriceText,
-			MarketSellListings: ptrInt(itemMetadata.MarketPrice.SellListings),
-			AppliedItems:       domainAppliedItems(metadata.AppliedItems(item.DefIndex, item.Attributes), itemMetadata.AppliedItemImages),
+			ID:                    fmt.Sprintf("%d", item.ID),
+			Name:                  itemMetadata.Name,
+			MarketName:            itemMetadata.MarketName,
+			ImageURL:              itemMetadata.ImageURL,
+			InspectURL:            pending.inspectURL,
+			Kind:                  itemMetadata.Kind,
+			Defindex:              &defIndex,
+			PaintWearMin:          itemMetadata.PaintWearMin,
+			PaintWearMax:          itemMetadata.PaintWearMax,
+			Rarity:                itemMetadata.Rarity,
+			Collection:            itemMetadata.Collection,
+			CollectionItems:       domainRelatedItems(itemMetadata.CollectionItems),
+			TradeUpItems:          domainTradeUpItems(itemMetadata.TradeUpItems, item, itemMetadata.PaintWearMin, itemMetadata.PaintWearMax, marketDescriptions),
+			ContainerItems:        domainRelatedItems(itemMetadata.ContainerItems),
+			ToolType:              itemMetadata.ToolType,
+			RequiredKeyDefIndexes: itemMetadata.RequiredKeyDefIndexes,
+			IsNameTagTool:         itemMetadata.IsNameTagTool,
+			MarketPrice:           itemMetadata.MarketPrice.SellPriceText,
+			MarketSalePrice:       itemMetadata.MarketPrice.SalePriceText,
+			MarketSellListings:    ptrInt(itemMetadata.MarketPrice.SellListings),
+			AppliedItems:          domainAppliedItems(metadata.AppliedItems(item.DefIndex, item.Attributes), itemMetadata.AppliedItemImages),
 			// CEconItem quality 9 is Strange/StatTrak and 12 is Tournament/Souvenir.
 			IsStatTrak:    item.Quality == 9 || strings.HasPrefix(itemMetadata.MarketName, "StatTrak™"),
 			IsSouvenir:    item.Quality == 12 || strings.HasPrefix(itemMetadata.MarketName, "Souvenir"),
 			Tradable:      itemMetadata.Tradable,
+			Marketable:    itemMetadata.Marketable,
 			TradableAfter: itemMetadata.TradableAfter,
+		}
+		if count := item.Attributes[270]; count > 0 {
+			inventoryItem.StorageCount = &count
+		}
+		if casketID := gcItemCasketID(item); casketID > 0 {
+			formatted := strconv.FormatUint(casketID, 10)
+			inventoryItem.CasketID = &formatted
 		}
 		inventoryItem.Exterior = paintExterior(item.PaintWear)
 		if itemMetadata.MarketPrice.SellListings == 0 {
@@ -1185,10 +1614,38 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 	}
 	return domain.InventorySnapshot{
 		Items:       items,
+		Collections: domainCollections(metadata.Collections()),
 		RefreshedAt: now(),
 		Status:      "ready",
-		Diagnostics: inventoryMetadataDiagnostics(descriptionErr, marketErr, len(descriptions), descriptionMatches, len(pendingItems)),
+		Diagnostics: append(inventoryMetadataDiagnostics(descriptionErr, marketErr, len(descriptions), descriptionMatches, len(pendingItems)), storageLoadDiagnostic(showStorageUnitItems, storageUnitsLoaded)...),
 	}, nil
+}
+
+func gcItemCasketID(item transport.GCInventoryItem) uint64 {
+	return uint64(item.Attributes[272]) | uint64(item.Attributes[273])<<32
+}
+
+func mergeGCInventoryItems(existing, loaded []transport.GCInventoryItem) []transport.GCInventoryItem {
+	merged := make(map[uint64]transport.GCInventoryItem, len(existing)+len(loaded))
+	for _, item := range existing {
+		merged[item.ID] = item
+	}
+	for _, item := range loaded {
+		merged[item.ID] = item
+	}
+	result := make([]transport.GCInventoryItem, 0, len(merged))
+	for _, item := range merged {
+		result = append(result, item)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result
+}
+
+func storageLoadDiagnostic(enabled bool, loaded int) []string {
+	if !enabled {
+		return nil
+	}
+	return []string{fmt.Sprintf("Loaded contents from %d populated storage unit(s) into the inventory view.", loaded)}
 }
 
 func instanceMarketName(marketName string, item transport.GCInventoryItem) string {
@@ -1556,6 +2013,40 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	if err != nil {
 		return false, err.Error(), result
 	}
+	if len(found.RequiredKeyDefIndexes) > 0 && toolItemID == 0 {
+		return false, "this container requires a compatible key, but none is owned", result
+	}
+	if len(found.RequiredKeyDefIndexes) == 0 && toolItemID != 0 {
+		return false, "this container is keyless and must be opened without a key/tool", result
+	}
+	if toolItemID != 0 {
+		if toolItemID == itemIDUint {
+			return false, "opening key/tool must be different from the container", result
+		}
+		var tool *domain.InventoryItem
+		for i := range beforeInventory.Items {
+			candidateID, parseErr := strconv.ParseUint(beforeInventory.Items[i].ID, 10, 64)
+			if parseErr == nil && candidateID == toolItemID {
+				tool = &beforeInventory.Items[i]
+				break
+			}
+		}
+		if tool == nil {
+			return false, "opening key/tool is not present in the current owned inventory snapshot", result
+		}
+		compatible := false
+		if tool.Defindex != nil {
+			for _, defIndex := range found.RequiredKeyDefIndexes {
+				if *tool.Defindex == defIndex {
+					compatible = true
+					break
+				}
+			}
+		}
+		if !compatible {
+			return false, "selected opening key is not compatible with this container", result
+		}
+	}
 	result.RequestEMsg = protocol.EMsgOpenCrate
 	result.RequestMethod = "open_crate_proto"
 	body, err := proto.Marshal(&cs2pb.CMsgOpenCrate{
@@ -1819,6 +2310,8 @@ func defaultSettings() domain.Settings {
 			EnableStorageMutations: true,
 			EnableContainerOpening: true,
 			EnableInventoryDebug:   false,
+			ShowStorageUnitItems:   false,
+			EnableProtocolConsole:  true,
 			EnableTradeups:         false,
 			EnableStickerExtract:   false,
 			EnableNameTags:         false,
@@ -1830,14 +2323,97 @@ func defaultSettings() domain.Settings {
 			EnableGifting:          false,
 			EnableArmoryRead:       true,
 			EnableArmoryRedemption: false,
+			EnableStoreRead:        true,
+			EnableStorePurchases:   true,
+			EnableTF2Inventory:     true,
+			EnableSteamInventory:   true,
 		},
 	}
 }
 
+func emptyStore() domain.StoreSnapshot {
+	return domain.StoreSnapshot{Status: "requires_connection", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "Connect Steam to load the CS2 cash store."}
+}
+func cloneStore(store domain.StoreSnapshot) domain.StoreSnapshot {
+	offers := make([]domain.StoreOffer, len(store.Offers))
+	copy(offers, store.Offers)
+	store.Offers = offers
+	store.Diagnostics = append([]string(nil), store.Diagnostics...)
+	return store
+}
+func steamCurrencyCode(id int32) string {
+	// CS2's economy-store ECurrency values deliberately differ from Steam's
+	// public ECurrencyCode values. These are the GC store IDs.
+	codes := map[int32]string{0: "USD", 1: "GBP", 2: "EUR", 3: "RUB", 4: "BRL", 8: "JPY", 9: "NOK", 10: "IDR", 11: "MYR", 12: "PHP", 13: "SGD", 14: "THB", 15: "VND", 16: "KRW", 17: "TRY", 18: "UAH", 19: "MXN", 20: "CAD", 21: "AUD", 22: "NZD", 23: "PLN", 24: "CHF", 25: "CNY", 26: "TWD", 27: "HKD", 28: "INR", 29: "AED", 30: "SAR", 31: "ZAR", 32: "COP", 33: "PEN", 34: "CLP"}
+	if code := codes[id]; code != "" {
+		return code
+	}
+	return fmt.Sprintf("CURRENCY_%d", id)
+}
+func steamCurrencyID(code string) int32 {
+	for id := int32(0); id <= 34; id++ {
+		if steamCurrencyCode(id) == code {
+			return id
+		}
+	}
+	return 0
+}
+func formatStoreAmount(currency string, amount uint64) string {
+	symbols := map[string]string{"USD": "$", "GBP": "£", "EUR": "€", "AUD": "A$", "CAD": "C$", "NZD": "NZ$", "JPY": "¥"}
+	symbol := symbols[currency]
+	if currency == "JPY" {
+		return fmt.Sprintf("%s%d", symbol, amount)
+	}
+	if symbol != "" {
+		return fmt.Sprintf("%s%d.%02d", symbol, amount/100, amount%100)
+	}
+	return fmt.Sprintf("%s %d.%02d", currency, amount/100, amount%100)
+}
+func stringInput(input map[string]any, key string) string {
+	value, _ := input[key].(string)
+	return strings.TrimSpace(value)
+}
+func requiredUint64Input(input map[string]any, key string) (uint64, error) {
+	value, ok := input[key]
+	if !ok {
+		return 0, fmt.Errorf("%s is required", key)
+	}
+	switch typed := value.(type) {
+	case float64:
+		if typed < 0 || typed > math.MaxUint64 || typed != math.Trunc(typed) {
+			return 0, fmt.Errorf("%s must be an unsigned integer", key)
+		}
+		return uint64(typed), nil
+	case uint64:
+		return typed, nil
+	case uint32:
+		return uint64(typed), nil
+	case int:
+		if typed >= 0 {
+			return uint64(typed), nil
+		}
+	case string:
+		parsed, err := strconv.ParseUint(typed, 10, 64)
+		if err == nil {
+			return parsed, nil
+		}
+	}
+	return 0, fmt.Errorf("%s must be an unsigned integer", key)
+}
+func newID() string { return strconv.FormatInt(time.Now().UnixNano(), 36) }
+
 func cloneInventory(inventory domain.InventorySnapshot) domain.InventorySnapshot {
 	items := make([]domain.InventoryItem, len(inventory.Items))
 	copy(items, inventory.Items)
-	return domain.InventorySnapshot{Items: items, RefreshedAt: inventory.RefreshedAt, Status: inventory.Status, Message: inventory.Message, Error: inventory.Error, Diagnostics: append([]string(nil), inventory.Diagnostics...)}
+	return domain.InventorySnapshot{Items: items, Collections: append([]domain.Collection(nil), inventory.Collections...), RefreshedAt: inventory.RefreshedAt, Status: inventory.Status, Message: inventory.Message, Error: inventory.Error, Diagnostics: append([]string(nil), inventory.Diagnostics...)}
+}
+
+func domainCollections(collections []econ.Collection) []domain.Collection {
+	result := make([]domain.Collection, 0, len(collections))
+	for _, collection := range collections {
+		result = append(result, domain.Collection{Name: collection.Name, Items: domainRelatedItems(collection.Items)})
+	}
+	return result
 }
 
 func cloneGameInventory(inventory domain.GameInventorySnapshot) domain.GameInventorySnapshot {
@@ -1864,7 +2440,7 @@ func cloneGameInventory(inventory domain.GameInventorySnapshot) domain.GameInven
 		}
 	}
 	inventory.Items = items
-	inventory.Diagnostics = append([]string(nil), inventory.Diagnostics...)
+	inventory.Diagnostics = append([]string{}, inventory.Diagnostics...)
 	return inventory
 }
 

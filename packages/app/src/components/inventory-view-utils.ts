@@ -42,6 +42,54 @@ export function itemDisplayName(item: InventoryItemDto) {
   return item.customName || item.marketName || item.name || `CS2 item #${item.defindex}`;
 }
 
+export function itemWeaponName(item: InventoryItemDto) {
+  if (item.kind !== "weapon_skin") return undefined;
+  const displayName = item.marketName || item.name;
+  const weapon = displayName.split("|")[0]?.replace(/^(?:★\s*)?(?:StatTrak™\s+|Souvenir\s+)*/i, "").trim();
+  return weapon || undefined;
+}
+
+function splitInventoryName(item: InventoryItemDto) {
+  const fullName = item.marketName || item.name;
+  const [typePart, ...nameParts] = fullName.split("|");
+  const rawName = (nameParts.length > 0 ? nameParts.join("|") : typePart).trim();
+  const qualifierMatch = rawName.match(/\s+\(([^)]+)\)$/);
+  return {
+    name: (qualifierMatch ? rawName.slice(0, qualifierMatch.index).trim() : rawName) || fullName,
+    qualifier: qualifierMatch?.[1],
+    type: nameParts.length > 0 ? typePart?.replace(/^(?:★\s*)?(?:StatTrak™\s+|Souvenir\s+)*/i, "").trim() : undefined,
+  };
+}
+
+export function compactItemName(item: InventoryItemDto) {
+  return item.customName || splitInventoryName(item).name;
+}
+
+export function compactItemMeta(item: InventoryItemDto) {
+  const parts = splitInventoryName(item);
+  const type = item.kind === "weapon_skin" ? itemWeaponName(item) : parts.type || itemKindLabel(item.kind);
+  const qualifier = item.exterior || parts.qualifier;
+  return [type, qualifier].filter((value, index, values): value is string => !!value && values.indexOf(value) === index).join(" · ");
+}
+
+export type InventorySort = "name" | "float-low" | "float-high" | "rarity-low" | "rarity-high";
+
+export function sortInventoryItems(items: InventoryItemDto[], sort: InventorySort) {
+  return [...items].sort((left, right) => {
+    if (sort === "float-low" || sort === "float-high") {
+      if (left.paintWear === undefined) return right.paintWear === undefined ? 0 : 1;
+      if (right.paintWear === undefined) return -1;
+      const comparison = left.paintWear - right.paintWear;
+      return sort === "float-low" ? comparison : -comparison;
+    }
+    if (sort === "rarity-low" || sort === "rarity-high") {
+      const comparison = rarityRank(left.rarity) - rarityRank(right.rarity);
+      return (sort === "rarity-low" ? comparison : -comparison) || itemDisplayName(left).localeCompare(itemDisplayName(right));
+    }
+    return itemDisplayName(left).localeCompare(itemDisplayName(right));
+  });
+}
+
 export function itemSubtitle(item: InventoryItemDto) {
   const title = itemDisplayName(item);
   const candidates = [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rarityBorderClass, resolveSelectedInventoryItem, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
+import { compactItemMeta, compactItemName, itemWeaponName, rarityBorderClass, resolveSelectedInventoryItem, sortInventoryItems, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 
 describe("rarityBorderClass", () => {
   it("maps common CS2 rarity tiers to distinct border colors", () => {
@@ -51,6 +51,40 @@ describe("sortRelatedItemsByRarity", () => {
   it("sorts collection previews from highest to lowest rarity", () => {
     const sorted = sortRelatedItemsByRarity([{ name: "Common", rarity: "common" }, { name: "Ancient", rarity: "ancient" }, { name: "Rare", rarity: "rare" }]);
     expect(sorted.map((item) => item.name)).toEqual(["Ancient", "Rare", "Common"]);
+  });
+});
+
+describe("inventory filtering helpers", () => {
+  const items = [
+    { id: "a", name: "AK-47 | Redline", kind: "weapon_skin", rarity: "Classified", paintWear: 0.22 },
+    { id: "b", name: "M4A1-S | Printstream", kind: "weapon_skin", rarity: "Covert", paintWear: 0.08 },
+    { id: "c", name: "Sticker", kind: "sticker_item", rarity: "High Grade" },
+  ] as never[];
+
+  it("derives the specific weapon from a skin name", () => {
+    expect(itemWeaponName(items[0]!)).toBe("AK-47");
+    expect(itemWeaponName(items[2]!)).toBeUndefined();
+  });
+
+  it("shortens Steam market names and moves type and wear into metadata", () => {
+    const skin = { id: "skin", name: "StatTrak™ AK-47 | Redline (Field-Tested)", kind: "weapon_skin", exterior: "Field-Tested" } as const;
+    const sticker = { id: "sticker", name: "Sticker | Crown (Foil)", kind: "sticker_item" } as const;
+    const graffiti = { id: "graffiti", name: "Sealed Graffiti | Heart (Shark White)", kind: "cs2_econ_item" } as const;
+    expect(compactItemName(skin)).toBe("Redline");
+    expect(compactItemMeta(skin)).toBe("AK-47 · Field-Tested");
+    expect(compactItemName(sticker)).toBe("Crown");
+    expect(compactItemMeta(sticker)).toBe("Sticker · Foil");
+    expect(compactItemName(graffiti)).toBe("Heart");
+    expect(compactItemMeta(graffiti)).toBe("Sealed Graffiti · Shark White");
+  });
+
+  it("sorts by float with items lacking floats last", () => {
+    expect(sortInventoryItems(items, "float-low").map((item) => item.id)).toEqual(["b", "a", "c"]);
+    expect(sortInventoryItems(items, "float-high").map((item) => item.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("sorts by CS2 rarity tier", () => {
+    expect(sortInventoryItems(items, "rarity-high").map((item) => item.id)).toEqual(["b", "a", "c"]);
   });
 });
 

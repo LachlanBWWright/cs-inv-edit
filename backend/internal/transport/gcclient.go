@@ -6,19 +6,25 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Lucino772/envelop/pkg/steam/steamcm"
 )
 
 type SteamGCClient struct {
-	mu          sync.Mutex
-	requestMu   sync.Mutex
-	conn        *steamcm.SteamConnection
-	events      chan GCEvent
-	state       GCConnectionState
-	pendingAuth *steamAuthSession
-	lastWelcome []byte
+	mu               sync.Mutex
+	requestMu        sync.Mutex
+	conn             *steamcm.SteamConnection
+	events           chan GCEvent
+	state            GCConnectionState
+	pendingAuth      *steamAuthSession
+	lastWelcome      []byte
+	steamTraceActive atomic.Bool
+	protocolMu       sync.Mutex
+	protocolEnabled  bool
+	protocolNextID   uint64
+	protocolTrace    []ProtocolTraceEntry
 }
 
 func NewSteamGCClient() *SteamGCClient {
@@ -48,7 +54,7 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 	conn := steamcm.NewSteamConnection(
 		steamcm.NewSteamBaseHandler(),
 		unified,
-		NewGCHandler(events),
+		NewGCHandler(events, &s.steamTraceActive, s.recordIncomingProtocol, s.recordGCProtocol),
 	)
 	s.mu.Lock()
 	s.conn = conn

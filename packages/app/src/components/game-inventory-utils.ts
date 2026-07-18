@@ -5,6 +5,7 @@ export function snapshotForGame(game: EconomyGame, snapshot?: GameInventorySnaps
 }
 
 export function gameFilterCategories(game: EconomyGame) {
+	if (game === "steam") return new Set(["item_class", "game", "cardborder", "droprate", "event"]);
   return game === "tf2" ? new Set(["quality", "slot", "class"]) : new Set(["rarity", "quality", "hero", "slot", "type"]);
 }
 
@@ -12,6 +13,7 @@ const tf2QualityClasses: Record<string, string> = { normal: "economy-outline--tf
 const dotaRarityClasses: Record<string, string> = { common: "economy-outline--dota-common", uncommon: "economy-outline--dota-uncommon", rare: "economy-outline--dota-rare", mythical: "economy-outline--dota-mythical", legendary: "economy-outline--dota-legendary", immortal: "economy-outline--dota-immortal", arcana: "economy-outline--dota-arcana", ancient: "economy-outline--dota-ancient" };
 
 export function economyOutlineClass(item: EconomyInventoryItemDto) {
+	if (item.game === "steam") return "";
   const category = item.game === "tf2" ? "quality" : "rarity";
 	const tagged = item.tags.find((tag) => tag.category.toLowerCase() === category)?.internalName;
 	const internalName = (tagged ?? (item.details.game === "tf2" ? item.details.schemaQuality : "") ?? "").toLowerCase().replace(/^rarity_/, "");

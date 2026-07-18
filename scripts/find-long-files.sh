@@ -4,12 +4,20 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 python3 - "$root_dir" <<'PY'
-import os
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-exclude_dirs = {".git", "node_modules", "dist", "dist-electron", "coverage", "android", "backend", "proto"}
+exclude_dirs = {
+    ".git",
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "coverage",
+    "android",
+    "vendor",
+    "generated",
+}
 extensions = {".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".sh", ".c", ".cpp", ".java", ".rs"}
 
 matches = []
@@ -28,6 +36,6 @@ for path in root.rglob("*"):
     if lines > 300:
         matches.append((lines, path.relative_to(root).as_posix()))
 
-for lines, rel_path in sorted(matches, reverse=True):
+for lines, rel_path in sorted(matches, key=lambda match: (-match[0], match[1])):
     print(f"{lines:>4} {rel_path}")
 PY

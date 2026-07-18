@@ -7,9 +7,14 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Lucino772/envelop/pkg/steam"
@@ -34,28 +39,113 @@ func (s *SteamGCClient) BeginQRAuth(ctx context.Context) (QRAuthSession, error) 
 	if err := conn.SendPacket(mustClientHelloPacket()); err != nil {
 		return QRAuthSession{}, fmt.Errorf("steam client hello send failed: %w", err)
 	}
-	response := new(steampb.CAuthentication_BeginAuthSessionViaQR_Response)
-	request := &steampb.CAuthentication_BeginAuthSessionViaQR_Request{
-		DeviceFriendlyName: proto.String("cs-inv-edit"),
-		PlatformType:       steampb.EAuthTokenPlatformType_k_EAuthTokenPlatformType_SteamClient.Enum(),
-		WebsiteId:          proto.String("Client"),
-		DeviceDetails: &steampb.CAuthentication_DeviceDetails{
-			DeviceFriendlyName: proto.String("cs-inv-edit"),
-			PlatformType:       steampb.EAuthTokenPlatformType_k_EAuthTokenPlatformType_SteamClient.Enum(),
-			OsType:             proto.Int32(20),
-		},
+	trace := newDiagnosticTrace("steam qr auth started")
+	var response steamQRBeginResponse
+	for attempt := 1; attempt <= 3; attempt++ {
+		trace.Add(fmt.Sprintf("steam qr auth challenge attempt=%d/3", attempt))
+		var err error
+		response, err = beginSteamQRViaWebAPI(ctx)
+		if err != nil {
+			return QRAuthSession{}, trace.Error(fmt.Errorf("steam qr auth session failed: %w", err))
+		}
+		missing := qrWebChallengeMissingFields(response)
+		if len(missing) == 0 {
+			break
+		}
+		trace.Add("steam qr auth response missing fields=" + strings.Join(missing, ","))
+		if attempt < 3 {
+			select {
+			case <-ctx.Done():
+				return QRAuthSession{}, trace.Error(ctx.Err())
+			case <-time.After(300 * time.Millisecond):
+			}
+		}
 	}
-	if err := sendNonAuthedUnified(ctx, newNonAuthedUnifiedHandler(), conn, "Authentication.BeginAuthSessionViaQR#1", request, response, newDiagnosticTrace("steam qr auth started")); err != nil {
-		return QRAuthSession{}, fmt.Errorf("steam qr auth session failed: %w", err)
-	}
-	if response.GetChallengeUrl() == "" || response.GetClientId() == 0 || len(response.GetRequestId()) == 0 {
-		return QRAuthSession{}, fmt.Errorf("steam qr auth returned an incomplete challenge")
+	if missing := qrWebChallengeMissingFields(response); len(missing) > 0 {
+		return QRAuthSession{}, trace.Error(fmt.Errorf("steam qr auth returned an incomplete challenge after 3 attempts (missing %s)", strings.Join(missing, ", ")))
 	}
 	interval := time.Second
-	if response.GetInterval() > 0 {
-		interval = time.Duration(float64(time.Second) * float64(response.GetInterval()))
+	if response.Interval > 0 {
+		interval = time.Duration(float64(time.Second) * float64(response.Interval))
 	}
-	return QRAuthSession{ClientID: response.GetClientId(), RequestID: append([]byte(nil), response.GetRequestId()...), ChallengeURL: response.GetChallengeUrl(), PollInterval: interval}, nil
+	requestID, err := base64.StdEncoding.DecodeString(response.RequestID)
+	if err != nil {
+		return QRAuthSession{}, trace.Error(fmt.Errorf("steam qr auth returned an invalid request_id: %w", err))
+	}
+	return QRAuthSession{ClientID: response.ClientID, RequestID: requestID, ChallengeURL: response.ChallengeURL, PollInterval: interval}, nil
+}
+
+type steamQRBeginResponse struct {
+	ClientID     uint64  `json:"client_id,string"`
+	ChallengeURL string  `json:"challenge_url"`
+	RequestID    string  `json:"request_id"`
+	Interval     float32 `json:"interval"`
+}
+
+func beginSteamQRViaWebAPI(ctx context.Context) (steamQRBeginResponse, error) {
+	form := url.Values{
+		"device_friendly_name":                 {"cs-inv-edit"},
+		"platform_type":                        {"1"},
+		"website_id":                           {"Client"},
+		"device_details[device_friendly_name]": {"cs-inv-edit"},
+		"device_details[platform_type]":        {"1"},
+		"device_details[os_type]":              {"20"},
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.steampowered.com/IAuthenticationService/BeginAuthSessionViaQR/v1/", strings.NewReader(form.Encode()))
+	if err != nil {
+		return steamQRBeginResponse{}, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return steamQRBeginResponse{}, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return steamQRBeginResponse{}, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return steamQRBeginResponse{}, fmt.Errorf("Steam auth API returned HTTP %d", response.StatusCode)
+	}
+	var envelope struct {
+		Response steamQRBeginResponse `json:"response"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return steamQRBeginResponse{}, fmt.Errorf("decode Steam auth API response: %w", err)
+	}
+	return envelope.Response, nil
+}
+
+func qrWebChallengeMissingFields(response steamQRBeginResponse) []string {
+	missing := make([]string, 0, 3)
+	if response.ChallengeURL == "" {
+		missing = append(missing, "challenge_url")
+	}
+	if response.ClientID == 0 {
+		missing = append(missing, "client_id")
+	}
+	if response.RequestID == "" {
+		missing = append(missing, "request_id")
+	}
+	return missing
+}
+
+func qrChallengeMissingFields(response *steampb.CAuthentication_BeginAuthSessionViaQR_Response) []string {
+	if response == nil {
+		return []string{"response"}
+	}
+	missing := make([]string, 0, 3)
+	if response.GetChallengeUrl() == "" {
+		missing = append(missing, "challenge_url")
+	}
+	if response.GetClientId() == 0 {
+		missing = append(missing, "client_id")
+	}
+	if len(response.GetRequestId()) == 0 {
+		missing = append(missing, "request_id")
+	}
+	return missing
 }
 
 func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSession) (QRAuthResult, error) {
@@ -77,26 +167,57 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 		case <-ctx.Done():
 			return QRAuthResult{}, ctx.Err()
 		case <-ticker.C:
-			response := new(steampb.CAuthentication_PollAuthSessionStatus_Response)
-			err := sendNonAuthedUnified(ctx, newNonAuthedUnifiedHandler(), conn, "Authentication.PollAuthSessionStatus#1", &steampb.CAuthentication_PollAuthSessionStatus_Request{ClientId: proto.Uint64(session.ClientID), RequestId: append([]byte(nil), session.RequestID...)}, response, trace)
+			response, err := pollSteamQRViaWebAPI(ctx, session)
 			if err != nil {
-				var resultErr steamResultError
-				if errors.As(err, &resultErr) && resultErr.result == steamlang.EResult_Pending {
-					ticker.Reset(interval)
-					continue
-				}
-				return QRAuthResult{}, err
+				return QRAuthResult{}, trace.Error(err)
 			}
-			token := response.GetRefreshToken()
+			token := response.RefreshToken
 			if token == "" {
-				token = response.GetAccessToken()
+				token = response.AccessToken
 			}
 			if token != "" {
-				return QRAuthResult{AccountName: response.GetAccountName(), AccessToken: token}, nil
+				return QRAuthResult{AccountName: response.AccountName, AccessToken: response.AccessToken, RefreshToken: token}, nil
 			}
 			ticker.Reset(interval)
 		}
 	}
+}
+
+type steamQRPollResponse struct {
+	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token"`
+	AccountName  string `json:"account_name"`
+}
+
+func pollSteamQRViaWebAPI(ctx context.Context, session QRAuthSession) (steamQRPollResponse, error) {
+	form := url.Values{
+		"client_id":  {fmt.Sprintf("%d", session.ClientID)},
+		"request_id": {base64.StdEncoding.EncodeToString(session.RequestID)},
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1/", strings.NewReader(form.Encode()))
+	if err != nil {
+		return steamQRPollResponse{}, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return steamQRPollResponse{}, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return steamQRPollResponse{}, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return steamQRPollResponse{}, fmt.Errorf("Steam auth poll API returned HTTP %d", response.StatusCode)
+	}
+	var envelope struct {
+		Response steamQRPollResponse `json:"response"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return steamQRPollResponse{}, fmt.Errorf("decode Steam auth poll API response: %w", err)
+	}
+	return envelope.Response, nil
 }
 
 func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials, allowTryAnotherCM bool) (LogonResult, error) {
@@ -114,7 +235,7 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 	}
 
 	if credentials.Password != "" && credentials.LoginKey == "" {
-		refreshToken, err := s.authenticateSteamClient(ctx, conn, credentials)
+		tokens, err := s.authenticateSteamClient(ctx, conn, credentials)
 		if err != nil {
 			if errors.Is(err, errSteamGuardRequired) {
 				return LogonResult{EResult: int32(steamlang.EResult_AccountLoginDeniedNeedTwoFactor)}, err
@@ -146,7 +267,8 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 		credentials.Password = ""
 		credentials.AuthCode = ""
 		credentials.TwoFactorCode = ""
-		credentials.AccessToken = refreshToken
+		credentials.AccessToken = tokens.RefreshToken
+		credentials.WebAccessToken = tokens.AccessToken
 	}
 
 	jobID := conn.GetNextJobId()
@@ -190,8 +312,9 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 				return LogonResult{}, fmt.Errorf("unexpected logon response payload %T", event.Payload)
 			}
 			result := LogonResult{
-				EResult: response.GetEresult(),
-				SteamID: response.GetClientSuppliedSteamid(),
+				EResult:        response.GetEresult(),
+				SteamID:        response.GetClientSuppliedSteamid(),
+				WebAccessToken: credentials.WebAccessToken,
 			}
 			resultCode := steamlang.EResult(response.GetEresult())
 			if resultCode == steamlang.EResult_TryAnotherCM {
@@ -223,25 +346,27 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 	}
 }
 
-func (s *SteamGCClient) authenticateSteamClient(ctx context.Context, conn *steamcm.SteamConnection, credentials LogonCredentials) (string, error) {
+type steamAuthTokens struct{ RefreshToken, AccessToken string }
+
+func (s *SteamGCClient) authenticateSteamClient(ctx context.Context, conn *steamcm.SteamConnection, credentials LogonCredentials) (steamAuthTokens, error) {
 	unified := newNonAuthedUnifiedHandler()
 	trace := newDiagnosticTrace("steam auth client auth flow started")
 	if err := conn.SendPacket(mustClientHelloPacket()); err != nil {
 		wrapped := fmt.Errorf("steam client hello send failed: %w", err)
-		return "", trace.Error(wrapped)
+		return steamAuthTokens{}, trace.Error(wrapped)
 	}
 	s.events <- GCEvent{Type: "steam.client_hello.sent", Payload: credentials.Username}
 	trace.Add("steam auth sent ClientHello")
 	if credentials.AuthCode == "" && credentials.TwoFactorCode == "" {
 		if session := s.pendingAuthFor(credentials.Username); session != nil {
 			trace.Add("steam auth polling existing mobile approval session")
-			refreshToken, err := pollSteamAuthSession(ctx, unified, conn, session.ClientID, session.RequestID, session.PollInterval, steamCMLogonTimeout, trace)
+			tokens, err := pollSteamAuthSession(ctx, unified, conn, session.ClientID, session.RequestID, session.PollInterval, steamCMLogonTimeout, trace)
 			if err != nil {
 				trace.Add("steam auth existing mobile approval still pending")
-				return "", DiagnosticError{err: errSteamGuardRequired, lines: trace.Lines()}
+				return steamAuthTokens{}, DiagnosticError{err: errSteamGuardRequired, lines: trace.Lines()}
 			}
 			s.clearPendingAuth()
-			return refreshToken, nil
+			return tokens, nil
 		}
 	}
 
@@ -250,12 +375,12 @@ func (s *SteamGCClient) authenticateSteamClient(ctx context.Context, conn *steam
 		AccountName: proto.String(credentials.Username),
 	}, keyResp, trace, 2); err != nil {
 		wrapped := fmt.Errorf("steam auth rsa key request failed: %w", err)
-		return "", trace.Error(wrapped)
+		return steamAuthTokens{}, trace.Error(wrapped)
 	}
 	encryptedPassword, err := encryptSteamPassword(credentials.Password, keyResp.GetPublickeyMod(), keyResp.GetPublickeyExp())
 	if err != nil {
 		wrapped := fmt.Errorf("steam auth password encryption failed: %w", err)
-		return "", trace.Error(wrapped)
+		return steamAuthTokens{}, trace.Error(wrapped)
 	}
 	trace.Add("steam auth encrypted password with Steam RSA key")
 
@@ -284,14 +409,14 @@ func (s *SteamGCClient) authenticateSteamClient(ctx context.Context, conn *steam
 	}
 	if err := sendNonAuthedUnified(ctx, unified, conn, "Authentication.BeginAuthSessionViaCredentials#1", request, beginResp, trace); err != nil {
 		wrapped := fmt.Errorf("steam auth session failed: %w", err)
-		return "", trace.Error(wrapped)
+		return steamAuthTokens{}, trace.Error(wrapped)
 	}
 	allowedConfirmations := beginResp.GetAllowedConfirmations()
 	if len(allowedConfirmations) > 0 {
 		trace.Add(fmt.Sprintf("steam auth allowed confirmations=%s", formatAllowedConfirmations(allowedConfirmations)))
 		if credentials.AuthCode == "" && credentials.TwoFactorCode == "" && !hasMobileConfirmation(allowedConfirmations) {
 			trace.Add("steam auth requires typed Steam Guard code")
-			return "", DiagnosticError{err: errSteamGuardRequired, lines: trace.Lines()}
+			return steamAuthTokens{}, DiagnosticError{err: errSteamGuardRequired, lines: trace.Lines()}
 		}
 	}
 
@@ -307,16 +432,16 @@ func (s *SteamGCClient) authenticateSteamClient(ctx context.Context, conn *steam
 			PollInterval: pollInterval,
 		})
 		trace.Add("steam auth mobile approval session stored")
-		return "", DiagnosticError{err: errSteamGuardRequired, lines: trace.Lines()}
+		return steamAuthTokens{}, DiagnosticError{err: errSteamGuardRequired, lines: trace.Lines()}
 	}
 	pollTimeout := steamCMLogonTimeout
 	trace.Add(fmt.Sprintf("steam auth polling session timeout=%s", pollTimeout))
-	refreshToken, err := pollSteamAuthSession(ctx, unified, conn, beginResp.GetClientId(), beginResp.GetRequestId(), pollInterval, pollTimeout, trace)
+	tokens, err := pollSteamAuthSession(ctx, unified, conn, beginResp.GetClientId(), beginResp.GetRequestId(), pollInterval, pollTimeout, trace)
 	if err != nil {
-		return "", err
+		return steamAuthTokens{}, err
 	}
 	s.clearPendingAuth()
-	return refreshToken, nil
+	return tokens, nil
 }
 
 type steamAuthSession struct {
@@ -349,7 +474,7 @@ func (s *SteamGCClient) clearPendingAuth() {
 	s.pendingAuth = nil
 }
 
-func pollSteamAuthSession(ctx context.Context, unified *nonAuthedUnifiedHandler, conn *steamcm.SteamConnection, clientID uint64, requestID []byte, pollInterval time.Duration, pollTimeout time.Duration, trace *diagnosticTrace) (string, error) {
+func pollSteamAuthSession(ctx context.Context, unified *nonAuthedUnifiedHandler, conn *steamcm.SteamConnection, clientID uint64, requestID []byte, pollInterval time.Duration, pollTimeout time.Duration, trace *diagnosticTrace) (steamAuthTokens, error) {
 	if pollInterval <= 0 {
 		pollInterval = time.Second
 	}
@@ -360,10 +485,10 @@ func pollSteamAuthSession(ctx context.Context, unified *nonAuthedUnifiedHandler,
 	for {
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return steamAuthTokens{}, ctx.Err()
 		case <-deadline.C:
 			trace.Add("steam auth polling timed out before refresh token")
-			return "", fmt.Errorf("steam auth polling timed out waiting for refresh token")
+			return steamAuthTokens{}, fmt.Errorf("steam auth polling timed out waiting for refresh token")
 		case <-tick.C:
 			pollResp := new(steampb.CAuthentication_PollAuthSessionStatus_Response)
 			err := sendNonAuthedUnified(ctx, unified, conn, "Authentication.PollAuthSessionStatus#1", &steampb.CAuthentication_PollAuthSessionStatus_Request{
@@ -378,7 +503,7 @@ func pollSteamAuthSession(ctx context.Context, unified *nonAuthedUnifiedHandler,
 					continue
 				}
 				wrapped := fmt.Errorf("steam auth poll failed: %w", err)
-				return "", trace.Error(wrapped)
+				return steamAuthTokens{}, trace.Error(wrapped)
 			}
 			if pollResp.GetHadRemoteInteraction() {
 				trace.Add("steam auth poll observed remote interaction")
@@ -391,11 +516,11 @@ func pollSteamAuthSession(ctx context.Context, unified *nonAuthedUnifiedHandler,
 			}
 			if pollResp.GetRefreshToken() != "" {
 				trace.Add("steam auth poll returned refresh token")
-				return pollResp.GetRefreshToken(), nil
+				return steamAuthTokens{RefreshToken: pollResp.GetRefreshToken(), AccessToken: pollResp.GetAccessToken()}, nil
 			}
 			if pollResp.GetAccessToken() != "" {
 				trace.Add("steam auth poll returned access token")
-				return pollResp.GetAccessToken(), nil
+				return steamAuthTokens{RefreshToken: pollResp.GetAccessToken(), AccessToken: pollResp.GetAccessToken()}, nil
 			}
 			tick.Reset(pollInterval)
 		}
@@ -414,7 +539,7 @@ func sendNonAuthedUnified(ctx context.Context, unified *nonAuthedUnifiedHandler,
 			return
 		}
 		if trace != nil {
-			trace.Add(fmt.Sprintf("steam auth non-authed unified response method=%s eresult=%s", name, steamResultName(resp.Result)))
+			trace.Add(fmt.Sprintf("steam auth non-authed unified response method=%s response_method=%q eresult=%s", name, resp.MethodName, steamResultName(resp.Result)))
 		}
 		if resp.Result != steamlang.EResult_OK {
 			errCh <- steamResultError{method: name, result: resp.Result}
@@ -425,7 +550,7 @@ func sendNonAuthedUnified(ctx context.Context, unified *nonAuthedUnifiedHandler,
 			return
 		}
 		if trace != nil {
-			trace.Add(fmt.Sprintf("steam auth non-authed unified decoded method=%s", name))
+			trace.Add(fmt.Sprintf("steam auth non-authed unified decoded method=%s message_bytes=%d", name, proto.Size(out)))
 		}
 		errCh <- nil
 	}()

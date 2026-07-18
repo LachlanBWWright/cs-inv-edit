@@ -3,6 +3,7 @@ import type { ConnectionStatus, HealthStatus, InventoryItemDto, InventorySnapsho
 import { AccountSwitcher } from "./AccountSwitcher.js";
 import { SettingsView } from "./SettingsView.js";
 import { Input } from "./ui/Input.js";
+import { Popover } from "./ui/Popover.js";
 import type { AppMode, AppScreen } from "../view.js";
 import { availableModes, isEconomyInventoryScreen, isInventoryScreen, modeForScreen } from "../view.js";
 
@@ -36,7 +37,7 @@ export function Sidebar(props: SidebarProps) {
   const [kindMenuOpen, setKindMenuOpen] = createSignal(false);
   const [compactMenuOpen, setCompactMenuOpen] = createSignal(false);
   const chooseMode = (mode: AppMode) => props.setView(mode);
-	const modeLabel: Record<AppMode, string> = { inventory: "Inventory", "inventory-storage": "Storage move selection (stub)", "inventory-tradeup": "Trade-up input selection (stub)", armory: "Armory", "tf2-inventory": "Team Fortress 2 Inventory", "dota2-inventory": "Dota 2 Inventory" };
+	const modeLabel: Record<AppMode, string> = { inventory: "Inventory", "inventory-storage": "Storage move selection (stub)", "inventory-tradeup": "Trade-up input selection (stub)", trades: "Trades", armory: "Armory", store: "Store", "steam-inventory": "Steam Inventory", "tf2-inventory": "Team Fortress 2 Inventory", "dota2-inventory": "Dota 2 Inventory" };
 
   return (
     <header class="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-slate-800/80 bg-slate-950/90 px-3 py-2 backdrop-blur lg:px-4">
@@ -57,7 +58,7 @@ export function Sidebar(props: SidebarProps) {
           <div class="relative min-w-[220px] flex-1">
             <Input class="w-full min-w-0" placeholder="Search" value={props.query} onInput={(event) => props.setQuery((event.currentTarget as HTMLInputElement | null)?.value ?? "")} />
           </div>
-          <Show when={isInventoryScreen(props.view)}><div class="relative">
+          <Show when={isInventoryScreen(props.view)}><Popover class="relative" open={kindMenuOpen()} onOpenChange={setKindMenuOpen}>
             <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Filter inventory" aria-haspopup="menu" aria-expanded={kindMenuOpen()} onClick={() => { setKindMenuOpen((value) => !value); setCompactMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 5h16" />
@@ -76,8 +77,8 @@ export function Sidebar(props: SidebarProps) {
                 <button class="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800/80" onClick={() => { props.setKindFilter("container"); setKindMenuOpen(false); }}>Containers</button>
               </div>
             </Show>
-          </div></Show>
-          <div class="relative">
+          </Popover></Show>
+          <Popover class="relative" open={compactMenuOpen()} onOpenChange={setCompactMenuOpen}>
             <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Inventory display size" aria-haspopup="menu" aria-expanded={compactMenuOpen()} onClick={() => { setCompactMenuOpen((value) => !value); setKindMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="4" width="7" height="7" rx="1.2" />
@@ -95,12 +96,12 @@ export function Sidebar(props: SidebarProps) {
                 <button class="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800/80" onClick={() => { props.setCompactMode("detailed"); setCompactMenuOpen(false); }}>Detailed</button>
               </div>
             </Show>
-          </div>
+          </Popover>
         </div>
       </div></Show>
 
       <div class="ml-auto flex items-center gap-2">
-        <div class="relative">
+        <Popover class="relative" open={settingsOpen()} onOpenChange={setSettingsOpen}>
           <button class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/80 text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded={settingsOpen()} onClick={() => { setSettingsOpen((value) => !value); setKindMenuOpen(false); setCompactMenuOpen(false); setAccountOpen(false); }}>
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3.2" />
@@ -109,12 +110,12 @@ export function Sidebar(props: SidebarProps) {
           </button>
           <Show when={settingsOpen()}>
             <div class="absolute right-0 top-full z-30 mt-2 w-[min(82vw,760px)] rounded-3xl border border-slate-800/80 bg-slate-950/95 p-3 shadow-2xl">
-              <SettingsView settings={props.settings} onRefresh={() => props.onRefreshInventory()} onSave={props.onSaveSettings} />
+              <SettingsView settings={props.settings} inventory={props.inventory} onRefresh={() => props.onRefreshInventory()} onSave={props.onSaveSettings} />
             </div>
           </Show>
-        </div>
-        <div class="relative">
-          <button class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200" aria-label={props.connection?.accountName ? `Account: ${props.connection.accountName}` : "Account"} onClick={() => { setAccountOpen((value) => !value); setSettingsOpen(false); setKindMenuOpen(false); setCompactMenuOpen(false); }}>
+        </Popover>
+        <Popover class="relative" open={accountOpen()} onOpenChange={setAccountOpen}>
+          <button class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200" aria-label={props.connection?.accountName ? `Account: ${props.connection.accountName}` : "Account"} aria-haspopup="dialog" aria-expanded={accountOpen()} onClick={() => { setAccountOpen((value) => !value); setSettingsOpen(false); setKindMenuOpen(false); setCompactMenuOpen(false); }}>
             <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900/80">
               <Show when={props.connection?.avatarUrl} fallback={<span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">{(props.connection?.accountName || props.connection?.steamId || "A").slice(0, 2)}</span>}>
                 <img class="h-full w-full object-cover" src={props.connection?.avatarUrl} alt="Account avatar" loading="lazy" />
@@ -127,7 +128,7 @@ export function Sidebar(props: SidebarProps) {
               <AccountSwitcher inventory={props.inventory} accounts={props.accounts} onAddAccount={props.onAddAccount} onSignInAccount={props.onSignInAccount} onSignOutAccount={props.onSignOutAccount} onDeleteAccount={props.onDeleteAccount} onRefreshInventory={props.onRefreshInventory} onOpenAccount={props.onOpenAccount} />
             </div>
           </Show>
-        </div>
+        </Popover>
       </div>
     </header>
   );

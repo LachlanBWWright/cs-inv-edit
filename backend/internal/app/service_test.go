@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,11 +17,78 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestCS2StoreCurrencyUsesEconomyEnum(t *testing.T) {
+	tests := map[int32]string{0: "USD", 1: "GBP", 2: "EUR", 20: "CAD", 21: "AUD", 24: "CHF"}
+	for id, expected := range tests {
+		if actual := steamCurrencyCode(id); actual != expected {
+			t.Fatalf("CS2 store currency %d = %q, want %q", id, actual, expected)
+		}
+	}
+}
+
+func TestStorePurchaseSendsAuthoritativeFieldsForMaximumCS2Quantity(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	client.StorePurchaseResult = transport.StorePurchaseTransportResult{TransactionID: 1, OrderID: 1, CheckoutURL: "https://checkout.steampowered.com/checkout/approvetxn/1/"}
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.storeCurrencyID = 2
+	service.storeCountry = "DE"
+	service.store = domain.StoreSnapshot{Status: "ready", PriceSheetVersion: 7, Currency: "EUR", Offers: []domain.StoreOffer{{ID: "Name Tag", DefIndex: 1200, Name: "Name Tag", Currency: "EUR", AmountMinor: 175, PurchaseType: 3, Purchasable: true}}}
+	session := service.InitializeStorePurchase(map[string]any{"offerId": "Name Tag", "quantity": uint64(20), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(175)})
+	if session.Status != "awaiting_user" {
+		t.Fatalf("purchase session = %#v", session)
+	}
+	if session.CheckoutURL != "https://checkout.steampowered.com/checkout/approvetxn/1/" {
+		t.Fatalf("checkout URL = %q", session.CheckoutURL)
+	}
+	if len(client.StorePurchaseCalls) != 1 {
+		t.Fatalf("purchase calls = %d", len(client.StorePurchaseCalls))
+	}
+	request := client.StorePurchaseCalls[0]
+	if request.Country != "DE" || request.ItemDefID != 1200 || request.Quantity != 20 || request.Cost != 3500 || request.Currency != 2 || request.PurchaseType != 3 {
+		t.Fatalf("purchase request = %#v", request)
+	}
+}
+
+func TestStorePurchaseRejectsQuantityAboveCS2DropdownLimit(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.storeCurrencyID = 2
+	service.storeCountry = "DE"
+	service.store = domain.StoreSnapshot{Status: "ready", PriceSheetVersion: 7, Currency: "EUR", Offers: []domain.StoreOffer{{ID: "Name Tag", DefIndex: 1200, Name: "Name Tag", Currency: "EUR", AmountMinor: 175, Purchasable: true}}}
+	session := service.InitializeStorePurchase(map[string]any{"offerId": "Name Tag", "quantity": uint64(21), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(175)})
+	if session.Status != "failed" || !strings.Contains(session.Message, "between 1 and 20") {
+		t.Fatalf("purchase session = %#v", session)
+	}
+	if len(client.StorePurchaseCalls) != 0 {
+		t.Fatal("invalid quantity reached the GC transport")
+	}
+}
+
 func TestSubmitOperationBlocksNameTagsByDefault(t *testing.T) {
 	service := NewService()
 	receipt := service.SubmitOperation("nametags.apply", map[string]any{})
 	if receipt.State != "blocked_by_feature_flag" {
 		t.Fatalf("expected blocked_by_feature_flag, got %q", receipt.State)
+	}
+}
+
+func TestStorageContentsAreRecognizedFromAuthoritativeCasketAttributes(t *testing.T) {
+	item := transport.GCInventoryItem{Attributes: map[uint32]uint32{272: 0x89abcdef, 273: 0x01234567}}
+	if got, want := gcItemCasketID(item), uint64(0x0123456789abcdef); got != want {
+		t.Fatalf("casket id = %x, want %x", got, want)
+	}
+}
+
+func TestMergeGCInventoryItemsKeepsLoadedStorageContents(t *testing.T) {
+	main := []transport.GCInventoryItem{{ID: 1, Inventory: 1}}
+	loaded := []transport.GCInventoryItem{{ID: 1, Inventory: 1}, {ID: 2, Attributes: map[uint32]uint32{272: 9}}}
+	merged := mergeGCInventoryItems(main, loaded)
+	if len(merged) != 2 || merged[1].ID != 2 || gcItemCasketID(merged[1]) != 9 {
+		t.Fatalf("merged inventory = %#v", merged)
 	}
 }
 
@@ -234,15 +302,15 @@ func TestRevealAnimationsDefaultIndependently(t *testing.T) {
 	}
 }
 
-func TestMultiGameInventoryFlagsDefaultOffAndDoNotChangeCS2Snapshot(t *testing.T) {
+func TestTF2InventoryDefaultsOnAndDota2DefaultsOffWithoutChangingCS2Snapshot(t *testing.T) {
 	service := NewService()
 	before := service.Inventory()
 	settings := service.Settings()
-	if settings.FeatureFlags.EnableTF2Inventory || settings.FeatureFlags.EnableDota2Inventory {
-		t.Fatalf("multi-game flags must default off: %#v", settings.FeatureFlags)
+	if !settings.FeatureFlags.EnableTF2Inventory || settings.FeatureFlags.EnableDota2Inventory {
+		t.Fatalf("TF2 must default on and Dota 2 must default off: %#v", settings.FeatureFlags)
 	}
-	if _, supported, enabled := service.GameInventory("tf2"); !supported || enabled {
-		t.Fatalf("TF2 inventory supported=%t enabled=%t, want true/false", supported, enabled)
+	if snapshot, supported, enabled := service.GameInventory("tf2"); !supported || !enabled || snapshot.Diagnostics == nil {
+		t.Fatalf("TF2 inventory supported=%t enabled=%t diagnostics=%#v, want true/true/non-nil", supported, enabled, snapshot.Diagnostics)
 	}
 	if _, supported, enabled := service.GameInventory("dota2"); !supported || enabled {
 		t.Fatalf("Dota inventory supported=%t enabled=%t, want true/false", supported, enabled)
@@ -253,8 +321,33 @@ func TestMultiGameInventoryFlagsDefaultOffAndDoNotChangeCS2Snapshot(t *testing.T
 	}
 }
 
+func TestConnectedTF2InventoryWithoutSnapshotIsWaitingForRefresh(t *testing.T) {
+	service := NewService()
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	snapshot, supported, enabled := service.GameInventory("tf2")
+	if !supported || !enabled || snapshot.Status != "loading" {
+		t.Fatalf("connected TF2 snapshot=%#v supported=%t enabled=%t", snapshot, supported, enabled)
+	}
+	if strings.Contains(strings.ToLower(snapshot.Message), "connect") {
+		t.Fatalf("connected TF2 snapshot has false connection guidance: %q", snapshot.Message)
+	}
+}
+
+func TestFinishedLoginStartsEnabledTF2Presence(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.finishSteamLogin("account", transport.LogonResult{SteamID: 7656119})
+	if len(client.GamesPlayedCalls) != 1 || !reflect.DeepEqual(client.GamesPlayedCalls[0], []uint32{protocol.AppIDCS2, 440}) {
+		t.Fatalf("login presence=%#v, want CS2 and TF2", client.GamesPlayedCalls)
+	}
+}
+
 func TestDisabledGameRefreshNeverTouchesGC(t *testing.T) {
 	service := NewService()
+	settings := service.Settings()
+	settings.FeatureFlags.EnableTF2Inventory = false
+	service.UpdateSettings(settings)
 	client := transport.NewTestGCClient()
 	called := false
 	client.GameInventoryFunc = func(context.Context, uint32) ([]transport.GCInventoryItem, error) {

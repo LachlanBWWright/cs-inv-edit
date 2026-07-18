@@ -42,6 +42,41 @@ export function containerItemOdds(items: RelatedItemDto[]) {
   }));
 }
 
+export function weightedRandomItem<T extends { rarity?: string }>(items: T[], random = Math.random) {
+  if (items.length === 0) return undefined;
+  const tiers = new Map<number, T[]>();
+  for (const item of items) {
+    const rank = rarityRank(item.rarity);
+    const tier = tiers.get(rank) ?? [];
+    tier.push(item);
+    tiers.set(rank, tier);
+  }
+  const ranks = [...tiers.keys()].sort((left, right) => left - right);
+  const highestRank = ranks.at(-1) ?? 0;
+  const weightedTiers = ranks.map((rank) => ({ rank, weight: 5 ** (highestRank - rank) }));
+  const totalWeight = weightedTiers.reduce((sum, tier) => sum + tier.weight, 0);
+  let roll = random() * totalWeight;
+  const selectedTier = weightedTiers.find((tier) => {
+    roll -= tier.weight;
+    return roll < 0;
+  }) ?? weightedTiers.at(-1);
+  const tierItems = tiers.get(selectedTier?.rank ?? 0) ?? items;
+  return tierItems[Math.min(tierItems.length - 1, Math.floor(random() * tierItems.length))];
+}
+
+export function generateCappedWear(wearMin = 0, wearMax = 1, random = Math.random) {
+  const roll = random();
+  let cumulative = 0;
+  const bracket = generatedWearBrackets.find((entry) => {
+    cumulative += entry.probability;
+    return roll < cumulative;
+  }) ?? generatedWearBrackets.at(-1)!;
+  const generated = bracket.min + random() * (bracket.max - bracket.min);
+  const min = Math.max(0, Math.min(1, wearMin));
+  const max = Math.max(min, Math.min(1, wearMax));
+  return generated * (max - min) + min;
+}
+
 export function cappedWearDistribution(wearMin = 0, wearMax = 1) {
   const min = Math.max(0, Math.min(1, wearMin));
   const max = Math.max(min, Math.min(1, wearMax));

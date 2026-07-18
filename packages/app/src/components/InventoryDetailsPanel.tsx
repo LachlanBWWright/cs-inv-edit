@@ -9,6 +9,7 @@ import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat } from "./item-instance-utils.js";
 import { RelatedItemPreview, type RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
+import { WearRangeBar } from "./ui/WearRangeBar.js";
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
   const boxClass = () =>
@@ -24,51 +25,6 @@ function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
     <Show when={props.item.imageUrl} fallback={<div class={boxClass()}>{itemInitials(props.item)}</div>}>
       <img class={imageClass()} src={props.item.imageUrl} alt={itemDisplayName(props.item)} loading="lazy" />
     </Show>
-  );
-}
-
-const wearRanges = [
-  { name: "Factory New", short: "FN", min: 0, max: 0.07, color: "wear-color-factory-new" },
-  { name: "Minimal Wear", short: "MW", min: 0.07, max: 0.15, color: "wear-color-minimal-wear" },
-  { name: "Field-Tested", short: "FT", min: 0.15, max: 0.38, color: "wear-color-field-tested" },
-  { name: "Well-Worn", short: "WW", min: 0.38, max: 0.45, color: "wear-color-well-worn" },
-  { name: "Battle-Scarred", short: "BS", min: 0.45, max: 1, color: "wear-color-battle-scarred" },
-] as const;
-
-function WearRangeBar(props: { wear: number; min?: number; max?: number }) {
-  const clamp = (value: number) => Math.max(0, Math.min(1, value));
-  const wear = () => clamp(props.wear);
-  const min = () => clamp(props.min ?? 0);
-  const max = () => clamp(props.max ?? 1);
-
-  return (
-    <div class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4">
-      <div class="flex items-baseline justify-between gap-3">
-        <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Finish wear range</p>
-        <p class="font-mono text-xs text-slate-300">{formatFloat(props.wear)}</p>
-      </div>
-      <div class="relative mt-7">
-        <div class="absolute -top-5 -translate-x-1/2 text-cyan-200" style={{ left: `${wear() * 100}%` }} aria-label={`Current wear ${formatFloat(props.wear)}`}>
-          <span class="block text-center text-sm leading-none">▼</span>
-        </div>
-        <div class="relative flex h-4 overflow-hidden rounded border border-slate-700">
-          <For each={wearRanges}>{(range) => (
-            <div class={`${range.color} border-r border-slate-950/40 last:border-r-0`} style={{ width: `${(range.max - range.min) * 100}%` }} title={`${range.name}: ${range.min.toFixed(2)}–${range.max.toFixed(2)}`} />
-          )}</For>
-          <Show when={min() > 0}><div class="wear-color-impossible absolute inset-y-0 left-0" style={{ width: `${min() * 100}%` }} title={`Impossible below ${min().toFixed(2)}`} /></Show>
-          <Show when={max() < 1}><div class="wear-color-impossible absolute inset-y-0 right-0" style={{ width: `${(1 - max()) * 100}%` }} title={`Impossible above ${max().toFixed(2)}`} /></Show>
-        </div>
-        <div class="mt-2 flex text-[9px] font-medium text-slate-400">
-          <For each={wearRanges}>{(range) => (
-            <div class="text-center" style={{ width: `${(range.max - range.min) * 100}%` }} title={range.name}>{range.short}</div>
-          )}</For>
-        </div>
-        <div class="mt-1 flex justify-between font-mono text-[9px] text-slate-500"><span>0.00</span><span>1.00</span></div>
-        <Show when={min() > 0 || max() < 1}>
-          <p class="mt-2 text-xs text-slate-500">This finish can only exist from {min().toFixed(2)} to {max().toFixed(2)}; grey regions are impossible.</p>
-        </Show>
-      </div>
-    </div>
   );
 }
 
@@ -89,6 +45,7 @@ export interface InventoryDetailsPanelProps {
   selectedToolId: string;
   inventoryDebugEnabled: boolean;
   nameTagTools: InventoryItemDto[];
+  compatibleContainerKey: InventoryItemDto | undefined;
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
   containerStatusMessage: string;
@@ -110,7 +67,7 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
   createEffect(() => {
     const selected = props.selectedItem;
     const marketName = selected?.marketName ?? "";
-    if (!marketName || selected?.marketPrice || requestedMarketName === marketName) return;
+    if (!marketName || selected?.marketable === false || selected?.marketPrice || requestedMarketName === marketName) return;
     requestedMarketName = marketName;
     setSelectedMarketPreview(undefined);
     setSelectedMarketLoading(true);
@@ -233,6 +190,11 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
               </Show>
 
               <div class="flex flex-wrap gap-2">
+                <Show when={selected.inspectUrl}>
+                  <a class="inline-flex h-10 items-center justify-center rounded-xl bg-cyan-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400" href={selected.inspectUrl} target="_blank" rel="noreferrer">
+                    Preview in game ↗
+                  </a>
+                </Show>
                 <Show when={selected.containerItems?.length}>
                   <Button variant="secondary" onClick={() => setContentsDialog({ title: itemDisplayName(selected), description: "Opening odds, prices, and generated wear outcomes", items: selected.containerItems ?? [], context: "container" })}>
                     View possible contents ({selected.containerItems?.length})
@@ -240,7 +202,12 @@ export function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
                 </Show>
                 <Show when={props.canOpenContainer}>
                   <div class="flex flex-col gap-2">
-                    <Button onClick={() => void props.onOpenContainer()} disabled={props.pending}>
+                    <Show when={(selected.requiredKeyDefIndexes?.length ?? 0) > 0} fallback={<p class="max-w-sm text-xs text-emerald-300">This container is keyless.</p>}>
+                      <Show when={props.compatibleContainerKey} fallback={<p class="max-w-sm text-xs text-amber-300">This container requires a compatible key, but none is present in your inventory.</p>}>
+                        {(key) => <p class="max-w-sm text-xs text-slate-300">Uses {itemDisplayName(key())}.</p>}
+                      </Show>
+                    </Show>
+                    <Button onClick={() => void props.onOpenContainer()} disabled={props.pending || ((selected.requiredKeyDefIndexes?.length ?? 0) > 0 && !props.compatibleContainerKey)}>
                       Open container
                     </Button>
                     <Show when={props.containerStatusMessage}>

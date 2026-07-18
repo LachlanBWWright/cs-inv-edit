@@ -1,7 +1,7 @@
 import { createEffect, createResource, createSignal, onCleanup } from "solid-js";
 import { errAsync } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
-import { steamAccountProfilesSchema, type ArmorySnapshot, type ConnectionStatus, type OperationReceipt, type RelatedItemDto, type SettingsData, type SteamAccountProfile } from "@cs-inv-edit/contracts";
+import { steamAccountProfilesSchema, type ArmorySnapshot, type ConnectionStatus, type OperationReceipt, type RelatedItemDto, type SettingsData, type SteamAccountProfile, type SteamTradesSnapshot, type StoreSnapshot } from "@cs-inv-edit/contracts";
 import { AppView } from "./AppView.js";
 import { createOperationApi } from "./lib/api.js";
 export type { AppBackendClient } from "./lib/backend.js";
@@ -31,7 +31,8 @@ function loadSteamAccounts(): SteamAccountProfile[] {
 }
 
 export function App(props: AppProps) {
-  const [view, setView] = createSignal<AppScreen>("inventory");
+  const requestedView = new URLSearchParams(window.location.search).get("view");
+  const [view, setView] = createSignal<AppScreen>(requestedView === "trades" ? "trades" : "inventory");
   const [selectedItemId, setSelectedItemId] = createSignal<string | undefined>();
   const [query, setQuery] = createSignal("");
   const [kindFilter, setKindFilter] = createSignal<"all" | import("@cs-inv-edit/contracts").InventoryItemDto["kind"]>("all");
@@ -44,10 +45,37 @@ export function App(props: AppProps) {
   const resourceValue = <T,>(result: ResultAsync<T, AppError>) => result.match((value) => value, (error) => { console.error(error.message, error.cause); return undefined; });
   const [health] = createResource(() => resourceValue(props.backend.health()));
   const [settings, { refetch: refetchSettings }] = createResource(() => resourceValue(props.backend.settings()));
+
+	let protocolTraceCursor = 0;
+	let protocolTracePolling = false;
+	const pollProtocolTrace = () => {
+		if (protocolTracePolling || !props.backend.protocolTrace || settings()?.featureFlags.enableProtocolConsole === false) return;
+		protocolTracePolling = true;
+		void props.backend.protocolTrace(protocolTraceCursor).match((entries) => {
+			for (const entry of entries) {
+				protocolTraceCursor = Math.max(protocolTraceCursor, entry.id);
+				console.groupCollapsed(`[protobuf ${entry.direction}] ${entry.layer} ${entry.name} emsg=${entry.emsg}${entry.appId ? ` appid=${entry.appId}` : ""}`);
+				console.debug(entry);
+				if (entry.decoded !== undefined) console.debug("decoded protobuf", entry.decoded);
+				if (entry.decodeError) console.warn("protobuf decode unavailable", entry.decodeError);
+				console.debug(`body (${entry.bodyBytes} bytes): ${entry.bodyHex}`);
+				console.groupEnd();
+			}
+			protocolTracePolling = false;
+		}, (error) => {
+			protocolTracePolling = false;
+			console.warn("[protobuf trace] polling failed", error);
+		});
+	};
+	const protocolTraceTimer = window.setInterval(pollProtocolTrace, 750);
+	onCleanup(() => window.clearInterval(protocolTraceTimer));
   const [inventory, { refetch: refetchInventory }] = createResource(() => resourceValue(props.backend.inventory()));
+  const [steamInventory, { refetch: refetchSteamInventory }] = createResource(() => settings()?.featureFlags.enableSteamInventory ? "steam" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
   const [tf2Inventory, { refetch: refetchTF2Inventory }] = createResource(() => settings()?.featureFlags.enableTf2Inventory ? "tf2" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
   const [dota2Inventory, { refetch: refetchDota2Inventory }] = createResource(() => settings()?.featureFlags.enableDota2Inventory ? "dota2" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
   const [armory, { refetch: refetchArmory, mutate: setArmory }] = createResource(() => resourceValue(props.backend.armory()));
+  const [store, { refetch: refetchStore, mutate: setStore }] = createResource(() => resourceValue(props.backend.store()));
+  const [trades, { mutate: setTrades }] = createResource(() => resourceValue(props.backend.trades()));
   const [receipts, { refetch: refetchOperations }] = createResource(() => resourceValue(props.backend.operations()));
   const [events, { refetch: refetchEvents }] = createResource(() => resourceValue(props.backend.events()));
   const [connection, { refetch: refetchConnection, mutate: setConnection }] = createResource(() => resourceValue(props.backend.steamStatus?.() ?? errAsync({ message: "Steam status unavailable" })));
@@ -118,16 +146,26 @@ export function App(props: AppProps) {
 
 	let automaticGameRefresh = "";
 	createEffect(() => {
-		const game = view() === "tf2-inventory" ? "tf2" : view() === "dota2-inventory" ? "dota2" : undefined;
+		const game = view() === "steam-inventory" ? "steam" : view() === "tf2-inventory" ? "tf2" : view() === "dota2-inventory" ? "dota2" : undefined;
 		const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined;
-		if (!game || !steamId) return;
-		const enabled = game === "tf2" ? settings()?.featureFlags.enableTf2Inventory : settings()?.featureFlags.enableDota2Inventory;
+		if (!game || !steamId) {
+			automaticGameRefresh = "";
+			return;
+		}
+		const enabled = game === "steam" ? settings()?.featureFlags.enableSteamInventory : game === "tf2" ? settings()?.featureFlags.enableTf2Inventory : settings()?.featureFlags.enableDota2Inventory;
+		const refetchGame = () => game === "steam" ? refetchSteamInventory() : game === "tf2" ? refetchTF2Inventory() : refetchDota2Inventory();
 		const key = `${steamId}\u0000${game}`;
 		if (!enabled || automaticGameRefresh === key) return;
 		automaticGameRefresh = key;
 		void props.backend.refreshGameInventory(game)
-			.andThen(() => fromAppPromise(Promise.resolve(game === "tf2" ? refetchTF2Inventory() : refetchDota2Inventory()), `${game} inventory reload failed`))
-			.match(() => undefined, (error) => pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, `Unable to refresh ${game} inventory`), variant: "danger" }));
+			.andThen((receipt) => receipt.state === "failed" || receipt.state === "requires_connection" || receipt.state === "blocked_by_feature_flag"
+				? errAsync({ message: receipt.message ?? `${game} inventory refresh failed` })
+				: fromAppPromise(Promise.resolve(refetchGame()), `${game} inventory reload failed`))
+			.match(() => undefined, (error) => {
+				automaticGameRefresh = "";
+				void refetchGame();
+				pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, `Unable to refresh ${game} inventory`), variant: "danger" });
+			});
 	});
 
   let automaticArmoryRefresh = "";
@@ -139,6 +177,12 @@ export function App(props: AppProps) {
     automaticArmoryRefresh = key;
     void refreshArmoryState();
   });
+  let automaticStoreRefresh = "";
+  const refreshStoreState = async () => { setStore((current): StoreSnapshot => ({ status: "loading", offers: current?.offers ?? [], refreshedAt: current?.refreshedAt ?? new Date().toISOString(), priceSheetVersion: current?.priceSheetVersion, currency: current?.currency, message: "Requesting the current GC price sheet" })); await props.backend.refreshStore().andThen(() => fromAppPromise(Promise.resolve(refetchStore()), "Store reload failed")).match(() => undefined, (error) => { const message = appErrorMessage(error, "Unable to refresh store"); setStore((current): StoreSnapshot => ({ status: "error", offers: current?.offers ?? [], refreshedAt: new Date().toISOString(), priceSheetVersion: current?.priceSheetVersion, currency: current?.currency, message })); pushToast({ title: "Store refresh failed", description: message, variant: "danger" }); }); };
+  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; const enabled = settings()?.featureFlags.enableStoreRead === true; if (view() !== "store" || !steamId || !enabled || store()?.status === "ready") return; const key = `${steamId}\u0000store\u0000${enabled}`; if (automaticStoreRefresh === key) return; automaticStoreRefresh = key; void refreshStoreState(); });
+  let automaticTradeRefresh = "";
+  const refreshTradesState = async () => { setTrades((current): SteamTradesSnapshot => ({ status: "loading", received: current?.received ?? [], sent: current?.sent ?? [], history: current?.history ?? [], refreshedAt: current?.refreshedAt ?? new Date().toISOString(), message: "Loading Steam trades" })); await props.backend.refreshTrades().match((snapshot) => setTrades(snapshot), (error) => setTrades((current): SteamTradesSnapshot => ({ status: "error", received: current?.received ?? [], sent: current?.sent ?? [], history: current?.history ?? [], refreshedAt: new Date().toISOString(), message: appErrorMessage(error, "Unable to load trades") }))); };
+  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; if (view() !== "trades" || !steamId) return; const key = `${steamId}\u0000trades`; if (automaticTradeRefresh === key) return; automaticTradeRefresh = key; void refreshTradesState(); });
 
   createEffect(() => {
     const snapshot = armory();
@@ -189,7 +233,7 @@ export function App(props: AppProps) {
   createEffect(() => {
     // Inventory authentication opens the account view by default, but Armory has
     // its own disconnected state and must remain directly navigable from Mode.
-    if (connection() && connection()?.state !== "connected" && view() !== "armory") {
+    if (connection() && connection()?.state !== "connected" && view() !== "armory" && view() !== "store" && view() !== "trades") {
       setView("account");
     }
   });
@@ -327,9 +371,12 @@ export function App(props: AppProps) {
       accountUsername={accountUsername()}
       inventory={inventory()}
       inventoryLoading={inventoryRefreshActive() || inventory.loading}
+      steamInventory={steamInventory()}
       tf2Inventory={tf2Inventory()}
       dota2Inventory={dota2Inventory()}
       armory={armory()}
+      store={store()}
+      trades={trades()}
       settings={settings()}
       query={query()}
       setQuery={setQuery}
@@ -401,10 +448,14 @@ export function App(props: AppProps) {
       }}
       onToast={pushToast}
       onInventoryRefresh={() => void refreshInventoryState()}
-      onGameInventoryRefresh={(game) => void props.backend.refreshGameInventory(game).andThen(() => fromAppPromise(Promise.resolve(game === "tf2" ? refetchTF2Inventory() : refetchDota2Inventory()), `${game} inventory reload failed`)).match(() => undefined, (error) => pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, `Unable to refresh ${game} inventory`), variant: "danger" }))}
+      onGameInventoryRefresh={(game) => void props.backend.refreshGameInventory(game).andThen(() => fromAppPromise(Promise.resolve(game === "steam" ? refetchSteamInventory() : game === "tf2" ? refetchTF2Inventory() : refetchDota2Inventory()), `${game} inventory reload failed`)).match(() => undefined, (error) => pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, `Unable to refresh ${game} inventory`), variant: "danger" }))}
       onArmoryRefresh={refreshArmoryState}
       onMarketPreview={requestMarketPreview}
       onArmoryRedeem={(input) => settleOperation(props.backend.redeemArmory(input)).then(async (receipt) => { await refetchArmory(); return receipt; })}
+      onStoreRefresh={refreshStoreState}
+      onStorePurchase={(input) => props.backend.initializeStorePurchase(input).match((session) => session, (error) => ({ id: "failed", status: "failed" as const, offerId: input.offerId, defIndex: 0, name: "Store purchase", quantity: input.quantity, currency: "", amountMinor: 0, formattedAmount: "", createdAt: new Date().toISOString(), message: appErrorMessage(error, "Purchase initialization failed") }))}
+      onStoreReconcile={(id) => props.backend.reconcileStorePurchase(id).match((session) => session, (error) => ({ ...(store() ? { offerId: "", defIndex: 0, name: "Store purchase", currency: store()?.currency ?? "" } : { offerId: "", defIndex: 0, name: "Store purchase", currency: "" }), id, status: "failed" as const, quantity: 1, amountMinor: 0, formattedAmount: "", createdAt: new Date().toISOString(), message: appErrorMessage(error, "Purchase reconciliation failed") }))}
+      onTradesRefresh={refreshTradesState}
       onInventoryRename={(input) => settleOperation(operationApi.applyNameTag(input))}
       onRemoveName={(input) => settleOperation(operationApi.removeNameTag(input))}
       onOpenContainer={(input) => settleOperation(props.backend.submitOperation("containers.open", input))}

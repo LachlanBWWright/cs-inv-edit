@@ -25,40 +25,43 @@ type AppliedItem struct {
 }
 
 type InventoryItem struct {
-	ID                 string        `json:"id"`
-	Name               string        `json:"name"`
-	MarketName         string        `json:"marketName,omitempty"`
-	MarketPrice        string        `json:"marketPrice,omitempty"`
-	MarketSalePrice    string        `json:"marketSalePrice,omitempty"`
-	MarketSellListings *int          `json:"marketSellListings,omitempty"`
-	CustomName         string        `json:"customName,omitempty"`
-	ImageURL           string        `json:"imageUrl,omitempty"`
-	Kind               string        `json:"kind"`
-	Defindex           *uint32       `json:"defindex,omitempty"`
-	PaintWear          *float64      `json:"paintWear,omitempty"`
-	PaintWearMin       *float64      `json:"paintWearMin,omitempty"`
-	PaintWearMax       *float64      `json:"paintWearMax,omitempty"`
-	Stickers           []Sticker     `json:"stickers,omitempty"`
-	AppliedItems       []AppliedItem `json:"appliedItems,omitempty"`
-	IsStatTrak         bool          `json:"isStatTrak,omitempty"`
-	IsSouvenir         bool          `json:"isSouvenir,omitempty"`
-	Tradable           *bool         `json:"tradable,omitempty"`
-	TradableAfter      string        `json:"tradableAfter,omitempty"`
-	StorageCount       *uint32       `json:"storageCount,omitempty"`
-	CasketID           *string       `json:"casketId,omitempty"`
-	Collection         string        `json:"collection,omitempty"`
-	CollectionItems    []RelatedItem `json:"collectionItems,omitempty"`
-	TradeUpItems       []RelatedItem `json:"tradeUpItems,omitempty"`
-	ContainerItems     []RelatedItem `json:"containerItems,omitempty"`
-	Exterior           string        `json:"exterior,omitempty"`
-	Rarity             string        `json:"rarity,omitempty"`
-	StorageLocation    string        `json:"storageLocation,omitempty"`
-	ToolType           string        `json:"toolType,omitempty"`
-	UnsupportedFields  []string      `json:"unsupportedFields,omitempty"`
-	Diagnostics        []string      `json:"diagnostics,omitempty"`
-	HasCustomName      bool          `json:"hasCustomName,omitempty"`
-	IsNameTagTool      bool          `json:"isNameTagTool,omitempty"`
-	Debug              *ItemDebug    `json:"debug,omitempty"`
+	ID                    string        `json:"id"`
+	Name                  string        `json:"name"`
+	MarketName            string        `json:"marketName,omitempty"`
+	MarketPrice           string        `json:"marketPrice,omitempty"`
+	MarketSalePrice       string        `json:"marketSalePrice,omitempty"`
+	MarketSellListings    *int          `json:"marketSellListings,omitempty"`
+	CustomName            string        `json:"customName,omitempty"`
+	ImageURL              string        `json:"imageUrl,omitempty"`
+	InspectURL            string        `json:"inspectUrl,omitempty"`
+	Kind                  string        `json:"kind"`
+	Defindex              *uint32       `json:"defindex,omitempty"`
+	PaintWear             *float64      `json:"paintWear,omitempty"`
+	PaintWearMin          *float64      `json:"paintWearMin,omitempty"`
+	PaintWearMax          *float64      `json:"paintWearMax,omitempty"`
+	Stickers              []Sticker     `json:"stickers,omitempty"`
+	AppliedItems          []AppliedItem `json:"appliedItems,omitempty"`
+	IsStatTrak            bool          `json:"isStatTrak,omitempty"`
+	IsSouvenir            bool          `json:"isSouvenir,omitempty"`
+	Tradable              *bool         `json:"tradable,omitempty"`
+	Marketable            *bool         `json:"marketable,omitempty"`
+	TradableAfter         string        `json:"tradableAfter,omitempty"`
+	StorageCount          *uint32       `json:"storageCount,omitempty"`
+	CasketID              *string       `json:"casketId,omitempty"`
+	Collection            string        `json:"collection,omitempty"`
+	CollectionItems       []RelatedItem `json:"collectionItems,omitempty"`
+	TradeUpItems          []RelatedItem `json:"tradeUpItems,omitempty"`
+	ContainerItems        []RelatedItem `json:"containerItems,omitempty"`
+	Exterior              string        `json:"exterior,omitempty"`
+	Rarity                string        `json:"rarity,omitempty"`
+	StorageLocation       string        `json:"storageLocation,omitempty"`
+	ToolType              string        `json:"toolType,omitempty"`
+	RequiredKeyDefIndexes []uint32      `json:"requiredKeyDefIndexes,omitempty"`
+	UnsupportedFields     []string      `json:"unsupportedFields,omitempty"`
+	Diagnostics           []string      `json:"diagnostics,omitempty"`
+	HasCustomName         bool          `json:"hasCustomName,omitempty"`
+	IsNameTagTool         bool          `json:"isNameTagTool,omitempty"`
+	Debug                 *ItemDebug    `json:"debug,omitempty"`
 }
 
 type RelatedItem struct {
@@ -76,11 +79,17 @@ type RelatedItem struct {
 
 type InventorySnapshot struct {
 	Items       []InventoryItem `json:"items"`
+	Collections []Collection    `json:"collections,omitempty"`
 	RefreshedAt string          `json:"refreshedAt"`
 	Status      string          `json:"status,omitempty"`
 	Message     string          `json:"message,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	Diagnostics []string        `json:"diagnostics,omitempty"`
+}
+
+type Collection struct {
+	Name  string        `json:"name"`
+	Items []RelatedItem `json:"items"`
 }
 
 type ArmoryOffer struct {
@@ -105,10 +114,65 @@ type ArmorySnapshot struct {
 	Diagnostics    []string      `json:"diagnostics,omitempty"`
 }
 
+type StoreOffer struct {
+	ID                       string        `json:"id"`
+	ItemLink                 string        `json:"itemLink"`
+	DefIndex                 uint32        `json:"defIndex"`
+	Name                     string        `json:"name"`
+	Description              string        `json:"description,omitempty"`
+	ImageURL                 string        `json:"imageUrl,omitempty"`
+	Category                 string        `json:"category,omitempty"`
+	Rarity                   string        `json:"rarity,omitempty"`
+	Currency                 string        `json:"currency"`
+	AmountMinor              uint64        `json:"amountMinor"`
+	FormattedPrice           string        `json:"formattedPrice"`
+	SaleAmountMinor          *uint64       `json:"saleAmountMinor,omitempty"`
+	FormattedSalePrice       string        `json:"formattedSalePrice,omitempty"`
+	RequiresSupplementalData bool          `json:"requiresSupplementalData"`
+	SupplementalDataKind     string        `json:"supplementalDataKind,omitempty"`
+	PurchaseType             uint32        `json:"-"`
+	Purchasable              bool          `json:"purchasable"`
+	UnsupportedReason        string        `json:"unsupportedReason,omitempty"`
+	Items                    []RelatedItem `json:"items,omitempty"`
+}
+
+type StoreSnapshot struct {
+	Status            string       `json:"status"`
+	PriceSheetVersion uint32       `json:"priceSheetVersion,omitempty"`
+	Currency          string       `json:"currency,omitempty"`
+	Offers            []StoreOffer `json:"offers"`
+	RefreshedAt       string       `json:"refreshedAt"`
+	Message           string       `json:"message,omitempty"`
+	Diagnostics       []string     `json:"diagnostics,omitempty"`
+}
+type PurchaseSession struct {
+	ID               string   `json:"id"`
+	Status           string   `json:"status"`
+	OfferID          string   `json:"offerId"`
+	DefIndex         uint32   `json:"defIndex"`
+	Name             string   `json:"name"`
+	Quantity         uint32   `json:"quantity"`
+	Currency         string   `json:"currency"`
+	AmountMinor      uint64   `json:"amountMinor"`
+	FormattedAmount  string   `json:"formattedAmount"`
+	TransactionID    string   `json:"transactionId,omitempty"`
+	OrderID          string   `json:"orderId,omitempty"`
+	CheckoutURL      string   `json:"checkoutUrl,omitempty"`
+	PurchasedItemIDs []string `json:"purchasedItemIds,omitempty"`
+	CreatedAt        string   `json:"createdAt"`
+	ExpiresAt        string   `json:"expiresAt,omitempty"`
+	Message          string   `json:"message,omitempty"`
+	Diagnostics      []string `json:"diagnostics,omitempty"`
+	ErrorCode        string   `json:"errorCode,omitempty"`
+	ErrorResult      *int32   `json:"errorResult,omitempty"`
+}
+
 type FeatureFlags struct {
 	EnableStorageMutations bool `json:"enableStorageMutations"`
 	EnableContainerOpening bool `json:"enableContainerOpening"`
 	EnableInventoryDebug   bool `json:"enableInventoryDebug"`
+	ShowStorageUnitItems   bool `json:"showStorageUnitItems"`
+	EnableProtocolConsole  bool `json:"enableProtocolConsole"`
 	EnableTradeups         bool `json:"enableTradeups"`
 	EnableStickerExtract   bool `json:"enableStickerExtract"`
 	EnableNameTags         bool `json:"enableNameTags"`
@@ -120,8 +184,11 @@ type FeatureFlags struct {
 	EnableGifting          bool `json:"enableGifting"`
 	EnableArmoryRead       bool `json:"enableArmoryRead"`
 	EnableArmoryRedemption bool `json:"enableArmoryRedemption"`
+	EnableStoreRead        bool `json:"enableStoreRead"`
+	EnableStorePurchases   bool `json:"enableStorePurchases"`
 	EnableTF2Inventory     bool `json:"enableTf2Inventory"`
 	EnableDota2Inventory   bool `json:"enableDota2Inventory"`
+	EnableSteamInventory   bool `json:"enableSteamInventory"`
 }
 
 type EconomyTag struct {

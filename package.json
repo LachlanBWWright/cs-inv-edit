@@ -19,6 +19,8 @@
     "typecheck": "tsc -b packages/contracts packages/app",
     "run": "./scripts/run.sh",
     "check": "npm run lint && npm run build && npm run test",
+    "find:deep-indentation": "./scripts/find-deep-indentation.sh",
+    "find:long-files": "./scripts/find-long-files.sh",
     "test-backend": "./bin/cs2-backend",
     "build:wasm-backend": "mkdir -p apps/web/public/wasm && wasm_exec=\"$(go env GOROOT)/lib/wasm/wasm_exec.js\" && if [ ! -f \"$wasm_exec\" ]; then wasm_exec=\"$(go env GOROOT)/misc/wasm/wasm_exec.js\"; fi && rm -f apps/web/public/wasm/wasm_exec.js && cp \"$wasm_exec\" apps/web/public/wasm/wasm_exec.js && GOOS=js GOARCH=wasm go build -o apps/web/public/wasm/cs2-backend.wasm ./backend/cmd/wasm-backend",
     "build:wasm-web": "npm run build:wasm-backend && npm run build -w @cs-inv-edit/web"

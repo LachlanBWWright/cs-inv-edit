@@ -95,10 +95,11 @@ func (x *CMsgClientHello) GetEngine() uint32 {
 // Dota 2 welcome subset. TF2 uses field 3 for txn_country_code and must not be
 // decoded with this message.
 type CMsgClientWelcome struct {
-	state                     protoimpl.MessageState   `protogen:"open.v1"`
-	Version                   *uint32                  `protobuf:"varint,1,opt,name=version" json:"version,omitempty"`
-	GameData                  []byte                   `protobuf:"bytes,2,opt,name=game_data,json=gameData" json:"game_data,omitempty"`
-	OutofdateSubscribedCaches []*CMsgSOCacheSubscribed `protobuf:"bytes,3,rep,name=outofdate_subscribed_caches,json=outofdateSubscribedCaches" json:"outofdate_subscribed_caches,omitempty"`
+	state                     protoimpl.MessageState          `protogen:"open.v1"`
+	Version                   *uint32                         `protobuf:"varint,1,opt,name=version" json:"version,omitempty"`
+	GameData                  []byte                          `protobuf:"bytes,2,opt,name=game_data,json=gameData" json:"game_data,omitempty"`
+	OutofdateSubscribedCaches []*CMsgSOCacheSubscribed        `protobuf:"bytes,3,rep,name=outofdate_subscribed_caches,json=outofdateSubscribedCaches" json:"outofdate_subscribed_caches,omitempty"`
+	UptodateSubscribedCaches  []*CMsgSOCacheSubscriptionCheck `protobuf:"bytes,4,rep,name=uptodate_subscribed_caches,json=uptodateSubscribedCaches" json:"uptodate_subscribed_caches,omitempty"`
 	unknownFields             protoimpl.UnknownFields
 	sizeCache                 protoimpl.SizeCache
 }
@@ -150,6 +151,13 @@ func (x *CMsgClientWelcome) GetGameData() []byte {
 func (x *CMsgClientWelcome) GetOutofdateSubscribedCaches() []*CMsgSOCacheSubscribed {
 	if x != nil {
 		return x.OutofdateSubscribedCaches
+	}
+	return nil
+}
+
+func (x *CMsgClientWelcome) GetUptodateSubscribedCaches() []*CMsgSOCacheSubscriptionCheck {
+	if x != nil {
+		return x.UptodateSubscribedCaches
 	}
 	return nil
 }
@@ -266,6 +274,142 @@ func (x *CMsgSOCacheSubscribed) GetOwnerSoid() *CMsgSOIDOwner {
 	return nil
 }
 
+type CMsgSOCacheSubscriptionCheck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Owner         *uint64                `protobuf:"fixed64,1,opt,name=owner" json:"owner,omitempty"`
+	Version       *uint64                `protobuf:"fixed64,2,opt,name=version" json:"version,omitempty"`
+	OwnerSoid     *CMsgSOIDOwner         `protobuf:"bytes,3,opt,name=owner_soid,json=ownerSoid" json:"owner_soid,omitempty"`
+	ServiceId     *uint32                `protobuf:"varint,4,opt,name=service_id,json=serviceId" json:"service_id,omitempty"`
+	ServiceList   []uint32               `protobuf:"varint,5,rep,name=service_list,json=serviceList" json:"service_list,omitempty"`
+	SyncVersion   *uint64                `protobuf:"fixed64,6,opt,name=sync_version,json=syncVersion" json:"sync_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) Reset() {
+	*x = CMsgSOCacheSubscriptionCheck{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSOCacheSubscriptionCheck) ProtoMessage() {}
+
+func (x *CMsgSOCacheSubscriptionCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSOCacheSubscriptionCheck.ProtoReflect.Descriptor instead.
+func (*CMsgSOCacheSubscriptionCheck) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) GetOwner() uint64 {
+	if x != nil && x.Owner != nil {
+		return *x.Owner
+	}
+	return 0
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) GetVersion() uint64 {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return 0
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) GetOwnerSoid() *CMsgSOIDOwner {
+	if x != nil {
+		return x.OwnerSoid
+	}
+	return nil
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) GetServiceId() uint32 {
+	if x != nil && x.ServiceId != nil {
+		return *x.ServiceId
+	}
+	return 0
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) GetServiceList() []uint32 {
+	if x != nil {
+		return x.ServiceList
+	}
+	return nil
+}
+
+func (x *CMsgSOCacheSubscriptionCheck) GetSyncVersion() uint64 {
+	if x != nil && x.SyncVersion != nil {
+		return *x.SyncVersion
+	}
+	return 0
+}
+
+type CMsgSOCacheSubscriptionRefresh struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Owner         *uint64                `protobuf:"fixed64,1,opt,name=owner" json:"owner,omitempty"`
+	OwnerSoid     *CMsgSOIDOwner         `protobuf:"bytes,2,opt,name=owner_soid,json=ownerSoid" json:"owner_soid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSOCacheSubscriptionRefresh) Reset() {
+	*x = CMsgSOCacheSubscriptionRefresh{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSOCacheSubscriptionRefresh) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSOCacheSubscriptionRefresh) ProtoMessage() {}
+
+func (x *CMsgSOCacheSubscriptionRefresh) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSOCacheSubscriptionRefresh.ProtoReflect.Descriptor instead.
+func (*CMsgSOCacheSubscriptionRefresh) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CMsgSOCacheSubscriptionRefresh) GetOwner() uint64 {
+	if x != nil && x.Owner != nil {
+		return *x.Owner
+	}
+	return 0
+}
+
+func (x *CMsgSOCacheSubscriptionRefresh) GetOwnerSoid() *CMsgSOIDOwner {
+	if x != nil {
+		return x.OwnerSoid
+	}
+	return nil
+}
+
 type CSOEconItemAttribute struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DefIndex      *uint32                `protobuf:"varint,1,opt,name=def_index,json=defIndex" json:"def_index,omitempty"`
@@ -277,7 +421,7 @@ type CSOEconItemAttribute struct {
 
 func (x *CSOEconItemAttribute) Reset() {
 	*x = CSOEconItemAttribute{}
-	mi := &file_multigame_econ_subset_proto_msgTypes[4]
+	mi := &file_multigame_econ_subset_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -289,7 +433,7 @@ func (x *CSOEconItemAttribute) String() string {
 func (*CSOEconItemAttribute) ProtoMessage() {}
 
 func (x *CSOEconItemAttribute) ProtoReflect() protoreflect.Message {
-	mi := &file_multigame_econ_subset_proto_msgTypes[4]
+	mi := &file_multigame_econ_subset_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -302,7 +446,7 @@ func (x *CSOEconItemAttribute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CSOEconItemAttribute.ProtoReflect.Descriptor instead.
 func (*CSOEconItemAttribute) Descriptor() ([]byte, []int) {
-	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{4}
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CSOEconItemAttribute) GetDefIndex() uint32 {
@@ -336,7 +480,7 @@ type CSOEconItemEquipped struct {
 
 func (x *CSOEconItemEquipped) Reset() {
 	*x = CSOEconItemEquipped{}
-	mi := &file_multigame_econ_subset_proto_msgTypes[5]
+	mi := &file_multigame_econ_subset_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -348,7 +492,7 @@ func (x *CSOEconItemEquipped) String() string {
 func (*CSOEconItemEquipped) ProtoMessage() {}
 
 func (x *CSOEconItemEquipped) ProtoReflect() protoreflect.Message {
-	mi := &file_multigame_econ_subset_proto_msgTypes[5]
+	mi := &file_multigame_econ_subset_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -361,7 +505,7 @@ func (x *CSOEconItemEquipped) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CSOEconItemEquipped.ProtoReflect.Descriptor instead.
 func (*CSOEconItemEquipped) Descriptor() ([]byte, []int) {
-	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{5}
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CSOEconItemEquipped) GetNewClass() uint32 {
@@ -404,7 +548,7 @@ type CSOEconItem struct {
 
 func (x *CSOEconItem) Reset() {
 	*x = CSOEconItem{}
-	mi := &file_multigame_econ_subset_proto_msgTypes[6]
+	mi := &file_multigame_econ_subset_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +560,7 @@ func (x *CSOEconItem) String() string {
 func (*CSOEconItem) ProtoMessage() {}
 
 func (x *CSOEconItem) ProtoReflect() protoreflect.Message {
-	mi := &file_multigame_econ_subset_proto_msgTypes[6]
+	mi := &file_multigame_econ_subset_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +573,7 @@ func (x *CSOEconItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CSOEconItem.ProtoReflect.Descriptor instead.
 func (*CSOEconItem) Descriptor() ([]byte, []int) {
-	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{6}
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CSOEconItem) GetId() uint64 {
@@ -568,7 +712,7 @@ type CMsgSOCacheSubscribed_SubscribedType struct {
 
 func (x *CMsgSOCacheSubscribed_SubscribedType) Reset() {
 	*x = CMsgSOCacheSubscribed_SubscribedType{}
-	mi := &file_multigame_econ_subset_proto_msgTypes[7]
+	mi := &file_multigame_econ_subset_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -580,7 +724,7 @@ func (x *CMsgSOCacheSubscribed_SubscribedType) String() string {
 func (*CMsgSOCacheSubscribed_SubscribedType) ProtoMessage() {}
 
 func (x *CMsgSOCacheSubscribed_SubscribedType) ProtoReflect() protoreflect.Message {
-	mi := &file_multigame_econ_subset_proto_msgTypes[7]
+	mi := &file_multigame_econ_subset_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -619,11 +763,12 @@ const file_multigame_econ_subset_proto_rawDesc = "" +
 	"\aversion\x18\x01 \x01(\rR\aversion\x12.\n" +
 	"\x13client_session_need\x18\x03 \x01(\rR\x11clientSessionNeed\x12'\n" +
 	"\x0fclient_launcher\x18\x04 \x01(\rR\x0eclientLauncher\x12\x16\n" +
-	"\x06engine\x18\a \x01(\rR\x06engine\"\xb0\x01\n" +
+	"\x06engine\x18\a \x01(\rR\x06engine\"\x9b\x02\n" +
 	"\x11CMsgClientWelcome\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\rR\aversion\x12\x1b\n" +
 	"\tgame_data\x18\x02 \x01(\fR\bgameData\x12d\n" +
-	"\x1boutofdate_subscribed_caches\x18\x03 \x03(\v2$.multigameecon.CMsgSOCacheSubscribedR\x19outofdateSubscribedCaches\"3\n" +
+	"\x1boutofdate_subscribed_caches\x18\x03 \x03(\v2$.multigameecon.CMsgSOCacheSubscribedR\x19outofdateSubscribedCaches\x12i\n" +
+	"\x1auptodate_subscribed_caches\x18\x04 \x03(\v2+.multigameecon.CMsgSOCacheSubscriptionCheckR\x18uptodateSubscribedCaches\"3\n" +
 	"\rCMsgSOIDOwner\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\rR\x04type\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\x04R\x02id\"\x89\x02\n" +
@@ -635,7 +780,20 @@ const file_multigame_econ_subset_proto_rawDesc = "" +
 	"\x0eSubscribedType\x12\x17\n" +
 	"\atype_id\x18\x01 \x01(\x05R\x06typeId\x12\x1f\n" +
 	"\vobject_data\x18\x02 \x03(\fR\n" +
-	"objectData\"j\n" +
+	"objectData\"\xf0\x01\n" +
+	"\x1cCMsgSOCacheSubscriptionCheck\x12\x14\n" +
+	"\x05owner\x18\x01 \x01(\x06R\x05owner\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x06R\aversion\x12;\n" +
+	"\n" +
+	"owner_soid\x18\x03 \x01(\v2\x1c.multigameecon.CMsgSOIDOwnerR\townerSoid\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\x04 \x01(\rR\tserviceId\x12!\n" +
+	"\fservice_list\x18\x05 \x03(\rR\vserviceList\x12!\n" +
+	"\fsync_version\x18\x06 \x01(\x06R\vsyncVersion\"s\n" +
+	"\x1eCMsgSOCacheSubscriptionRefresh\x12\x14\n" +
+	"\x05owner\x18\x01 \x01(\x06R\x05owner\x12;\n" +
+	"\n" +
+	"owner_soid\x18\x02 \x01(\v2\x1c.multigameecon.CMsgSOIDOwnerR\townerSoid\"j\n" +
 	"\x14CSOEconItemAttribute\x12\x1b\n" +
 	"\tdef_index\x18\x01 \x01(\rR\bdefIndex\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value\x12\x1f\n" +
@@ -681,29 +839,34 @@ func file_multigame_econ_subset_proto_rawDescGZIP() []byte {
 	return file_multigame_econ_subset_proto_rawDescData
 }
 
-var file_multigame_econ_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_multigame_econ_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_multigame_econ_subset_proto_goTypes = []any{
 	(*CMsgClientHello)(nil),                      // 0: multigameecon.CMsgClientHello
 	(*CMsgClientWelcome)(nil),                    // 1: multigameecon.CMsgClientWelcome
 	(*CMsgSOIDOwner)(nil),                        // 2: multigameecon.CMsgSOIDOwner
 	(*CMsgSOCacheSubscribed)(nil),                // 3: multigameecon.CMsgSOCacheSubscribed
-	(*CSOEconItemAttribute)(nil),                 // 4: multigameecon.CSOEconItemAttribute
-	(*CSOEconItemEquipped)(nil),                  // 5: multigameecon.CSOEconItemEquipped
-	(*CSOEconItem)(nil),                          // 6: multigameecon.CSOEconItem
-	(*CMsgSOCacheSubscribed_SubscribedType)(nil), // 7: multigameecon.CMsgSOCacheSubscribed.SubscribedType
+	(*CMsgSOCacheSubscriptionCheck)(nil),         // 4: multigameecon.CMsgSOCacheSubscriptionCheck
+	(*CMsgSOCacheSubscriptionRefresh)(nil),       // 5: multigameecon.CMsgSOCacheSubscriptionRefresh
+	(*CSOEconItemAttribute)(nil),                 // 6: multigameecon.CSOEconItemAttribute
+	(*CSOEconItemEquipped)(nil),                  // 7: multigameecon.CSOEconItemEquipped
+	(*CSOEconItem)(nil),                          // 8: multigameecon.CSOEconItem
+	(*CMsgSOCacheSubscribed_SubscribedType)(nil), // 9: multigameecon.CMsgSOCacheSubscribed.SubscribedType
 }
 var file_multigame_econ_subset_proto_depIdxs = []int32{
 	3, // 0: multigameecon.CMsgClientWelcome.outofdate_subscribed_caches:type_name -> multigameecon.CMsgSOCacheSubscribed
-	7, // 1: multigameecon.CMsgSOCacheSubscribed.objects:type_name -> multigameecon.CMsgSOCacheSubscribed.SubscribedType
-	2, // 2: multigameecon.CMsgSOCacheSubscribed.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
-	4, // 3: multigameecon.CSOEconItem.attribute:type_name -> multigameecon.CSOEconItemAttribute
-	6, // 4: multigameecon.CSOEconItem.interior_item:type_name -> multigameecon.CSOEconItem
-	5, // 5: multigameecon.CSOEconItem.equipped_state:type_name -> multigameecon.CSOEconItemEquipped
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	4, // 1: multigameecon.CMsgClientWelcome.uptodate_subscribed_caches:type_name -> multigameecon.CMsgSOCacheSubscriptionCheck
+	9, // 2: multigameecon.CMsgSOCacheSubscribed.objects:type_name -> multigameecon.CMsgSOCacheSubscribed.SubscribedType
+	2, // 3: multigameecon.CMsgSOCacheSubscribed.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
+	2, // 4: multigameecon.CMsgSOCacheSubscriptionCheck.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
+	2, // 5: multigameecon.CMsgSOCacheSubscriptionRefresh.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
+	6, // 6: multigameecon.CSOEconItem.attribute:type_name -> multigameecon.CSOEconItemAttribute
+	8, // 7: multigameecon.CSOEconItem.interior_item:type_name -> multigameecon.CSOEconItem
+	7, // 8: multigameecon.CSOEconItem.equipped_state:type_name -> multigameecon.CSOEconItemEquipped
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_multigame_econ_subset_proto_init() }
@@ -717,7 +880,7 @@ func file_multigame_econ_subset_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_multigame_econ_subset_proto_rawDesc), len(file_multigame_econ_subset_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

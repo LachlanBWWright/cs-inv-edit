@@ -1,8 +1,8 @@
 import { createMemo, createSignal } from "solid-js";
-import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
+import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, OpenContainerRequest, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
 import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
-import { itemDisplayName, itemKey, itemKindLabel, resolveSelectedInventoryItem } from "./inventory-view-utils.js";
+import { itemDisplayName, itemKey, itemKindLabel, itemWeaponName, resolveSelectedInventoryItem, sortInventoryItems, type InventorySort } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 import type { InventoryMode } from "../view.js";
 
@@ -24,7 +24,7 @@ export interface InventoryViewProps {
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onRename: (input: { subjectItemId: string; toolItemId: string; name: string }) => Promise<unknown>;
   onRemoveName: (input: { itemId: string }) => Promise<unknown>;
-  onOpenContainer: (input: { itemId: string }) => Promise<unknown>;
+  onOpenContainer: (input: OpenContainerRequest) => Promise<unknown>;
   onToast?: (toast: { title: string; description?: string; variant?: "default" | "success" | "warning" | "danger" }) => void;
 }
 
@@ -38,6 +38,14 @@ export function InventoryView(props: InventoryViewProps) {
   const [pending, setPending] = createSignal(false);
   const [reveal, setReveal] = createSignal<{ result: RevealItem; candidates: RevealItem[]; complete: () => void }>();
   const [selectedItemIds, setSelectedItemIds] = createSignal<string[]>([]);
+  const [rarityFilter, setRarityFilter] = createSignal("all");
+  const [weaponFilter, setWeaponFilter] = createSignal("all");
+  const [collectionFilter, setCollectionFilter] = createSignal("all");
+  const [sort, setSort] = createSignal<InventorySort>("name");
+
+  const rarityOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.rarity).filter((value): value is string => !!value))].sort());
+  const weaponOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map(itemWeaponName).filter((value): value is string => !!value))].sort());
+  const collectionOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.collection).filter((value): value is string => !!value))].sort());
 
   const playReveal = (result: RevealItem, candidates: RevealItem[]) => {
     if ((props.settings?.animations?.container ?? "slot-machine") === "none") return Promise.resolve();
@@ -46,7 +54,7 @@ export function InventoryView(props: InventoryViewProps) {
 
   const filteredItems = () => {
     const q = props.query.toLowerCase();
-    return (props.inventory?.items ?? []).filter((item) => {
+    const matches = (props.inventory?.items ?? []).filter((item) => {
       const searchable = [
         item.name,
         item.marketName,
@@ -66,8 +74,12 @@ export function InventoryView(props: InventoryViewProps) {
         .toLowerCase();
       const matchesQuery = !q || searchable.includes(q);
       const matchesKind = props.kindFilter === "all" || item.kind === props.kindFilter;
-      return matchesQuery && matchesKind;
+      const matchesRarity = rarityFilter() === "all" || item.rarity === rarityFilter();
+      const matchesWeapon = weaponFilter() === "all" || itemWeaponName(item) === weaponFilter();
+      const matchesCollection = collectionFilter() === "all" || item.collection === collectionFilter();
+      return matchesQuery && matchesKind && matchesRarity && matchesWeapon && matchesCollection;
     });
+    return sortInventoryItems(matches, sort());
   };
 
   const selectedItem = () => resolveSelectedInventoryItem(filteredItems(), props.selectedItemId);
@@ -90,6 +102,10 @@ export function InventoryView(props: InventoryViewProps) {
   };
 
   const nameTagTools = () => (props.inventory?.items ?? []).filter((item) => item.isNameTagTool);
+  const compatibleContainerKey = () => {
+    const required = selectedItem()?.requiredKeyDefIndexes ?? [];
+    return (props.inventory?.items ?? []).find((item) => item.defindex !== undefined && required.includes(item.defindex));
+  };
   const connected = () => props.connection?.state === "connected";
   const inventoryError = () => props.inventory?.error || props.inventory?.message;
   const inventoryDiagnostics = () => props.inventory?.diagnostics ?? [];
@@ -171,7 +187,8 @@ export function InventoryView(props: InventoryViewProps) {
     }
     setPending(true);
     setContainerStatusMessage("Sending open request to CS2...");
-    await fromAppPromise(props.onOpenContainer({ itemId: item.id }), "Failed to open container").match(async (receipt) => {
+    const keyItemId = compatibleContainerKey()?.id;
+    await fromAppPromise(props.onOpenContainer({ itemId: item.id, ...(keyItemId ? { keyItemId } : {}) }), "Failed to open container").match(async (receipt) => {
       if (typeof receipt === "object" && receipt && "state" in receipt && receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation") {
         const message = "message" in receipt && typeof receipt.message === "string" ? receipt.message : "Container open request was not accepted.";
         const responseBody =
@@ -191,8 +208,8 @@ export function InventoryView(props: InventoryViewProps) {
             : "Container opened and inventory was reconciled.";
         if (openedItem) {
           await playReveal(
-            { name: itemDisplayName(openedItem), imageUrl: openedItem.imageUrl, rarity: openedItem.rarity },
-            (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, imageUrl: candidate.imageUrl, rarity: candidate.rarity })),
+            { name: itemDisplayName(openedItem), imageUrl: openedItem.imageUrl, rarity: openedItem.rarity, kind: openedItem.kind, wear: openedItem.paintWear, wearMin: openedItem.paintWearMin, wearMax: openedItem.paintWearMax, isStatTrak: openedItem.isStatTrak },
+            (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, imageUrl: candidate.imageUrl, rarity: candidate.rarity, kind: candidate.kind, wear: candidate.paintWear, wearMin: candidate.wearMin, wearMax: candidate.wearMax, supportsStatTrak: candidate.kind === "weapon_skin" })),
           );
         }
         setContainerStatusMessage(message);
@@ -218,6 +235,13 @@ export function InventoryView(props: InventoryViewProps) {
       settings={props.settings}
       query={props.query}
       kindFilter={props.kindFilter}
+      rarityFilter={rarityFilter()}
+      weaponFilter={weaponFilter()}
+      collectionFilter={collectionFilter()}
+      sort={sort()}
+      rarityOptions={rarityOptions()}
+      weaponOptions={weaponOptions()}
+      collectionOptions={collectionOptions()}
       filteredItems={filteredItems()}
       selectedItem={selectedItem()}
       selectedItemKey={selectedItemKey()}
@@ -232,12 +256,17 @@ export function InventoryView(props: InventoryViewProps) {
       inventoryLoading={inventoryLoading()}
       connected={connected()}
       nameTagTools={nameTagTools()}
+      compatibleContainerKey={compatibleContainerKey()}
       canOpenContainer={!!selectedItem() && (selectedItem()?.kind === "container" || selectedLabel().includes("container") || selectedLabel().includes("capsule") || selectedLabel().includes("case"))}
       canUseNameTagOn={selectedItem()?.kind === "weapon_skin" && nameTagTools().length > 0}
       onRefresh={props.onRefresh}
       onMarketPreview={props.onMarketPreview}
       onQueryChange={props.setQuery}
       onKindFilterChange={props.setKindFilter}
+      onRarityFilterChange={setRarityFilter}
+      onWeaponFilterChange={setWeaponFilter}
+      onCollectionFilterChange={setCollectionFilter}
+      onSortChange={setSort}
       compactMode={props.compactMode}
       onCompactModeChange={props.setCompactMode}
       onSelectItem={selectItem}
