@@ -27,8 +27,8 @@ export function requestJsonResult<T>(baseUrl: string, path: string, schema: Safe
       .andThen((payload) => {
         const parsed = schema.safeParse(payload);
         return parsed.success
-          ? ok(parsed.data)
-          : err(createAppError(`Invalid response payload for ${target}`, response.status, parsed.error));
+        ? ok(parsed.data)
+        : err(createAppError(`Invalid response payload for ${target}`, response.status, parsed.error));
       });
   });
 }

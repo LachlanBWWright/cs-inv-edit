@@ -143,47 +143,47 @@ export function AppView(props: AppViewProps) {
         <Switch>
         <Match when={props.view === "account"}>
           <AccountView
-            connection={props.connection}
-            initialUsername={props.accountUsername}
-            onConnect={props.onConnect}
-            onStartSteamQR={props.onStartSteamQR}
-            onSubmitSteamGuard={props.onSubmitSteamGuard}
-            onDisconnect={props.onDisconnect}
-            onToast={props.onToast}
+        connection={props.connection}
+        initialUsername={props.accountUsername}
+        onConnect={props.onConnect}
+        onStartSteamQR={props.onStartSteamQR}
+        onSubmitSteamGuard={props.onSubmitSteamGuard}
+        onDisconnect={props.onDisconnect}
+        onToast={props.onToast}
           />
         </Match>
         <Match when={isInventoryScreen(props.view)}>
           <InventoryView
 			mode={isInventoryScreen(props.view) ? props.view : "inventory"}
-            inventory={props.inventory}
-            loading={props.inventoryLoading}
-            selectedItemId={props.selectedItemId}
-            setSelectedItemId={props.setSelectedItemId}
-            connection={props.connection}
-            settings={props.settings}
-            query={props.query}
-            setQuery={props.setQuery}
-            kindFilter={props.kindFilter}
-            setKindFilter={props.setKindFilter}
-            compactMode={props.compactMode}
-            setCompactMode={props.setCompactMode}
-            onRefresh={props.onInventoryRefresh}
-            onMarketPreview={props.onMarketPreview}
-            onRename={props.onInventoryRename}
-            onRemoveName={props.onRemoveName}
-            onOpenContainer={props.onOpenContainer}
-            onToast={props.onToast}
+        inventory={props.inventory}
+        loading={props.inventoryLoading}
+        selectedItemId={props.selectedItemId}
+        setSelectedItemId={props.setSelectedItemId}
+        connection={props.connection}
+        settings={props.settings}
+        query={props.query}
+        setQuery={props.setQuery}
+        kindFilter={props.kindFilter}
+        setKindFilter={props.setKindFilter}
+        compactMode={props.compactMode}
+        setCompactMode={props.setCompactMode}
+        onRefresh={props.onInventoryRefresh}
+        onMarketPreview={props.onMarketPreview}
+        onRename={props.onInventoryRename}
+        onRemoveName={props.onRemoveName}
+        onOpenContainer={props.onOpenContainer}
+        onToast={props.onToast}
           />
         </Match>
         <Match when={isEconomyInventoryScreen(props.view)}>
           <GameInventoryView
 			game={props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2"}
-            snapshot={props.view === "steam-inventory" ? props.steamInventory : props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
-            query={props.query}
-            selectedAssetId={props.selectedItemId}
-            setSelectedAssetId={props.setSelectedItemId}
-            compactMode={props.compactMode}
-            onRefresh={() => props.onGameInventoryRefresh(props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2")}
+        snapshot={props.view === "steam-inventory" ? props.steamInventory : props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
+        query={props.query}
+        selectedAssetId={props.selectedItemId}
+        setSelectedAssetId={props.setSelectedItemId}
+        compactMode={props.compactMode}
+        onRefresh={() => props.onGameInventoryRefresh(props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2")}
           />
         </Match>
         <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onMarketPreview={props.onMarketPreview} onRedeem={props.onArmoryRedeem} /></Match>

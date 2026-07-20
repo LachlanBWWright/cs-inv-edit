@@ -117,10 +117,10 @@ export function createWasmBackendClient(): AppBackendClient {
       const raw = runtime?.health?.();
       if (raw) {
         const decoded = fromThrowable(JSON.parse, (cause) => createAppError("Invalid WASM health JSON", undefined, cause))(raw)
-          .andThen((value) => {
-            const parsed = healthStatusSchema.safeParse(value);
-            return parsed.success ? ok(parsed.data) : err(createAppError(`Invalid WASM health payload: ${parsed.error.message}`));
-          });
+        .andThen((value) => {
+        const parsed = healthStatusSchema.safeParse(value);
+        return parsed.success ? ok(parsed.data) : err(createAppError(`Invalid WASM health payload: ${parsed.error.message}`));
+        });
         return decoded.match((value) => value, () => ({ status: "error", service: "cs2-wasm-backend", version: "0.0.0", time: new Date().toISOString() }));
       }
       return { status: "ok", service: "cs2-wasm-backend", version: "0.0.0", time: new Date().toISOString() };

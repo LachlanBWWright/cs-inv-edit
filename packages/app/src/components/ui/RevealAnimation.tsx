@@ -40,6 +40,43 @@ export function generateRevealMiss(item: RevealItem, random = Math.random): Reve
   };
 }
 
+function ModeContent(props: RevealAnimationProps & { count: number; revealed: boolean; rolling: boolean; reel: RevealItem[]; travel: { duration: number; offset: number } }) {
+  if (props.immediate) {
+    return <div class="reveal-countdown"><ResultCard item={props.result} /></div>;
+  }
+
+  if (props.mode === "countdown") {
+    return (
+      <div class="reveal-countdown">
+        {props.revealed ? <ResultCard item={props.result} /> : <span>{props.count}</span>}
+      </div>
+    );
+  }
+
+  if (props.mode === "slot-machine") {
+    return (
+      <>
+        <div class="reveal-window">
+          <div class="reveal-marker" />
+          <div
+        class="reveal-reel"
+        classList={{ "is-rolling": props.rolling }}
+        style={{
+        "--reveal-duration": `${props.travel.duration}ms`,
+        "--reveal-offset": `${props.travel.offset}px`,
+        }}
+          >
+            <For each={props.reel}>{(item) => <ResultCard item={item} compact />}</For>
+          </div>
+        </div>
+        <Show when={props.revealed}><p class="reveal-result-name">{props.result.name}</p></Show>
+      </>
+    );
+  }
+
+  return null;
+}
+
 export function RevealAnimation(props: RevealAnimationProps) {
   const [count, setCount] = createSignal(3);
   const [revealed, setRevealed] = createSignal(false);
@@ -62,10 +99,6 @@ export function RevealAnimation(props: RevealAnimationProps) {
       timers.push(window.setTimeout(() => setRevealed(true), 3000));
       timers.push(window.setTimeout(props.onComplete, 4300));
     } else if (props.mode === "slot-machine") {
-      // Vary both how much of the reel passes the marker and where the marker
-      // stops within the winning card. The square-root transform produces a
-      // U-shaped distribution: borders are more likely, but the centre remains
-      // possible, and the marker never targets the gap between cards.
       const leadItems = 22 + Math.floor(Math.random() * 30);
       const tailItems = 4;
       const nextReel = Array.from({ length: leadItems + tailItems + 1 }, () => generateRevealMiss(randomRevealCandidate(props.candidates, props.result)));
@@ -88,33 +121,8 @@ export function RevealAnimation(props: RevealAnimationProps) {
       <Show when={props.open && (props.mode !== "none" || props.immediate)}>
         <div class="reveal-overlay" role="dialog" aria-modal="true" aria-label={props.title}>
           <div class="reveal-panel">
-          <p class="reveal-eyebrow">{props.title}</p>
-          <Show when={props.immediate}>
-            <div class="reveal-countdown"><ResultCard item={props.result} /></div>
-          </Show>
-          <Show when={props.mode === "countdown"}>
-            <div class="reveal-countdown">
-              <Show when={!revealed()} fallback={<ResultCard item={props.result} />}>
-                <span>{count()}</span>
-              </Show>
-            </div>
-          </Show>
-          <Show when={props.mode === "slot-machine"}>
-            <div class="reveal-window">
-              <div class="reveal-marker" />
-              <div
-                class="reveal-reel"
-                classList={{ "is-rolling": rolling() }}
-                style={{
-                  "--reveal-duration": `${travel().duration}ms`,
-                  "--reveal-offset": `${travel().offset}px`,
-                }}
-              >
-                <For each={reel()}>{(item) => <ResultCard item={item} compact />}</For>
-              </div>
-            </div>
-            <Show when={revealed()}><p class="reveal-result-name">{props.result.name}</p></Show>
-          </Show>
+            <p class="reveal-eyebrow">{props.title}</p>
+            <ModeContent count={count()} revealed={revealed()} rolling={rolling()} reel={reel()} travel={travel()} {...props} />
           </div>
         </div>
       </Show>

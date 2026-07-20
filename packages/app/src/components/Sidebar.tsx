@@ -44,11 +44,11 @@ export function Sidebar(props: SidebarProps) {
       <Show when={props.view !== "account"}><label class="relative shrink-0">
         <span class="sr-only">Mode</span>
         <select
-          aria-label="Mode"
-          class="h-9 min-w-32 cursor-pointer appearance-auto rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-medium text-slate-100 hover:border-cyan-400/50"
-          value={props.view === "account" ? modeForScreen(props.view) : props.view}
-          onInput={(event) => chooseMode(event.currentTarget.value as AppMode)}
-          onChange={(event) => chooseMode(event.currentTarget.value as AppMode)}
+        aria-label="Mode"
+        class="h-9 min-w-32 cursor-pointer appearance-auto rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-medium text-slate-100 hover:border-cyan-400/50"
+        value={props.view === "account" ? modeForScreen(props.view) : props.view}
+        onInput={(event) => chooseMode(event.currentTarget.value as AppMode)}
+        onChange={(event) => chooseMode(event.currentTarget.value as AppMode)}
         >
 		  <For each={availableModes(props.settings?.featureFlags)}>{(mode) => <option value={mode}>{modeLabel[mode]}</option>}</For>
         </select>

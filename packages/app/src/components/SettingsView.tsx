@@ -65,7 +65,7 @@ export function SettingsView(props: SettingsViewProps) {
       const existing = collections.get(item.collection) ?? [];
       for (const collectionItem of item.collectionItems) {
         if (!existing.some((candidate) => candidate.name === (collectionItem.marketName || collectionItem.name))) {
-          existing.push({ name: collectionItem.marketName || collectionItem.name, imageUrl: collectionItem.imageUrl, rarity: collectionItem.rarity, kind: collectionItem.kind, wear: collectionItem.paintWear, wearMin: collectionItem.wearMin, wearMax: collectionItem.wearMax });
+        existing.push({ name: collectionItem.marketName || collectionItem.name, imageUrl: collectionItem.imageUrl, rarity: collectionItem.rarity, kind: collectionItem.kind, wear: collectionItem.paintWear, wearMin: collectionItem.wearMin, wearMax: collectionItem.wearMax });
         }
       }
       collections.set(item.collection, existing);
@@ -115,10 +115,10 @@ export function SettingsView(props: SettingsViewProps) {
         </div>
         <div class="flex gap-2">
           <button class="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-200" onClick={() => props.onRefresh()}>
-            Reload
+        Reload
           </button>
           <button class="rounded-full border border-cyan-500/30 bg-cyan-600/80 px-3 py-2 text-sm font-medium text-white" onClick={() => void save()}>
-            Save
+        Save
           </button>
         </div>
       </div>
@@ -146,7 +146,7 @@ export function SettingsView(props: SettingsViewProps) {
                   </Show>
                 </Select>
               </label>
-            )}</For>
+        )}</For>
           </div>
           <div class="mt-4 border-t border-slate-800 pt-3">
             <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Debug previews</p>
@@ -196,12 +196,12 @@ export function SettingsView(props: SettingsViewProps) {
           <h4 class="text-sm font-semibold text-slate-100">Feature flags</h4>
           <div class="mt-3 space-y-2 text-sm text-slate-400">
             <For each={featureEntries()}>
-              {(entry) => (
+        {(entry) => (
                 <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
                   <span class="text-slate-200">{featureLabel(entry[0])}</span>
                   <input type="checkbox" checked={entry[1]} onChange={(event) => setFeature(entry[0], (event.currentTarget as HTMLInputElement | null)?.checked ?? false)} />
                 </label>
-              )}
+        )}
             </For>
           </div>
         </section>

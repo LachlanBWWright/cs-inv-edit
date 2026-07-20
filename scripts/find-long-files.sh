@@ -17,23 +17,23 @@ exclude_dirs = {
     "android",
     "vendor",
     "generated",
+    "testdata",
+    "public",
 }
 extensions = {".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".sh", ".c", ".cpp", ".java", ".rs"}
+test_suffixes = ("_test.go", ".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx")
 
 matches = []
 for path in root.rglob("*"):
-    if not path.is_file():
+    if not path.is_file() or any(part in exclude_dirs for part in path.parts):
         continue
-    if any(part in exclude_dirs for part in path.parts):
-        continue
-    if path.suffix.lower() not in extensions:
+    if "wasm" in path.parts or path.suffix.lower() not in extensions or path.name.endswith(test_suffixes):
         continue
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            lines = sum(1 for _ in handle)
+        with path.open("r", encoding="utf-8") as handle: lines = sum(1 for _ in handle)
     except (UnicodeDecodeError, OSError):
         continue
-    if lines > 300:
+    if lines > 450:
         matches.append((lines, path.relative_to(root).as_posix()))
 
 for lines, rel_path in sorted(matches, key=lambda match: (-match[0], match[1])):

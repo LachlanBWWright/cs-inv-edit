@@ -84,7 +84,7 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
               <h2>Trade Up Contract</h2>
               <Show when={phase() === "contract"} fallback={
                 <div class="contract-result"><p>Contract accepted</p><strong>{props.result.name}</strong><Show when={props.result.imageUrl}><img src={props.result.imageUrl} alt="" /></Show><button type="button" onClick={props.onComplete}>Done</button></div>
-              }>
+        }>
                 <p class="contract-copy">I hereby relinquish the submitted items in exchange for one item of superior grade. Sign within the field below to authorize this contract.</p>
                 <div class="contract-rule" />
                 <p class="contract-sign-label">Authorized signature</p>

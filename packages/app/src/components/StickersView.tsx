@@ -36,7 +36,7 @@ export function StickersView(props: StickersViewProps) {
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <For each={stickerItems()}>
-          {(item) => (
+        {(item) => (
             <article class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm">
               <h3 class="font-semibold text-slate-100">{item.name}</h3>
               <p class="mt-2 text-sm text-slate-400">Read-only preview for sticker assets.</p>
@@ -44,7 +44,7 @@ export function StickersView(props: StickersViewProps) {
                 <button class="rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-400/40" onClick={() => runOperation("stickers.extract")}>Extract</button>
               </div>
             </article>
-          )}
+        )}
         </For>
       </div>
     </div>

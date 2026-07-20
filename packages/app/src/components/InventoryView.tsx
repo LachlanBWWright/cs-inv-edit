@@ -192,29 +192,29 @@ export function InventoryView(props: InventoryViewProps) {
       if (typeof receipt === "object" && receipt && "state" in receipt && receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation") {
         const message = "message" in receipt && typeof receipt.message === "string" ? receipt.message : "Container open request was not accepted.";
         const responseBody =
-          "result" in receipt && typeof receipt.result === "object" && receipt.result && "responseBodyHex" in receipt.result && typeof receipt.result.responseBodyHex === "string"
-            ? ` Response body: ${receipt.result.responseBodyHex}`
-            : "";
+        "result" in receipt && typeof receipt.result === "object" && receipt.result && "responseBodyHex" in receipt.result && typeof receipt.result.responseBodyHex === "string"
+        ? ` Response body: ${receipt.result.responseBodyHex}`
+        : "";
         setContainerStatusMessage(`${message}${responseBody}`);
       } else {
         const openedItem =
-          typeof receipt === "object" && receipt && "result" in receipt && typeof receipt.result === "object" && receipt.result && "openedItem" in receipt.result
-            ? (receipt.result.openedItem as InventoryItemDto | undefined)
-            : undefined;
+        typeof receipt === "object" && receipt && "result" in receipt && typeof receipt.result === "object" && receipt.result && "openedItem" in receipt.result
+        ? (receipt.result.openedItem as InventoryItemDto | undefined)
+        : undefined;
         const message = openedItem
-          ? `Received ${itemDisplayName(openedItem)}.`
-          : typeof receipt === "object" && receipt && "message" in receipt && typeof receipt.message === "string"
-            ? receipt.message
-            : "Container opened and inventory was reconciled.";
+        ? `Received ${itemDisplayName(openedItem)}.`
+        : typeof receipt === "object" && receipt && "message" in receipt && typeof receipt.message === "string"
+        ? receipt.message
+        : "Container opened and inventory was reconciled.";
         if (openedItem) {
-          await playReveal(
-            { name: itemDisplayName(openedItem), imageUrl: openedItem.imageUrl, rarity: openedItem.rarity, kind: openedItem.kind, wear: openedItem.paintWear, wearMin: openedItem.paintWearMin, wearMax: openedItem.paintWearMax, isStatTrak: openedItem.isStatTrak },
-            (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, imageUrl: candidate.imageUrl, rarity: candidate.rarity, kind: candidate.kind, wear: candidate.paintWear, wearMin: candidate.wearMin, wearMax: candidate.wearMax, supportsStatTrak: candidate.kind === "weapon_skin" })),
-          );
+        await playReveal(
+        { name: itemDisplayName(openedItem), imageUrl: openedItem.imageUrl, rarity: openedItem.rarity, kind: openedItem.kind, wear: openedItem.paintWear, wearMin: openedItem.paintWearMin, wearMax: openedItem.paintWearMax, isStatTrak: openedItem.isStatTrak },
+        (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, imageUrl: candidate.imageUrl, rarity: candidate.rarity, kind: candidate.kind, wear: candidate.paintWear, wearMin: candidate.wearMin, wearMax: candidate.wearMax, supportsStatTrak: candidate.kind === "weapon_skin" })),
+        );
         }
         setContainerStatusMessage(message);
         if (openedItem?.id) {
-          props.setSelectedItemId(openedItem.id);
+        props.setSelectedItemId(openedItem.id);
         }
       }
     }, (error) => setContainerStatusMessage(appErrorMessage(error, "Failed to open container.")));

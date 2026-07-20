@@ -25,9 +25,9 @@ export function createInventoryRefresher(input: {
       .match(
         () => false,
         (error) => {
-          console.error("[app] inventory refresh failed", error);
-          input.pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, "Unable to refresh inventory"), variant: "danger" });
-          return true;
+        console.error("[app] inventory refresh failed", error);
+        input.pushToast({ title: "Inventory refresh failed", description: appErrorMessage(error, "Unable to refresh inventory"), variant: "danger" });
+        return true;
         },
       )
       .finally(() => {

@@ -105,8 +105,8 @@ func MessageNameForEMsg(emsg uint32) (string, bool) {
 			candidate := "CMsg" + strings.TrimPrefix(valueName, "k_EMsg")
 			if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
 				if _, ok := descriptor.(protoreflect.MessageDescriptor); ok {
-					found = candidate
-					return false
+				found = candidate
+				return false
 				}
 			}
 		}
