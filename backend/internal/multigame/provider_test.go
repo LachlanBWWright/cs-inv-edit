@@ -87,11 +87,13 @@ func TestLoadRejectsCommunityAppIDMismatch(t *testing.T) {
 
 func TestSteamInventoryUsesApp753Context6AsAuthoritativeOwnership(t *testing.T) {
 	var requestedPath string
+	var requestedCount string
 	var loginCookie *http.Cookie
 	provider := NewProvider()
 	provider.communityBase = "https://inventory.test"
 	provider.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requestedPath = request.URL.Path
+		requestedCount = request.URL.Query().Get("count")
 		loginCookie, _ = request.Cookie("steamLoginSecure")
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{
 			"success":1,
@@ -106,7 +108,10 @@ func TestSteamInventoryUsesApp753Context6AsAuthoritativeOwnership(t *testing.T) 
 	if requestedPath != "/inventory/7656119/753/6" {
 		t.Fatalf("path=%q, want Steam Community context 6", requestedPath)
 	}
-	if loginCookie == nil || loginCookie.Value != "7656119||web-token" {
+	if requestedCount != "2000" {
+		t.Fatalf("count=%q, want Steam-supported page size 2000", requestedCount)
+	}
+	if loginCookie == nil || loginCookie.Value != "7656119%7C%7Cweb-token" {
 		t.Fatalf("authenticated Steam cookie=%#v", loginCookie)
 	}
 	if len(snapshot.Items) != 1 || snapshot.Items[0].Name != "Test Emoticon" || snapshot.Items[0].Quantity != 2 || snapshot.Items[0].ContextID != "6" {

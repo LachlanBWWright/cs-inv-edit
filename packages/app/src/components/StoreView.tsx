@@ -120,7 +120,7 @@ export function StoreView(props: {
               <div class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-black/40 p-3 font-mono text-[11px] leading-5 text-slate-300">
                 <For each={session()?.diagnostics ?? outgoingTrace()}>{(line) => <div>{line}</div>}</For>
               </div>
-              <Button class="mt-3" variant="secondary" onClick={() => void navigator.clipboard.writeText((session()?.diagnostics ?? outgoingTrace()).join("\n"))}>Copy raw trace</Button>
+              <Button class="mt-3" variant="secondary" onClick={() => void globalThis.navigator.clipboard.writeText((session()?.diagnostics ?? outgoingTrace()).join("\n"))}>Copy raw trace</Button>
             </details>
           </section>
         </Show>

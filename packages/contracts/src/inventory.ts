@@ -148,6 +148,7 @@ export interface SteamTradeItemDto {
 
 export interface SteamTradeDto {
   id: string; direction: "received" | "sent" | "history"; partnerSteamId: string;
+  partnerName?: string; partnerAvatarUrl?: string; partnerProfileUrl?: string;
   message?: string; state: string; createdAt?: string; updatedAt?: string; expiresAt?: string;
   itemsToGive: SteamTradeItemDto[]; itemsToReceive: SteamTradeItemDto[];
 }

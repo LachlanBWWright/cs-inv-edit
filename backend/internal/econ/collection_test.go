@@ -9,21 +9,33 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
   "items"
   {
     "7" { "name" "weapon_ak47" "item_name" "#AK47" "item_rarity" "rare" }
-    "4001" { "name" "crate_test" "item_name" "#Crate" "item_class" "supply_crate" "loot_list_name" "crate_test_list" }
+	"1209" { "name" "sticker" "item_name" "#Sticker" "item_class" "sticker" }
+	"1348" { "name" "spray" "item_name" "#Graffiti" "item_class" "tool" "tool" { "type" "spray" } }
+	"4001" { "name" "crate_test" "item_name" "#Crate" "item_class" "supply_crate" "loot_list_name" "crate_test_list" }
+	"4002" { "name" "sticker_capsule_test" "item_name" "#StickerCapsule" "item_class" "supply_crate" "attributes" { "set supply crate series" { "value" "501" } } }
+	"4003" { "name" "graffiti_capsule_test" "item_name" "#GraffitiCapsule" "item_class" "supply_crate" "attributes" { "set supply crate series" { "value" "502" } } }
   }
   "paint_kits" { "101" { "name" "cu_test" "description_tag" "#TestFinish" } }
   "paint_kits_rarity" { "101" "mythical" }
+	"sticker_kits"
+	{
+	  "201" { "name" "sticker_test" "item_name" "#StickerTest" "item_rarity" "rare" }
+	  "202" { "name" "spray_test" "item_name" "#GraffitiTest" "item_rarity" "rare" }
+	}
   "item_sets" { "set_test" { "name" "#TestCollection" "items" { "[cu_test]weapon_ak47" "1" } } }
   "client_loot_lists"
   {
     "crate_test_list" { "nested_test_list" "1" }
     "nested_test_list" { "[cu_test]weapon_ak47" "1" }
+	"sticker_capsule_list" { "[sticker_test]sticker" "1" }
+	"graffiti_capsule_list" { "[spray_test]spray" "1" }
   }
+	"revolving_loot_lists" { "501" "sticker_capsule_list" "502" "graffiti_capsule_list" }
 }`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	localization, err := parseKeyValues(`"lang" { "Tokens" { "AK47" "AK-47" "Crate" "Test Case" "TestFinish" "Test Finish" "TestCollection" "The Test Collection" } }`)
+	localization, err := parseKeyValues(`"lang" { "Tokens" { "AK47" "AK-47" "Crate" "Test Case" "Sticker" "Sticker" "Graffiti" "Graffiti" "StickerCapsule" "Test Sticker Capsule" "GraffitiCapsule" "Test Graffiti Capsule" "StickerTest" "Test Sticker" "GraffitiTest" "Test Graffiti" "TestFinish" "Test Finish" "TestCollection" "The Test Collection" } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +55,14 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
 	container := schema.Metadata(4001, 0, nil)
 	if len(container.ContainerItems) != 1 || container.ContainerItems[0].MarketName != "AK-47 | Test Finish" {
 		t.Fatalf("container contents = %#v", container.ContainerItems)
+	}
+	stickerCapsule := schema.Metadata(4002, 0, nil)
+	if len(stickerCapsule.ContainerItems) != 1 || stickerCapsule.ContainerItems[0].MarketName != "Sticker | Test Sticker" {
+		t.Fatalf("sticker capsule contents = %#v", stickerCapsule.ContainerItems)
+	}
+	graffitiCapsule := schema.Metadata(4003, 0, nil)
+	if len(graffitiCapsule.ContainerItems) != 1 || graffitiCapsule.ContainerItems[0].MarketName != "Sealed Graffiti | Test Graffiti" {
+		t.Fatalf("graffiti capsule contents = %#v", graffitiCapsule.ContainerItems)
 	}
 }
 

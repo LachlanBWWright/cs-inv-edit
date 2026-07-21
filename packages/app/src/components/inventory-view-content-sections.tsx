@@ -1,13 +1,15 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import type { InventoryItemDto, InventorySnapshot, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
+import type { InventoryItemDto, InventorySnapshot } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { compactItemMeta, compactItemName, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass, type InventorySort } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
 import { TradeLockIndicator } from "./TradeLockIndicator.js";
 import { WearRangeBar } from "./ui/WearRangeBar.js";
-import { LoadingProgress, type LoadingStage } from "./ui/LoadingProgress.js";
+import type { LoadingStage } from "./ui/LoadingProgress.js";
+import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
+import { PullToRefresh } from "./ui/PullToRefresh.js";
 
 const inventoryLoadingStages: readonly LoadingStage[] = [
   { afterSeconds: 0, label: "Contacting the CS2 Game Coordinator", detail: "Requesting the authoritative owned-item SOCache for this Steam account." },
@@ -18,6 +20,7 @@ const inventoryLoadingStages: readonly LoadingStage[] = [
 ];
 
 export interface InventoryFiltersProps {
+  class?: string;
   kindFilter: "all" | InventoryItemDto["kind"];
   rarityFilter: string;
   weaponFilter: string;
@@ -35,7 +38,7 @@ export interface InventoryFiltersProps {
 
 export function InventoryFilters(props: InventoryFiltersProps) {
   return (
-    <div class="flex flex-wrap gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+    <div class={props.class ?? "flex flex-wrap gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3"}>
       <label><span class="sr-only">Item type</span><select aria-label="Item type" class="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.kindFilter} onInput={(event) => props.onKindFilterChange(event.currentTarget.value as "all" | InventoryItemDto["kind"])}><option value="all">All types</option><For each={["weapon_skin", "sticker_item", "container", "storage_unit", "tool_item", "cs2_econ_item", "unknown"] as const}>{(kind) => <option value={kind}>{itemKindLabel(kind)}</option>}</For></select></label>
       <label><span class="sr-only">Rarity tier</span><select aria-label="Rarity tier" class="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.rarityFilter} onInput={(event) => props.onRarityFilterChange(event.currentTarget.value)}><option value="all">All rarities</option><For each={props.rarityOptions}>{(rarity) => <option value={rarity}>{rarity}</option>}</For></select></label>
       <label><span class="sr-only">Weapon</span><select aria-label="Weapon" class="h-9 max-w-48 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.weaponFilter} onInput={(event) => props.onWeaponFilterChange(event.currentTarget.value)}><option value="all">All weapons</option><For each={props.weaponOptions}>{(weapon) => <option value={weapon}>{weapon}</option>}</For></select></label>
@@ -54,6 +57,7 @@ export interface InventoryGridProps {
   selectedItemIds: string[];
   compactMode: "icons" | "concise" | "detailed";
   onSelectItem: (item: InventoryItemDto) => void;
+  onRefresh: () => void;
   detailsPanel: JSX.Element;
 }
 
@@ -114,7 +118,7 @@ export function InventoryGrid(props: InventoryGridProps) {
 
   return (
     <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
-      <div class="min-h-0 overflow-y-auto pr-1">
+      <PullToRefresh class="min-h-0 overflow-y-auto pr-1" onRefresh={props.onRefresh}>
         <Show when={props.filteredItems.length > 0} fallback={<InventoryEmptyState inventory={props.inventory} inventoryLoading={props.inventoryLoading} />}>
           <div class="grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))" }}>
             <For each={props.filteredItems}>{(item) => (
@@ -126,7 +130,7 @@ export function InventoryGrid(props: InventoryGridProps) {
         )}</For>
           </div>
         </Show>
-      </div>
+      </PullToRefresh>
       <div class="min-h-0 overflow-hidden">
         {props.detailsPanel}
       </div>
@@ -136,11 +140,9 @@ export function InventoryGrid(props: InventoryGridProps) {
 
 function InventoryEmptyState(props: { inventory: InventorySnapshot | undefined; inventoryLoading: boolean }) {
   return (
-    <Alert class="flex h-full min-h-48 items-center justify-center">
-      <Show when={props.inventoryLoading} fallback={<p>No inventory items are loaded.</p>}>
-        <LoadingProgress active={props.inventoryLoading} title="Loading CS2 inventory" stages={inventoryLoadingStages} currentStage={props.inventory?.message} />
-      </Show>
-    </Alert>
+    <Show when={props.inventoryLoading} fallback={<Alert class="flex h-full min-h-48 items-center justify-center"><p>No inventory items are loaded.</p></Alert>}>
+      <InventoryLoadingState active={props.inventoryLoading} title="Loading CS2 inventory" stages={inventoryLoadingStages} currentStage={props.inventory?.message} />
+    </Show>
   );
 }
 

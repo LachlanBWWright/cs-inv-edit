@@ -32,7 +32,7 @@ const patchedNeverthrow = fixupPluginRules({
 
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "backend/**", "**/*.d.ts", "**/coverage/**", "**/*.config.{ts,js,mjs,cjs}", "**/vite.config.ts", "**/vitest.config.ts", "apps/desktop/src/renderer/**", "apps/desktop/src/preload/**"],
+    ignores: ["**/dist/**", "**/node_modules/**", "backend/**", "**/*.d.ts", "**/coverage/**", "**/*.config.{ts,js,mjs,cjs}", "**/vite.config.ts", "**/vitest.config.ts"],
   },
   {
     files: ["packages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}"],
@@ -48,12 +48,16 @@ export default [
         tsconfigRootDir,
       },
       globals: {
+        __dirname: "readonly",
+        __filename: "readonly",
         clearInterval: "readonly",
         clearTimeout: "readonly",
         console: "readonly",
         document: "readonly",
         fetch: "readonly",
+        module: "readonly",
         process: "readonly",
+        require: "readonly",
         setInterval: "readonly",
         setTimeout: "readonly",
         window: "readonly",

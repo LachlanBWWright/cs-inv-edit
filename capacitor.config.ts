@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 const config: CapacitorConfig = {
   appId: 'com.lachlanbwwright.csinvedit',
   appName: 'CS Inventory Edit',
-  webDir: 'dist',
+  webDir: 'apps/web/dist',
   server: {
     androidScheme: 'https',
   },

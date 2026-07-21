@@ -17,7 +17,7 @@ function SelectedItemContent(props: { selected: InventoryItemDto; panelProps: In
         <WearRangeBar wear={props.selected.paintWear!} min={props.selected.paintWearMin} max={props.selected.paintWearMax} />
       </Show>
       <TradeUpOutcomes selected={props.selected} />
-      <ActionBar selected={props.selected} pending={props.panelProps.pending} canOpenContainer={props.panelProps.canOpenContainer} canUseNameTagOn={props.panelProps.canUseNameTagOn} compatibleContainerKey={props.panelProps.compatibleContainerKey} containerStatusMessage={props.panelProps.containerStatusMessage} onOpenContainer={props.panelProps.onOpenContainer} onOpenRenameEditor={props.panelProps.onOpenRenameEditor} onRemoveName={props.panelProps.onRemoveName} onShowContents={props.panelProps.onShowContents ?? (() => undefined)} />
+      <ActionBar selected={props.selected} pending={props.panelProps.pending} canOpenContainer={props.panelProps.canOpenContainer} canUseNameTagOn={props.panelProps.canUseNameTagOn} compatibleContainerKey={props.panelProps.compatibleContainerKey} compatibleContainerKeys={props.panelProps.compatibleContainerKeys} selectedContainerKeyId={props.panelProps.selectedContainerKeyId} containerStatusMessage={props.panelProps.containerStatusMessage} onOpenContainer={props.panelProps.onOpenContainer} onOpenRenameEditor={props.panelProps.onOpenRenameEditor} onRemoveName={props.panelProps.onRemoveName} onShowContents={props.panelProps.onShowContents ?? (() => undefined)} onSelectedContainerKeyChange={props.panelProps.onSelectedContainerKeyChange} />
       <RenameEditor selected={props.selected} renameOpen={props.panelProps.renameOpen} draftName={props.panelProps.draftName} nameTagTools={props.panelProps.nameTagTools} pending={props.panelProps.pending} selectedToolId={props.panelProps.selectedToolId} onRenameSubmit={props.panelProps.onRenameSubmit} onCloseRename={props.panelProps.onCloseRename} onDraftNameChange={props.panelProps.onDraftNameChange} onSelectedToolChange={props.panelProps.onSelectedToolChange} />
       <DiagnosticsPanel selected={props.selected} inventoryDebugEnabled={props.panelProps.inventoryDebugEnabled} />
     </div>
@@ -89,6 +89,8 @@ export interface InventoryDetailsPanelProps {
   inventoryDebugEnabled: boolean;
   nameTagTools: InventoryItemDto[];
   compatibleContainerKey: InventoryItemDto | undefined;
+  compatibleContainerKeys: InventoryItemDto[];
+  selectedContainerKeyId: string;
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
   containerStatusMessage: string;
@@ -100,6 +102,7 @@ export interface InventoryDetailsPanelProps {
   onCloseRename: () => void;
   onDraftNameChange: (value: string) => void;
   onSelectedToolChange: (value: string) => void;
+  onSelectedContainerKeyChange: (value: string) => void;
   selectedMarketPreview?: RelatedItemDto;
   selectedMarketLoading?: boolean;
   onOpenCollection?: (title: string, items: RelatedItemDto[], context: RelatedItemPreviewContext) => void;

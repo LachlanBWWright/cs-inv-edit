@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactItemMeta, compactItemName, itemWeaponName, rarityBorderClass, resolveSelectedInventoryItem, sortInventoryItems, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
+import { compactItemMeta, compactItemName, isOpenableContainer, itemWeaponName, rarityBorderClass, resolveSelectedInventoryItem, sortInventoryItems, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 
 describe("rarityBorderClass", () => {
   it("maps common CS2 rarity tiers to distinct border colors", () => {
@@ -51,6 +51,18 @@ describe("sortRelatedItemsByRarity", () => {
   it("sorts collection previews from highest to lowest rarity", () => {
     const sorted = sortRelatedItemsByRarity([{ name: "Common", rarity: "common" }, { name: "Ancient", rarity: "ancient" }, { name: "Rare", rarity: "rare" }]);
     expect(sorted.map((item) => item.name)).toEqual(["Ancient", "Rare", "Common"]);
+  });
+});
+
+describe("isOpenableContainer", () => {
+  it("keeps the action available when a live description mislabels a capsule", () => {
+    const capsule = { id: "capsule", name: "Sticker | Sticker Name", kind: "sticker_item", containerItems: [{ name: "Sticker" }] } as never;
+    expect(isOpenableContainer(capsule)).toBe(true);
+  });
+
+  it("recognizes keyless graffiti boxes by name", () => {
+    const box = { id: "box", name: "Community Graffiti Box 1", kind: "tool_item" } as never;
+    expect(isOpenableContainer(box)).toBe(true);
   });
 });
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,16 +33,19 @@ type Snapshot struct {
 }
 
 type Trade struct {
-	ID             string `json:"id"`
-	Direction      string `json:"direction"`
-	PartnerSteamID string `json:"partnerSteamId"`
-	Message        string `json:"message,omitempty"`
-	State          string `json:"state"`
-	CreatedAt      string `json:"createdAt,omitempty"`
-	UpdatedAt      string `json:"updatedAt,omitempty"`
-	ExpiresAt      string `json:"expiresAt,omitempty"`
-	ItemsToGive    []Item `json:"itemsToGive"`
-	ItemsToReceive []Item `json:"itemsToReceive"`
+	ID                string `json:"id"`
+	Direction         string `json:"direction"`
+	PartnerSteamID    string `json:"partnerSteamId"`
+	PartnerName       string `json:"partnerName,omitempty"`
+	PartnerAvatarURL  string `json:"partnerAvatarUrl,omitempty"`
+	PartnerProfileURL string `json:"partnerProfileUrl,omitempty"`
+	Message           string `json:"message,omitempty"`
+	State             string `json:"state"`
+	CreatedAt         string `json:"createdAt,omitempty"`
+	UpdatedAt         string `json:"updatedAt,omitempty"`
+	ExpiresAt         string `json:"expiresAt,omitempty"`
+	ItemsToGive       []Item `json:"itemsToGive"`
+	ItemsToReceive    []Item `json:"itemsToReceive"`
 }
 
 type Item struct {
@@ -55,6 +59,13 @@ type Item struct {
 	ImageURL   string `json:"imageUrl,omitempty"`
 	Tradable   bool   `json:"tradable"`
 	Marketable bool   `json:"marketable"`
+}
+
+type playerSummary struct {
+	SteamID    string `json:"steamid"`
+	Name       string `json:"personaname"`
+	AvatarURL  string `json:"avatarfull"`
+	ProfileURL string `json:"profileurl"`
 }
 
 type apiAsset struct {
@@ -100,7 +111,7 @@ func scalar(raw json.RawMessage) string {
 type description struct {
 	AppID                                                    uint32 `json:"appid"`
 	ClassID, InstanceID, Name, MarketHashName, Type, IconURL string
-	Tradable, Marketable                                     int
+	Tradable, Marketable                                     bool
 }
 
 func (d *description) UnmarshalJSON(data []byte) error {
@@ -113,14 +124,23 @@ func (d *description) UnmarshalJSON(data []byte) error {
 		MarketHashName string          `json:"market_hash_name"`
 		Type           string          `json:"type"`
 		IconURL        string          `json:"icon_url"`
-		Tradable       int             `json:"tradable"`
-		Marketable     int             `json:"marketable"`
+		Tradable       json.RawMessage `json:"tradable"`
+		Marketable     json.RawMessage `json:"marketable"`
 	}
 	if err := json.Unmarshal(data, &w); err != nil {
 		return err
 	}
-	*d = description{w.AppID, scalar(w.ClassID), scalar(w.InstanceID), w.Name, w.MarketHashName, w.Type, w.IconURL, w.Tradable, w.Marketable}
+	*d = description{w.AppID, scalar(w.ClassID), scalar(w.InstanceID), w.Name, w.MarketHashName, w.Type, w.IconURL, boolean(w.Tradable), boolean(w.Marketable)}
 	return nil
+}
+
+func boolean(raw json.RawMessage) bool {
+	var value bool
+	if json.Unmarshal(raw, &value) == nil {
+		return value
+	}
+	numeric, err := strconv.ParseInt(scalar(raw), 10, 64)
+	return err == nil && numeric != 0
 }
 
 type offer struct {
@@ -193,7 +213,63 @@ func (p *Provider) Load(ctx context.Context, accessToken string) (Snapshot, erro
 	}
 	desc := descriptionMap(append(offersEnvelope.Response.Descriptions, historyEnvelope.Response.Descriptions...))
 	out := Snapshot{Status: "ready", Received: mapOffers(offersEnvelope.Response.Received, "received", desc), Sent: mapOffers(offersEnvelope.Response.Sent, "sent", desc), History: mapHistory(historyEnvelope.Response.Trades, desc), RefreshedAt: time.Now().UTC().Format(time.RFC3339)}
+	if err := p.loadPartnerProfiles(ctx, accessToken, &out); err != nil {
+		return Snapshot{}, err
+	}
 	return out, nil
+}
+
+func (p *Provider) loadPartnerProfiles(ctx context.Context, accessToken string, snapshot *Snapshot) error {
+	partnerIDs := uniquePartnerIDs(snapshot)
+	for start := 0; start < len(partnerIDs); start += 100 {
+		end := min(start+100, len(partnerIDs))
+		var envelope struct {
+			Response struct {
+				Players []playerSummary `json:"players"`
+			} `json:"response"`
+		}
+		if err := p.get(ctx, "/ISteamUser/GetPlayerSummaries/v2/", accessToken, url.Values{"steamids": {strings.Join(partnerIDs[start:end], ",")}}, &envelope); err != nil {
+			return fmt.Errorf("load Steam trade partner profiles: %w", err)
+		}
+		profiles := make(map[string]playerSummary, len(envelope.Response.Players))
+		for _, profile := range envelope.Response.Players {
+			profiles[profile.SteamID] = profile
+		}
+		applyPartnerProfiles(snapshot.Received, profiles)
+		applyPartnerProfiles(snapshot.Sent, profiles)
+		applyPartnerProfiles(snapshot.History, profiles)
+	}
+	return nil
+}
+
+func uniquePartnerIDs(snapshot *Snapshot) []string {
+	seen := make(map[string]struct{})
+	ids := make([]string, 0)
+	for _, trades := range [][]Trade{snapshot.Received, snapshot.Sent, snapshot.History} {
+		for _, trade := range trades {
+			if trade.PartnerSteamID == "" {
+				continue
+			}
+			if _, exists := seen[trade.PartnerSteamID]; exists {
+				continue
+			}
+			seen[trade.PartnerSteamID] = struct{}{}
+			ids = append(ids, trade.PartnerSteamID)
+		}
+	}
+	return ids
+}
+
+func applyPartnerProfiles(trades []Trade, profiles map[string]playerSummary) {
+	for index := range trades {
+		profile, ok := profiles[trades[index].PartnerSteamID]
+		if !ok {
+			continue
+		}
+		trades[index].PartnerName = profile.Name
+		trades[index].PartnerAvatarURL = profile.AvatarURL
+		trades[index].PartnerProfileURL = profile.ProfileURL
+	}
 }
 
 func (p *Provider) get(ctx context.Context, path, token string, values url.Values, out any) error {
@@ -235,7 +311,7 @@ func mapAssets(in []apiAsset, desc map[string]description) []Item {
 		if d.IconURL != "" {
 			image = "https://community.cloudflare.steamstatic.com/economy/image/" + d.IconURL
 		}
-		out = append(out, Item{a.AppID, a.ContextID, a.AssetID, amount, d.Name, d.MarketHashName, d.Type, image, d.Tradable != 0, d.Marketable != 0})
+		out = append(out, Item{a.AppID, a.ContextID, a.AssetID, amount, d.Name, d.MarketHashName, d.Type, image, d.Tradable, d.Marketable})
 	}
 	return out
 }

@@ -7,7 +7,7 @@ target="${1:-web}"
 case "$target" in
   web)
     echo "[run.sh] Building backend..."
-    npm run build:backend
+    pnpm build:backend
     
     echo "[run.sh] Cleaning up any old backend processes..."
     pkill -f "cs2-backend" || true
@@ -34,14 +34,14 @@ case "$target" in
     done
     
     echo "[run.sh] Starting Vite dev server..."
-    npm run start-vite -w @cs-inv-edit/web
+    pnpm --filter @cs-inv-edit/web start-vite
     ;;
   desktop)
-    npm run dev:desktop
+    pnpm dev:desktop
     ;;
   wasm-web)
-    npm run build:wasm-backend
-    npm run start-vite -w @cs-inv-edit/web
+    pnpm build:wasm-backend
+    pnpm --filter @cs-inv-edit/web start-vite
     ;;
   *)
     echo "Usage: $0 [web|desktop|wasm-web]" >&2

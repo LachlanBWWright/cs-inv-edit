@@ -25,9 +25,15 @@ function TradeSide(props: { title: string; items: SteamTradeItemDto[]; tone: "gi
 
 function TradeCard(props: { trade: SteamTradeDto; historical?: boolean }) {
   const active = () => props.trade.state === "active" || props.trade.state === "confirmation_required";
+  const profileURL = () => props.trade.partnerProfileUrl || `https://steamcommunity.com/profiles/${props.trade.partnerSteamId}`;
   return <Card class="overflow-hidden p-0">
     <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/80 px-4 py-3">
-      <div><div class="flex flex-wrap items-center gap-2"><span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${active() ? "bg-cyan-400/15 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-400/15 text-emerald-200" : "bg-slate-800 text-slate-300"}`}>{stateLabel(props.trade.state || "unknown")}</span><span class="font-mono text-xs text-slate-500">#{props.trade.id}</span></div><p class="mt-2 text-sm text-slate-300">With <a class="font-mono text-cyan-300 hover:underline" href={`https://steamcommunity.com/profiles/${props.trade.partnerSteamId}`} target="_blank" rel="noopener noreferrer">{props.trade.partnerSteamId}</a></p></div>
+      <div class="flex min-w-0 items-center gap-3">
+        <a class="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900 text-sm font-semibold text-slate-400 transition hover:border-cyan-400/60" href={profileURL()} target="_blank" rel="noopener noreferrer" aria-label={`Open ${props.trade.partnerName || props.trade.partnerSteamId} on Steam`}>
+          <Show when={props.trade.partnerAvatarUrl} fallback={(props.trade.partnerName || "?").slice(0, 1).toUpperCase()}><img class="h-full w-full object-cover" src={props.trade.partnerAvatarUrl} alt="" loading="lazy" /></Show>
+        </a>
+        <div class="min-w-0"><a class="block truncate font-semibold text-cyan-200 hover:text-cyan-100 hover:underline" href={profileURL()} target="_blank" rel="noopener noreferrer">{props.trade.partnerName || "Steam user"}</a><p class="truncate font-mono text-[11px] text-slate-500">{props.trade.partnerSteamId}</p><div class="mt-1 flex flex-wrap items-center gap-2"><span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${active() ? "bg-cyan-400/15 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-400/15 text-emerald-200" : "bg-slate-800 text-slate-300"}`}>{stateLabel(props.trade.state || "unknown")}</span><span class="font-mono text-xs text-slate-500">Trade #{props.trade.id}</span></div></div>
+      </div>
       <div class="text-right text-xs text-slate-500"><p>{dateLabel(props.trade.updatedAt || props.trade.createdAt)}</p><Show when={active() && props.trade.expiresAt}><p class="mt-1 text-amber-300">Expires {dateLabel(props.trade.expiresAt)}</p></Show></div>
     </div>
     <Show when={props.trade.message}><blockquote class="mx-4 mt-3 rounded-xl border-l-2 border-cyan-400/40 bg-slate-900/60 px-3 py-2 text-sm text-slate-300">“{props.trade.message}”</blockquote></Show>
@@ -42,8 +48,8 @@ export function TradesView(props: { snapshot?: SteamTradesSnapshot; onRefresh: (
   const trades = createMemo(() => props.snapshot?.[tab()] ?? []);
   const refresh = async () => { setBusy(true); await props.onRefresh(); setBusy(false); };
   const tabs = [{ id: "received", label: "Incoming", count: () => props.snapshot?.received.length ?? 0 }, { id: "sent", label: "Outgoing", count: () => props.snapshot?.sent.length ?? 0 }, { id: "history", label: "History", count: () => props.snapshot?.history.length ?? 0 }] as const;
-  return <div class="mx-auto flex h-full w-full max-w-[1500px] min-h-0 flex-col">
-    <div class="mb-5 flex flex-wrap items-end justify-between gap-4"><div><p class="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Steam economy</p><h1 class="mt-1 text-2xl font-semibold text-white sm:text-3xl">Trades</h1><p class="mt-2 max-w-2xl text-sm text-slate-400">Inspect active offers and recent trade outcomes. Actions always open Steam for confirmation.</p></div><Button disabled={busy()} onClick={() => void refresh()}>{busy() ? "Refreshing…" : "Refresh trades"}</Button></div>
+  return <div class="flex h-full min-h-0 w-full flex-col">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><h1 class="text-2xl font-semibold text-white">Trades</h1><Button disabled={busy()} onClick={() => void refresh()}>{busy() ? "Refreshing…" : "Refresh trades"}</Button></div>
     <Show when={props.snapshot?.status === "requires_connection"}><Alert><p>Connect a Steam account to view its trade offers.</p><Button class="mt-3" onClick={props.onReconnect}>Connect account</Button></Alert></Show>
     <Show when={props.snapshot?.status === "requires_reauthentication"}><Alert variant="warning"><p>{props.snapshot?.message}</p><Button class="mt-3" onClick={props.onReconnect}>Sign in again</Button></Alert></Show>
     <Show when={props.snapshot?.status === "error"}><Alert variant="danger">{props.snapshot?.message || "Steam could not load trades."}</Alert></Show>

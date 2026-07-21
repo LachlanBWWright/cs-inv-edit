@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-npm run test:frontend
-npm run test:backend
+pnpm test:frontend
+pnpm test:backend

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"reflect"
@@ -231,6 +232,13 @@ func TestDescriptionForGCItemRejectsAmbiguousExactName(t *testing.T) {
 	}
 }
 
+func TestContainerDetectionSurvivesMislabeledCapsuleDescription(t *testing.T) {
+	item := domain.InventoryItem{Name: "Sticker | Sticker Name", Kind: "sticker_item", ContainerItems: []domain.RelatedItem{{Name: "Sticker"}}}
+	if !isContainerLikeInventoryItem(item) {
+		t.Fatal("capsule with authoritative contents was not recognized as a container")
+	}
+}
+
 func TestTradeUpPreviewUsesExteriorQualifiedDescription(t *testing.T) {
 	wear := 0.12797817
 	min, max := 0.0, 1.0
@@ -277,6 +285,26 @@ func TestInventoryItemDiagnosticsDescribeMatchedDescription(t *testing.T) {
 	got := strings.Join(inventoryItemDiagnostics(transport.GCInventoryItem{ID: 123, DefIndex: 36}, econ.Metadata{Name: "P250"}, true, false, nil, nil), "\n")
 	if !strings.Contains(got, "GC identity:") || !strings.Contains(got, "matched by GC asset id or original id") {
 		t.Fatalf("matched item diagnostics = %q", got)
+	}
+}
+
+func TestXRayScannerLoadedCaseDetection(t *testing.T) {
+	loadedCase := transport.GCInventoryItem{DefIndex: 4001, Inventory: 0xc0000005, Quantity: 0}
+	if !isXRayScannerLoadedCase(loadedCase, econ.Metadata{Kind: "container"}) {
+		t.Fatal("expected the zero-quantity scanner case to be excluded")
+	}
+	for name, candidate := range map[string]struct {
+		item     transport.GCInventoryItem
+		metadata econ.Metadata
+	}{
+		"owned case in the same position": {transport.GCInventoryItem{DefIndex: 4001, Inventory: 0xc0000005, Quantity: 1}, econ.Metadata{Kind: "container"}},
+		"ordinary zero-default item":      {transport.GCInventoryItem{DefIndex: 4001, Inventory: 5, Quantity: 0}, econ.Metadata{Kind: "container"}},
+		"sticker in the same position":    {transport.GCInventoryItem{DefIndex: 1209, Inventory: 0xc0000005, Quantity: 0}, econ.Metadata{Kind: "sticker_item"}},
+		"scanner reward position":         {transport.GCInventoryItem{DefIndex: 7, Inventory: 0xc0000004, Quantity: 0}, econ.Metadata{Kind: "weapon_skin"}},
+	} {
+		if isXRayScannerLoadedCase(candidate.item, candidate.metadata) {
+			t.Fatalf("%s was incorrectly identified as the loaded scanner case", name)
+		}
 	}
 }
 
@@ -330,6 +358,23 @@ func TestConnectedTF2InventoryWithoutSnapshotIsWaitingForRefresh(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(snapshot.Message), "connect") {
 		t.Fatalf("connected TF2 snapshot has false connection guidance: %q", snapshot.Message)
+	}
+}
+
+func TestGameInventoryClonePreservesRequiredEmptyTagArray(t *testing.T) {
+	snapshot := cloneGameInventory(domain.GameInventorySnapshot{
+		Game: "tf2", AppID: 440, Status: "ready", Diagnostics: []string{},
+		Items: []domain.EconomyInventoryItem{{Game: "tf2", AppID: 440, AssetID: "1", Name: "Item", Quantity: 1, Tags: []domain.EconomyTag{}}},
+	})
+	if snapshot.Items[0].Tags == nil {
+		t.Fatal("required item tags became nil during clone")
+	}
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), `"tags":[]`) {
+		t.Fatalf("serialized snapshot=%s, want tags array", payload)
 	}
 }
 

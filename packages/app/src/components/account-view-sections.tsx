@@ -46,8 +46,6 @@ export function AccountViewLayout(props: AccountViewLayoutProps) {
   const descriptionText = props.connectionState === "needs_steam_guard"
     ? "Approve the sign-in on your phone, or enter a Steam Guard code below."
     : "Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account.";
-  const signedInMessage = props.accountName ? `Signed in as ${props.accountName}.` : "Your Steam session is active.";
-
   return (
     <div class="mx-auto max-w-4xl">
       <Card class="overflow-hidden">
@@ -178,8 +176,8 @@ function QrSignInPanel(props: QrSignInPanelProps) {
     <section class="flex min-h-72 flex-col items-center border-t border-slate-800 pt-6 text-center md:border-0 md:pt-0" aria-labelledby="qr-sign-in-heading">
       <h3 id="qr-sign-in-heading" class="font-semibold text-slate-100">Sign in with a QR code</h3>
       <p class="mt-2 max-w-64 text-sm text-slate-400">Open the Steam mobile app, choose the QR scanner, and scan this code.</p>
-      <Show when={props.qrImage} fallback={<div class="mt-5 flex h-48 w-48 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/60 px-4 text-sm text-slate-400" role="status" aria-live="polite">{props.qrLoadingText}</div>}>
-        <img class="mt-5 h-48 w-48 rounded-xl bg-white p-2" src={props.qrImage} alt="Steam sign-in QR code" />
+      <Show when={props.qrImage} fallback={<div class="mt-5 flex h-64 w-64 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/60 px-4 text-sm text-slate-400" role="status" aria-live="polite">{props.qrLoadingText}</div>}>
+        <img class="mt-5 h-64 w-64 rounded-xl bg-white p-2" src={props.qrImage} alt="Steam sign-in QR code" />
       </Show>
     </section>
   );

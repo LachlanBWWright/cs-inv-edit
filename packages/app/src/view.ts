@@ -3,6 +3,12 @@ export type EconomyInventoryMode = "steam-inventory" | "tf2-inventory" | "dota2-
 export type AppMode = InventoryMode | EconomyInventoryMode | "armory" | "store" | "trades";
 export type AppScreen = AppMode | "account";
 
+const appModes: readonly AppMode[] = ["inventory", "inventory-storage", "inventory-tradeup", "trades", "armory", "store", "steam-inventory", "tf2-inventory", "dota2-inventory"];
+
+export function isAppMode(value: string | null): value is AppMode {
+	return value !== null && appModes.some((mode) => mode === value);
+}
+
 export function availableModes(flags?: { enableSteamInventory?: boolean; enableTf2Inventory: boolean; enableDota2Inventory: boolean }): AppMode[] {
 	const modes: AppMode[] = ["inventory", "inventory-storage", "inventory-tradeup", "trades", "armory", "store"];
 	if (flags?.enableTf2Inventory) modes.push("tf2-inventory");

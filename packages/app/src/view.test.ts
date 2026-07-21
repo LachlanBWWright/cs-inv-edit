@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { availableModes, enabledModeOrDefault, isEconomyInventoryScreen, isInventoryScreen, modeForScreen, type AppMode } from "./view.js";
+import { availableModes, enabledModeOrDefault, isAppMode, isEconomyInventoryScreen, isInventoryScreen, modeForScreen, type AppMode } from "./view.js";
 
 describe("application mode", () => {
+  it("validates persisted mode identifiers", () => {
+    expect(isAppMode("trades")).toBe(true);
+    expect(isAppMode("steam-inventory")).toBe(true);
+    expect(isAppMode("account")).toBe(false);
+    expect(isAppMode("unknown")).toBe(false);
+    expect(isAppMode(null)).toBe(false);
+  });
   it("includes inventory selection stubs and Armory", () => {
     const modes = ["inventory", "inventory-storage", "inventory-tradeup", "armory", "store", "steam-inventory", "tf2-inventory", "dota2-inventory"] satisfies AppMode[];
     expect(modes).toHaveLength(8);

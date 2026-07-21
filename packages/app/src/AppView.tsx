@@ -1,4 +1,4 @@
-import { Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, Match, Show, Switch } from "solid-js";
 import type {
   ApplyStatTrakSwapRequest,
   ArmoryRedeemRequest,
@@ -39,6 +39,7 @@ import { Alert } from "./components/ui/Alert.js";
 import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js";
 import type { AppScreen } from "./view.js";
 import { isEconomyInventoryScreen, isInventoryScreen } from "./view.js";
+import { itemWeaponName, type InventorySort } from "./components/inventory-view-utils.js";
 
 export interface AppViewProps {
   view: AppScreen;
@@ -109,6 +110,14 @@ export interface AppViewProps {
 }
 
 export function AppView(props: AppViewProps) {
+  const [rarityFilter, setRarityFilter] = createSignal("all");
+  const [weaponFilter, setWeaponFilter] = createSignal("all");
+  const [collectionFilter, setCollectionFilter] = createSignal("all");
+  const [sort, setSort] = createSignal<InventorySort>("name");
+  const rarityOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.rarity).filter((value): value is string => !!value))].sort());
+  const weaponOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map(itemWeaponName).filter((value): value is string => !!value))].sort());
+  const collectionOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.collection).filter((value): value is string => !!value))].sort());
+
   return (
     <main class="flex h-screen min-h-0 flex-col overflow-hidden bg-app text-slate-50">
       <Sidebar
@@ -124,6 +133,17 @@ export function AppView(props: AppViewProps) {
         setQuery={props.setQuery}
         kindFilter={props.kindFilter}
         setKindFilter={props.setKindFilter}
+        rarityFilter={rarityFilter()}
+        setRarityFilter={setRarityFilter}
+        weaponFilter={weaponFilter()}
+        setWeaponFilter={setWeaponFilter}
+        collectionFilter={collectionFilter()}
+        setCollectionFilter={setCollectionFilter}
+        sort={sort()}
+        setSort={setSort}
+        rarityOptions={rarityOptions()}
+        weaponOptions={weaponOptions()}
+        collectionOptions={collectionOptions()}
         compactMode={props.compactMode}
         setCompactMode={props.setCompactMode}
         onAddAccount={props.onAddAccount}
@@ -131,6 +151,12 @@ export function AppView(props: AppViewProps) {
         onSignOutAccount={props.onSignOutAccount}
         onDeleteAccount={props.onDeleteAccount}
         onRefreshInventory={props.onRefreshInventory}
+        onRefreshCurrentInventory={() => {
+          if (isInventoryScreen(props.view)) return props.onInventoryRefresh();
+          if (props.view === "steam-inventory") return props.onGameInventoryRefresh("steam");
+          if (props.view === "tf2-inventory") return props.onGameInventoryRefresh("tf2");
+          if (props.view === "dota2-inventory") return props.onGameInventoryRefresh("dota2");
+        }}
         onOpenAccount={() => props.setView("account")}
         onSaveSettings={props.onSaveSettings}
       />
@@ -162,22 +188,24 @@ export function AppView(props: AppViewProps) {
         connection={props.connection}
         settings={props.settings}
         query={props.query}
-        setQuery={props.setQuery}
         kindFilter={props.kindFilter}
-        setKindFilter={props.setKindFilter}
+        rarityFilter={rarityFilter()}
+        weaponFilter={weaponFilter()}
+        collectionFilter={collectionFilter()}
+        sort={sort()}
         compactMode={props.compactMode}
-        setCompactMode={props.setCompactMode}
-        onRefresh={props.onInventoryRefresh}
         onMarketPreview={props.onMarketPreview}
         onRename={props.onInventoryRename}
         onRemoveName={props.onRemoveName}
         onOpenContainer={props.onOpenContainer}
         onToast={props.onToast}
+        onRefresh={props.onInventoryRefresh}
           />
         </Match>
         <Match when={isEconomyInventoryScreen(props.view)}>
           <GameInventoryView
 			game={props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2"}
+            connected={props.connection ? props.connection.state === "connected" : undefined}
         snapshot={props.view === "steam-inventory" ? props.steamInventory : props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
         query={props.query}
         selectedAssetId={props.selectedItemId}

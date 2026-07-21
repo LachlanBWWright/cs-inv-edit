@@ -1,8 +1,31 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import type { EconomyGame, EconomyInventoryItemDto, GameInventorySnapshot } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
-import { Button } from "./ui/Button.js";
+import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
+import type { LoadingStage } from "./ui/LoadingProgress.js";
+import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { calculateVirtualInventoryWindow, economyOutlineClass, gameFilterCategories, snapshotForGame } from "./game-inventory-utils.js";
+
+const economyInventoryLoadingStages: Record<EconomyGame, readonly LoadingStage[]> = {
+	steam: [
+		{ afterSeconds: 0, label: "Contacting Steam inventory services", detail: "Requesting the owned-item inventory for this Steam account." },
+		{ afterSeconds: 8, label: "Waiting for inventory data", detail: "Steam may take several seconds to return the complete inventory snapshot." },
+		{ afterSeconds: 20, label: "Resolving current item metadata", detail: "Matching item descriptions, names, tags, and available image tokens." },
+		{ afterSeconds: 45, label: "Still working—Steam is responding slowly", detail: "The request remains active while bounded metadata lookups finish." },
+	],
+	tf2: [
+		{ afterSeconds: 0, label: "Contacting the TF2 Game Coordinator", detail: "Requesting the authoritative owned-item SOCache for this Steam account." },
+		{ afterSeconds: 8, label: "Waiting for TF2 inventory data", detail: "The Game Coordinator can take several retries before it sends the inventory snapshot." },
+		{ afterSeconds: 20, label: "Resolving current TF2 item metadata", detail: "Matching schema definitions, localized names, qualities, classes, and equip slots." },
+		{ afterSeconds: 45, label: "Still working—Steam is responding slowly", detail: "The request remains active while bounded metadata lookups finish." },
+	],
+	dota2: [
+		{ afterSeconds: 0, label: "Contacting the Dota 2 Game Coordinator", detail: "Requesting the authoritative owned-item SOCache for this Steam account." },
+		{ afterSeconds: 8, label: "Waiting for Dota 2 inventory data", detail: "The Game Coordinator can take several retries before it sends the inventory snapshot." },
+		{ afterSeconds: 20, label: "Resolving current Dota 2 item metadata", detail: "Matching item names, rarities, heroes, slots, and available images." },
+		{ afterSeconds: 45, label: "Still working—Steam is responding slowly", detail: "The request remains active while bounded metadata lookups finish." },
+	],
+};
 
 function marketURL(item: EconomyInventoryItemDto) {
   return `https://steamcommunity.com/market/listings/${item.appId}/${encodeURIComponent(item.marketName ?? "")}`;
@@ -15,7 +38,7 @@ function ItemImage(props: { item: EconomyInventoryItemDto; large?: boolean }) {
   </Show>;
 }
 
-export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInventorySnapshot; query: string; selectedAssetId?: string; setSelectedAssetId: (id: string | undefined) => void; compactMode: "icons" | "concise" | "detailed"; onRefresh: () => void }) {
+export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInventorySnapshot; connected?: boolean; query: string; selectedAssetId?: string; setSelectedAssetId: (id: string | undefined) => void; compactMode: "icons" | "concise" | "detailed"; onRefresh: () => void }) {
 	const [tagFilter, setTagFilter] = createSignal("");
 	const [scrollTop, setScrollTop] = createSignal(0);
 	const [viewport, setViewport] = createSignal({ width: 800, height: 600 });
@@ -23,10 +46,20 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
 	const snapshot = () => snapshotForGame(props.game, props.snapshot);
 	const title = () => props.game === "steam" ? "Steam Inventory" : props.game === "tf2" ? "Team Fortress 2 Inventory" : "Dota 2 Inventory";
 	let filterGame = props.game;
+	let loggedDiagnostics = "";
 	createEffect(() => {
 		const nextGame = props.game;
 		if (nextGame !== filterGame) setTagFilter("");
 		filterGame = nextGame;
+	});
+	createEffect(() => {
+		const lines = snapshot()?.diagnostics ?? [];
+		const key = `${props.game}\u0000${lines.join("\u0000")}`;
+		if (lines.length === 0 || loggedDiagnostics === key) return;
+		loggedDiagnostics = key;
+		console.groupCollapsed(`[${props.game} inventory] metadata diagnostics`);
+		for (const line of lines) console.info(line);
+		console.groupEnd();
 	});
 	const filterOptions = createMemo(() => {
 		const allowed = gameFilterCategories(props.game);
@@ -63,16 +96,11 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
 	});
 
   return <div class="flex min-h-0 flex-1 flex-col gap-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 class="text-2xl font-semibold text-slate-50">{title()}</h1><p class="mt-1 text-sm text-slate-400">Read-only economy inventory · {snapshot()?.items.length ?? 0} assets</p><Show when={snapshot()}>{(value) => <p class="mt-1 text-xs text-slate-500">Last refresh: {new Date(value().refreshedAt).toLocaleString()}<Show when={value().schemaRevision}> · Schema: <span class="font-mono">{value().schemaRevision}</span></Show></p>}</Show></div>
-		<div class="flex items-center gap-2"><Show when={filterOptions().length}><label><span class="sr-only">Inventory item filter</span><select class="h-9 max-w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={tagFilter()} onInput={(event) => setTagFilter(event.currentTarget.value)}><option value="">All item categories</option><For each={filterOptions()}>{([value, label]) => <option value={value}>{label}</option>}</For></select></label></Show><Button onClick={props.onRefresh}>Refresh</Button></div>
-    </div>
-	<Show when={snapshot()?.status === "requires_connection"}><Alert variant="warning">Connect a Steam account, then refresh this inventory.</Alert></Show>
-	<Show when={snapshot()?.status === "loading"}><Alert>Loading {title()}…</Alert></Show>
+	<Show when={filterOptions().length}><div class="flex items-center justify-end"><label><span class="sr-only">Inventory item filter</span><select class="h-9 max-w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={tagFilter()} onInput={(event) => setTagFilter(event.currentTarget.value)}><option value="">All item categories</option><For each={filterOptions()}>{([value, label]) => <option value={value}>{label}</option>}</For></select></label></div></Show>
+	<Show when={snapshot()?.status === "requires_connection" && props.connected === false}><Alert variant="warning">Connect a Steam account, then refresh this inventory.</Alert></Show>
 	<Show when={snapshot()?.status === "error"}><Alert variant="danger">{snapshot()?.error || "Inventory loading failed"}</Alert></Show>
-	<For each={snapshot()?.diagnostics}>{(line) => <Alert variant="warning">{line}</Alert>}</For>
     <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <div ref={(element) => { gridViewport = element; }} class="min-h-0 overflow-y-auto pr-1" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
+      <PullToRefresh ref={(element) => { gridViewport = element; }} class="min-h-0 overflow-y-auto pr-1" onRefresh={props.onRefresh} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
 		<div class="relative" style={{ height: `${virtualGrid().totalRows * virtualGrid().rowHeight}px` }}>
 		<div class="absolute inset-x-0 grid gap-3" style={{ transform: `translateY(${virtualGrid().firstRow * virtualGrid().rowHeight}px)`, "grid-template-columns": `repeat(${virtualGrid().columns}, minmax(0, 1fr))` }}>
 		<For each={virtualGrid().visibleItems}>{(item) => <button type="button" style={{ height: props.compactMode === "icons" ? "104px" : "146px" }} class={`rounded-2xl border p-3 text-left transition ${economyOutlineClass(item)} ${selected()?.assetId === item.assetId ? "ring-2 ring-cyan-300 bg-cyan-950/30" : "bg-slate-900/70 hover:brightness-110"}`} onClick={() => props.setSelectedAssetId(item.assetId)}>
@@ -80,8 +108,11 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
           <Show when={props.compactMode !== "icons"}><p class="mt-2 line-clamp-2 text-sm font-medium text-slate-100">{item.name}</p><Show when={item.quantity > 1}><p class="mt-1 text-xs text-slate-400">Quantity {item.quantity}</p></Show></Show>
         </button>}</For>
 		</div></div>
+		<Show when={snapshot()?.status === "loading" && items().length === 0}>
+			<InventoryLoadingState active title={`Loading ${title()}`} stages={economyInventoryLoadingStages[props.game]} currentStage={snapshot()?.message} />
+		</Show>
 		<Show when={snapshot()?.status === "ready" && items().length === 0}><p class="rounded-2xl border border-slate-800 p-5 text-sm text-slate-400">No matching items.</p></Show>
-      </div>
+      </PullToRefresh>
       <aside class="min-h-0 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
         <Show when={selected()} fallback={<p class="text-sm text-slate-400">Select an item to inspect it.</p>}>{(item) => <div>
           <ItemImage item={item()} large />

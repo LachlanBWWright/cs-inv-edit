@@ -1,14 +1,15 @@
 import { createEffect, createResource, createSignal, onCleanup } from "solid-js";
-import { errAsync } from "neverthrow";
+import { errAsync, fromThrowable } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
-import { steamAccountProfilesSchema, type ArmorySnapshot, type ConnectionStatus, type OperationReceipt, type RelatedItemDto, type SettingsData, type SteamAccountProfile, type SteamTradesSnapshot, type StoreSnapshot } from "@cs-inv-edit/contracts";
-import { createOperationApi } from "./lib/api.js";
+import { steamAccountProfilesSchema, type ArmorySnapshot, type ConnectionStatus, type RelatedItemDto, type SettingsData, type SteamAccountProfile, type SteamTradesSnapshot, type StoreSnapshot } from "@cs-inv-edit/contracts";
 import type { AppBackendClient } from "./lib/backend.js";
-import type { ToastItem } from "./components/ui/ToastViewport.js";
 import { appErrorMessage, fromAppPromise } from "./lib/result.js";
 import type { AppError } from "./lib/result-http.js";
-import { enabledModeOrDefault, type AppScreen } from "./view.js";
+import { enabledModeOrDefault, isAppMode, type AppMode, type AppScreen } from "./view.js";
 import { createArmoryRefresher, createInventoryRefresher } from "./lib/loading-refresh.js";
+import { createShellController } from "./features/shell/controller.js";
+import { createToastController } from "./features/notifications/controller.js";
+import { createOperationsController } from "./features/operations/controller.js";
 
 export interface AppProps {
   backend: AppBackendClient;
@@ -16,6 +17,38 @@ export interface AppProps {
 }
 
 const accountStorageKey = "cs-inv-edit.steam-accounts.v1";
+
+const writeModeToUrl = fromThrowable(
+  (mode: AppMode) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", mode);
+    url.searchParams.delete("returnTo");
+    window.history.replaceState(window.history.state, "", url);
+  },
+  (cause) => ({ message: "Unable to update the selected mode URL", cause }),
+);
+
+const writeLoginToUrl = fromThrowable(
+  (returnTo: AppMode) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "account");
+    url.searchParams.set("returnTo", returnTo);
+    window.history.replaceState(window.history.state, "", url);
+  },
+  (cause) => ({ message: "Unable to update the login URL", cause }),
+);
+
+function modeFromUrl(): AppMode {
+  const params = new URLSearchParams(window.location.search);
+  const requestedView = params.get("view");
+  if (isAppMode(requestedView)) return requestedView;
+  const returnTo = params.get("returnTo");
+  return isAppMode(returnTo) ? returnTo : "inventory";
+}
+
+function screenFromUrl(): AppScreen {
+  return new URLSearchParams(window.location.search).get("view") === "account" ? "account" : modeFromUrl();
+}
 
 function loadSteamAccounts(): SteamAccountProfile[] {
   try {
@@ -27,15 +60,9 @@ function loadSteamAccounts(): SteamAccountProfile[] {
 }
 
 export function createAppController(props: AppProps) {
-  const requestedView = new URLSearchParams(window.location.search).get("view");
-  const [view, setView] = createSignal<AppScreen>(requestedView === "trades" ? "trades" : "inventory");
-  const [selectedItemId, setSelectedItemId] = createSignal<string | undefined>();
-  const [query, setQuery] = createSignal("");
-  const [kindFilter, setKindFilter] = createSignal<"all" | import("@cs-inv-edit/contracts").InventoryItemDto["kind"]>("all");
-  const [compactMode, setCompactMode] = createSignal<"icons" | "concise" | "detailed">("concise");
-  const [toasts, setToasts] = createSignal<ToastItem[]>([]);
-  const [accounts, setAccounts] = createSignal<SteamAccountProfile[]>(loadSteamAccounts());
-  const [accountUsername, setAccountUsername] = createSignal("");
+  const shell = createShellController(screenFromUrl());
+  shell.setAccounts(loadSteamAccounts());
+  const toastController = createToastController();
   const [inventoryRefreshActive, setInventoryRefreshActive] = createSignal(false);
 
   const resourceValue = <T,>(result: ResultAsync<T, AppError>) => result.match((value) => value, (error) => { console.error(error.message, error.cause); return undefined; });
@@ -63,8 +90,8 @@ export function createAppController(props: AppProps) {
       console.warn("[protobuf trace] polling failed", error);
     });
   };
-  const protocolTraceTimer = window.setInterval(pollProtocolTrace, 750);
-  onCleanup(() => window.clearInterval(protocolTraceTimer));
+  const protocolTraceTimer = globalThis.setInterval(pollProtocolTrace, 750);
+  onCleanup(() => globalThis.clearInterval(protocolTraceTimer));
   const [inventory, { refetch: refetchInventory }] = createResource(() => resourceValue(props.backend.inventory()));
   const [steamInventory, { refetch: refetchSteamInventory }] = createResource(() => settings()?.featureFlags.enableSteamInventory ? "steam" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
   const [tf2Inventory, { refetch: refetchTF2Inventory }] = createResource(() => settings()?.featureFlags.enableTf2Inventory ? "tf2" as const : false, (game) => resourceValue(props.backend.gameInventory(game)));
@@ -76,13 +103,7 @@ export function createAppController(props: AppProps) {
   const [events, { refetch: refetchEvents }] = createResource(() => resourceValue(props.backend.events()));
   const [connection, { refetch: refetchConnection, mutate: setConnection }] = createResource(() => resourceValue(props.backend.steamStatus?.() ?? errAsync({ message: "Steam status unavailable" })));
 
-  const pushToast = (toast: Omit<ToastItem, "id">) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setToasts((current) => [...current, { id, ...toast }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((item) => item.id !== id));
-    }, 4000);
-  };
+  const pushToast = toastController.pushToast;
 
   const refreshInventoryState = createInventoryRefresher({ backend: props.backend, refetch: refetchInventory, setActive: setInventoryRefreshActive, pushToast });
   const refreshArmoryState = createArmoryRefresher({
@@ -125,24 +146,35 @@ export function createAppController(props: AppProps) {
   });
 
   createEffect(() => {
-    const flags = settings()?.featureFlags;
-    const current = view();
+    const currentSettings = settings();
+    if (!currentSettings) return;
+    const flags = currentSettings.featureFlags;
+    const current = shell.view();
     if (current !== "account" && enabledModeOrDefault(current, flags) !== current) {
-      setSelectedItemId(undefined);
-      setView("inventory");
+      shell.setSelectedItemId(undefined);
+      shell.setView("inventory");
     }
+  });
+
+  createEffect(() => {
+    const current = shell.view();
+    if (current === "account") return;
+    writeModeToUrl(current).match(
+      () => undefined,
+      (error) => console.warn("[app] selected mode URL could not be updated", error),
+    );
   });
 
   let selectionScope = "";
   createEffect(() => {
-    const nextScope = `${connection()?.steamId ?? "disconnected"}\u0000${view()}`;
-    if (selectionScope && selectionScope !== nextScope) setSelectedItemId(undefined);
+    const nextScope = `${connection()?.steamId ?? "disconnected"}\u0000${shell.view()}`;
+    if (selectionScope && selectionScope !== nextScope) shell.setSelectedItemId(undefined);
     selectionScope = nextScope;
   });
 
   let automaticGameRefresh = "";
   createEffect(() => {
-    const game = view() === "steam-inventory" ? "steam" : view() === "tf2-inventory" ? "tf2" : view() === "dota2-inventory" ? "dota2" : undefined;
+    const game = shell.view() === "steam-inventory" ? "steam" : shell.view() === "tf2-inventory" ? "tf2" : shell.view() === "dota2-inventory" ? "dota2" : undefined;
     const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined;
     if (!game || !steamId) {
       automaticGameRefresh = "";
@@ -167,7 +199,7 @@ export function createAppController(props: AppProps) {
   let automaticArmoryRefresh = "";
   createEffect(() => {
     const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined;
-    if (view() !== "armory" || !steamId || armory()?.status === "ready") return;
+    if (shell.view() !== "armory" || !steamId || armory()?.status === "ready") return;
     const key = `${steamId}\u0000armory`;
     if (automaticArmoryRefresh === key) return;
     automaticArmoryRefresh = key;
@@ -175,10 +207,10 @@ export function createAppController(props: AppProps) {
   });
   let automaticStoreRefresh = "";
   const refreshStoreState = async () => { setStore((current): StoreSnapshot => ({ status: "loading", offers: current?.offers ?? [], refreshedAt: current?.refreshedAt ?? new Date().toISOString(), priceSheetVersion: current?.priceSheetVersion, currency: current?.currency, message: "Requesting the current GC price sheet" })); await props.backend.refreshStore().andThen(() => fromAppPromise(Promise.resolve(refetchStore()), "Store reload failed")).match(() => undefined, (error) => { const message = appErrorMessage(error, "Unable to refresh store"); setStore((current): StoreSnapshot => ({ status: "error", offers: current?.offers ?? [], refreshedAt: new Date().toISOString(), priceSheetVersion: current?.priceSheetVersion, currency: current?.currency, message })); pushToast({ title: "Store refresh failed", description: message, variant: "danger" }); }); };
-  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; const enabled = settings()?.featureFlags.enableStoreRead === true; if (view() !== "store" || !steamId || !enabled || store()?.status === "ready") return; const key = `${steamId}\u0000store\u0000${enabled}`; if (automaticStoreRefresh === key) return; automaticStoreRefresh = key; void refreshStoreState(); });
+  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; const enabled = settings()?.featureFlags.enableStoreRead === true; if (shell.view() !== "store" || !steamId || !enabled || store()?.status === "ready") return; const key = `${steamId}\u0000store\u0000${enabled}`; if (automaticStoreRefresh === key) return; automaticStoreRefresh = key; void refreshStoreState(); });
   let automaticTradeRefresh = "";
   const refreshTradesState = async () => { setTrades((current): SteamTradesSnapshot => ({ status: "loading", received: current?.received ?? [], sent: current?.sent ?? [], history: current?.history ?? [], refreshedAt: current?.refreshedAt ?? new Date().toISOString(), message: "Loading Steam trades" })); await props.backend.refreshTrades().match((snapshot) => setTrades(snapshot), (error) => setTrades((current): SteamTradesSnapshot => ({ status: "error", received: current?.received ?? [], sent: current?.sent ?? [], history: current?.history ?? [], refreshedAt: new Date().toISOString(), message: appErrorMessage(error, "Unable to load trades") }))); };
-  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; if (view() !== "trades" || !steamId) return; const key = `${steamId}\u0000trades`; if (automaticTradeRefresh === key) return; automaticTradeRefresh = key; void refreshTradesState(); });
+  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; if (shell.view() !== "trades" || !steamId) return; const key = `${steamId}\u0000trades`; if (automaticTradeRefresh === key) return; automaticTradeRefresh = key; void refreshTradesState(); });
 
   createEffect(() => {
     const snapshot = armory();
@@ -186,17 +218,17 @@ export function createAppController(props: AppProps) {
   });
 
   createEffect(() => {
-    window.localStorage.setItem(accountStorageKey, JSON.stringify(accounts()));
+    window.localStorage.setItem(accountStorageKey, JSON.stringify(shell.accounts()));
   });
 
   createEffect(() => {
     const status = connection();
     if (!status) return;
     if (status.state !== "connected" || !status.accountName) {
-      setAccounts((current) => current.map((account) => ({ ...account, signedIn: false })));
+      shell.setAccounts((current) => current.map((account) => ({ ...account, signedIn: false })));
       return;
     }
-    setAccounts((current) => {
+    shell.setAccounts((current) => {
       const next = current.map((account) => ({ ...account, signedIn: false }));
       const index = next.findIndex((account) => account.accountName.toLowerCase() === status.accountName!.toLowerCase());
       const profile: SteamAccountProfile = {
@@ -216,19 +248,23 @@ export function createAppController(props: AppProps) {
     const wasConnected = connection()?.state === "connected";
     setConnection(status);
     if (!wasConnected && status.state === "connected") {
-      setView("inventory");
+      shell.setView(enabledModeOrDefault(modeFromUrl(), settings()?.featureFlags));
       void syncAccountState(status);
     }
   });
   onCleanup(() => stopSteamStatus?.());
 
-  const dismissToast = (id: string) => {
-    setToasts((current) => current.filter((item) => item.id !== id));
-  };
+  const dismissToast = toastController.dismissToast;
 
   createEffect(() => {
-    if (connection() && connection()?.state !== "connected" && view() !== "armory" && view() !== "store" && view() !== "trades") {
-      setView("account");
+    const currentView = shell.view();
+    if (connection() && connection()?.state !== "connected" && currentView !== "account") {
+      const returnTo = currentView;
+      writeLoginToUrl(returnTo).match(
+        () => undefined,
+        (error) => console.warn("[app] login URL could not be updated", error),
+      );
+      shell.setView("account");
     }
   });
 
@@ -247,48 +283,12 @@ export function createAppController(props: AppProps) {
     });
   });
 
-  const notifyOperationReceipt = (receipt: OperationReceipt) => {
-    if (receipt.type === "containers.open") {
-      return;
-    }
-    const base = receipt.message ?? receipt.type;
-    if (receipt.state === "completed") {
-      pushToast({ title: "Operation completed", description: base, variant: "success" });
-    } else if (receipt.state === "awaiting_gc_confirmation") {
-      pushToast({ title: "Awaiting confirmation", description: base, variant: "warning" });
-    } else if (receipt.state === "failed") {
-      pushToast({ title: "Operation failed", description: base, variant: "danger" });
-    } else if (receipt.state === "blocked_by_feature_flag" || receipt.state === "requires_validation") {
-      pushToast({ title: "Operation blocked", description: base, variant: "warning" });
-    } else {
-      pushToast({ title: "Operation updated", description: base });
-    }
-  };
-
-  const settleOperation = async (receiptResult: ResultAsync<OperationReceipt, AppError>): Promise<OperationReceipt> => {
-    return receiptResult.andThen((receipt) => {
-      console.info("[app] operation receipt", receipt);
-      notifyOperationReceipt(receipt);
-      if (receipt.type !== "containers.open" && (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation")) {
-        return props.backend.refreshInventory().andThen(() => fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed")).map(() => receipt);
-      } else if (receipt.type === "containers.open") {
-        return fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed").map(() => receipt);
-      }
-      return fromAppPromise(Promise.resolve(receipt));
-    }).andThen((receipt) => fromAppPromise(Promise.all([refetchOperations(), refetchEvents()]), "Operation state refresh failed").map(() => receipt)).match((receipt) => receipt, (error) => {
-      console.error("[app] operation failed", error);
-      const message = appErrorMessage(error, "Unknown operation error");
-      pushToast({ title: "Operation error", description: message, variant: "danger" });
-      return { operationId: `failed-${Date.now()}`, type: "operation.error", state: "failed", createdAt: new Date().toISOString(), message };
-    });
-  };
-
   const syncAccountState = async (latestStatus?: ConnectionStatus) => {
     console.info("[app] syncing account state");
     const refreshedStatus = await refetchConnection();
     const status = latestStatus ?? refreshedStatus;
     if (status?.state === "connected") {
-      setView("inventory");
+      shell.setView(enabledModeOrDefault(modeFromUrl(), settings()?.featureFlags));
       console.info("[app] connection ready, refreshing inventory");
       const inventoryRefreshFailed = await refreshInventoryState();
       if (!inventoryRefreshFailed) {
@@ -297,10 +297,16 @@ export function createAppController(props: AppProps) {
       pushToast({ title: "Account connected", description: inventoryRefreshFailed ? "Signed in successfully. Inventory still needs attention." : "Inventory is ready to inspect and edit.", variant: "success" });
       return;
     }
-    setView("account");
+    shell.setView("account");
   };
 
-  const operationApi = createOperationApi(props.backend);
+  const operationController = createOperationsController({
+    backend: props.backend,
+    pushToast,
+    refreshInventory: () => props.backend.refreshInventory().andThen(() => fromAppPromise(Promise.resolve(refetchInventory()), "Inventory reload failed")),
+    refetchOperations: () => refetchOperations(),
+    refetchEvents: () => refetchEvents(),
+  });
 
   const disconnectAndRefresh = async () => {
     if (!props.backend.disconnectSteam) return;
@@ -320,26 +326,26 @@ export function createAppController(props: AppProps) {
     if (connection()?.state === "connected" && props.backend.disconnectSteam) {
       await disconnectAndRefresh();
     }
-    setSelectedItemId(undefined);
-    setAccountUsername("");
-    setView("account");
+    shell.setSelectedItemId(undefined);
+    shell.setAccountUsername("");
+    shell.setView("account");
   };
 
   const signInAccount = async (account: SteamAccountProfile) => {
     if (connection()?.state === "connected" && props.backend.disconnectSteam) {
       await disconnectAndRefresh();
     }
-    setSelectedItemId(undefined);
-    setAccountUsername(account.accountName);
-    setView("account");
+    shell.setSelectedItemId(undefined);
+    shell.setAccountUsername(account.accountName);
+    shell.setView("account");
   };
 
   const signOutAccount = async (account: SteamAccountProfile) => {
     if (account.signedIn && props.backend.disconnectSteam) {
       await disconnectAndRefresh();
     }
-    setAccounts((current) => current.map((candidate) => candidate.accountName === account.accountName ? { ...candidate, signedIn: false } : candidate));
-    setSelectedItemId(undefined);
+    shell.setAccounts((current) => current.map((candidate) => candidate.accountName === account.accountName ? { ...candidate, signedIn: false } : candidate));
+    shell.setSelectedItemId(undefined);
     pushToast({ title: "Account signed out", description: account.accountName, variant: "warning" });
   };
 
@@ -347,28 +353,25 @@ export function createAppController(props: AppProps) {
     if (account.signedIn && props.backend.disconnectSteam) {
       await disconnectAndRefresh();
     }
-    setAccounts((current) => current.filter((candidate) => candidate.accountName !== account.accountName));
-    setSelectedItemId(undefined);
+    shell.setAccounts((current) => current.filter((candidate) => candidate.accountName !== account.accountName));
+    shell.setSelectedItemId(undefined);
     pushToast({ title: "Saved account deleted", description: `${account.accountName} was removed from this device.`, variant: "warning" });
   };
 
   return {
-    view,
-    setView,
-    selectedItemId,
-    setSelectedItemId,
-    query,
-    setQuery,
-    kindFilter,
-    setKindFilter,
-    compactMode,
-    setCompactMode,
-    toasts,
-    setToasts,
-    accounts,
-    setAccounts,
-    accountUsername,
-    setAccountUsername,
+    view: shell.view,
+    setView: shell.setView,
+    selectedItemId: shell.selectedItemId,
+    setSelectedItemId: shell.setSelectedItemId,
+    query: shell.query,
+    setQuery: shell.setQuery,
+    kindFilter: shell.kindFilter,
+    setKindFilter: shell.setKindFilter,
+    compactMode: shell.compactMode,
+    setCompactMode: shell.setCompactMode,
+    toasts: toastController.toasts,
+    accounts: shell.accounts,
+    accountUsername: shell.accountUsername,
     inventoryRefreshActive,
     setInventoryRefreshActive,
     health,
@@ -396,9 +399,9 @@ export function createAppController(props: AppProps) {
     signInAccount,
     signOutAccount,
     deleteAccount,
-    settleOperation,
+    settleOperation: operationController.settleOperation,
     syncAccountState,
-    operationApi,
+    operationApi: operationController.operationApi,
     refetchSettings,
     refetchInventory,
     refetchArmory,

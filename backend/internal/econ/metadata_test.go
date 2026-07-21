@@ -3,6 +3,7 @@ package econ
 import (
 	"errors"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -281,9 +282,15 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		4602: "patch capsule",
 	}
 	for defIndex, label := range capsules {
-		got := schema.Metadata(defIndex, 0, nil)
+		got := schema.Metadata(defIndex, 0, map[uint32]uint32{113: 42})
 		if got.Kind != "container" {
 			t.Fatalf("%s kind = %q, want container; metadata=%#v", label, got.Kind, got)
+		}
+		if strings.Contains(got.MarketName, "Sticker |") || strings.Contains(got.MarketName, "Graffiti |") {
+			t.Fatalf("%s market name was replaced by contained-item metadata: %#v", label, got)
+		}
+		if applied := schema.AppliedItems(defIndex, map[uint32]uint32{113: 42}); len(applied) != 0 {
+			t.Fatalf("%s exposed container metadata as applied items: %#v", label, applied)
 		}
 	}
 	enriched := []struct {

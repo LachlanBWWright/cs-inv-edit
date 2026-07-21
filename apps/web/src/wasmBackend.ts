@@ -6,7 +6,7 @@ import { healthStatusSchema, type ConnectionStatus, type FeatureFlags, type Heal
 declare global {
   interface Window {
     Go: new () => {
-      importObject: WebAssembly.ImportObject;
+      importObject: WebAssembly.Imports;
       run: (instance: WebAssembly.Instance) => void;
     };
     csInvEditWasmBackend?: {
@@ -15,7 +15,7 @@ declare global {
   }
 }
 
-const wasmAssetBasePath = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/`;
+const wasmAssetBasePath = `${(import.meta as ImportMeta & { env: { BASE_URL: string } }).env.BASE_URL.replace(/\/$/, "")}/`;
 const wasmAssetPaths = {
   wasm: `${wasmAssetBasePath}wasm/cs2-backend.wasm`,
   loader: `${wasmAssetBasePath}wasm/wasm_exec.js`,

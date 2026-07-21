@@ -54,6 +54,19 @@ func TestEncodeGCClientPacketWrapsPayload(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedSteamIDPrefersResponseHeaderIdentity(t *testing.T) {
+	const placeholderSteamID uint64 = 76561197960265728
+	const authenticatedID uint64 = 76561198000000000
+
+	response := steamLogonResponse{
+		Body:    &steampb.CMsgClientLogonResponse{ClientSuppliedSteamid: proto.Uint64(placeholderSteamID)},
+		SteamID: authenticatedID,
+	}
+	if got := authenticatedSteamID(response); got != authenticatedID {
+		t.Fatalf("authenticatedSteamID()=%d, want response-header SteamID %d", got, authenticatedID)
+	}
+}
+
 func TestEncodeGamesPlayedPacketAdvertisesCS2(t *testing.T) {
 	packet, err := encodeGamesPlayedPacket(730)
 	if err != nil {

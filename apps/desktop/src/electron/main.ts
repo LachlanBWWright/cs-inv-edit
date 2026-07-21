@@ -12,7 +12,10 @@ const backendURL = "http://127.0.0.1:7331";
 let backend: ChildProcessWithoutNullStreams | undefined;
 
 function backendPath() {
-  return process.env.CS2_BACKEND_BIN ?? path.resolve(__dirname, "../../../../bin/cs2-backend");
+  const defaultPath = app.isPackaged
+    ? path.join(process.resourcesPath, "bin", "cs2-backend")
+    : path.resolve(__dirname, "../../../../bin/cs2-backend");
+  return process.env.CS2_BACKEND_BIN ?? defaultPath;
 }
 
 function startBackend() {
@@ -60,7 +63,10 @@ async function createWindow() {
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalURL(url)) {
-      void ResultAsync.fromPromise(shell.openExternal(url), () => undefined);
+      void ResultAsync.fromPromise(shell.openExternal(url), () => undefined).match(
+        () => undefined,
+        () => undefined,
+      );
     }
     return { action: "deny" };
   });

@@ -3,7 +3,7 @@ import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
 import { Button } from "./ui/Button.js";
 import { Input } from "./ui/Input.js";
 import { Select } from "./ui/Select.js";
-import { itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
+import { isOpenableContainer, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat } from "./item-instance-utils.js";
 import { RelatedItemPreview, type RelatedItemPreviewContext } from "./RelatedItemPreview.js";
@@ -176,26 +176,38 @@ export interface ActionBarProps {
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
   compatibleContainerKey: InventoryItemDto | undefined;
+  compatibleContainerKeys: InventoryItemDto[];
+  selectedContainerKeyId: string;
   containerStatusMessage: string;
   onOpenContainer: () => Promise<void> | void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRemoveName: () => Promise<void> | void;
   onShowContents: () => void;
+  onSelectedContainerKeyChange: (value: string) => void;
 }
 
-function ContainerKeyMessage(props: { selected: InventoryItemDto; compatibleContainerKey: InventoryItemDto | undefined }) {
+function ContainerKeyControl(props: Pick<ActionBarProps, "selected" | "compatibleContainerKeys" | "selectedContainerKeyId" | "onSelectedContainerKeyChange">) {
   const keyState = (props.selected.requiredKeyDefIndexes?.length ?? 0) > 0;
   if (!keyState) {
-    return <p class="max-w-sm text-xs text-emerald-300">This container is keyless.</p>;
+    return null;
   }
-  if (!props.compatibleContainerKey) {
+  if (props.compatibleContainerKeys.length === 0) {
     return <p class="max-w-sm text-xs text-amber-300">This container requires a compatible key, but none is present in your inventory.</p>;
   }
-  return <p class="max-w-sm text-xs text-slate-300">Uses {itemDisplayName(props.compatibleContainerKey)}.</p>;
+  return (
+    <label class="max-w-sm text-xs text-slate-300">
+      Compatible key
+      <Select class="mt-1 w-full" value={props.selectedContainerKeyId} onChange={(event) => props.onSelectedContainerKeyChange((event.currentTarget as HTMLSelectElement | null)?.value ?? "")}>
+        <option value="">Select a key…</option>
+        <For each={props.compatibleContainerKeys}>{(key) => <option value={key.id}>{itemDisplayName(key)}</option>}</For>
+      </Select>
+    </label>
+  );
 }
 
 export function ActionBar(props: ActionBarProps) {
-  const openContainerDisabled = props.pending || ((props.selected.requiredKeyDefIndexes?.length ?? 0) > 0 && !props.compatibleContainerKey);
+  const showOpenContainer = () => props.canOpenContainer || isOpenableContainer(props.selected);
+  const requiresKeySelection = () => (props.selected.requiredKeyDefIndexes?.length ?? 0) > 0 && !props.compatibleContainerKey;
 
   return (
     <div class="flex flex-wrap gap-2">
@@ -205,10 +217,10 @@ export function ActionBar(props: ActionBarProps) {
       <Show when={props.selected.containerItems?.length}>
         <Button variant="secondary" onClick={() => props.onShowContents()}>View possible contents ({props.selected.containerItems?.length})</Button>
       </Show>
-      <Show when={props.canOpenContainer}>
+      <Show when={showOpenContainer()}>
         <div class="flex flex-col gap-2">
-          <ContainerKeyMessage selected={props.selected} compatibleContainerKey={props.compatibleContainerKey} />
-          <Button onClick={() => void props.onOpenContainer()} disabled={openContainerDisabled}>Open container</Button>
+          <ContainerKeyControl selected={props.selected} compatibleContainerKeys={props.compatibleContainerKeys} selectedContainerKeyId={props.selectedContainerKeyId} onSelectedContainerKeyChange={props.onSelectedContainerKeyChange} />
+          <Button onClick={() => void props.onOpenContainer()} disabled={props.pending}>{requiresKeySelection() ? "Choose key" : "Open"}</Button>
           <Show when={props.containerStatusMessage}>
             <p class="max-w-sm text-sm text-slate-400">{props.containerStatusMessage}</p>
           </Show>

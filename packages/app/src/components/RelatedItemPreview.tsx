@@ -43,7 +43,6 @@ export function RelatedItemPreview(props: { item: RelatedItemDto; context?: Rela
     <div class="border-t border-slate-800/80 px-3 pb-3 pt-3 text-xs text-slate-400">
       <dl class="grid gap-2 sm:grid-cols-2">
         <Show when={item().price}><div><dt class="uppercase tracking-wide text-slate-500">Market price</dt><dd class="mt-1 font-medium text-slate-200">{item().price}</dd></div></Show>
-        <Show when={item().rarity}><div><dt class="uppercase tracking-wide text-slate-500">Rarity label</dt><dd class="mt-1 font-medium text-slate-200">{item().rarity}</dd></div></Show>
         <Show when={isWeaponFinish(item())}>
           <div><dt class="uppercase tracking-wide text-slate-500">Float caps</dt><dd class="mt-1 font-mono text-slate-200">{(item().wearMin ?? 0).toFixed(6)}–{(item().wearMax ?? 1).toFixed(6)}</dd></div>
         </Show>

@@ -90,6 +90,21 @@ func MessageNameForEMsg(emsg uint32) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	// The shared GC system enum retains "GC" in these EMsg identifiers, but
+	// the corresponding gcsdk message types do not. Keep these authoritative
+	// upstream exceptions explicit instead of guessing a nonexistent name.
+	baseGCMessageNames := map[uint32]string{
+		4004: "CMsgClientWelcome",
+		4006: "CMsgClientHello",
+		4007: "CMsgServerHello",
+	}
+	if candidate, ok := baseGCMessageNames[emsg]; ok {
+		if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
+			if _, isMessage := descriptor.(protoreflect.MessageDescriptor); isMessage {
+				return candidate, true
+			}
+		}
+	}
 	found := ""
 	files.RangeFiles(func(file protoreflect.FileDescriptor) bool {
 		enums := file.Enums()
@@ -105,8 +120,8 @@ func MessageNameForEMsg(emsg uint32) (string, bool) {
 			candidate := "CMsg" + strings.TrimPrefix(valueName, "k_EMsg")
 			if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
 				if _, ok := descriptor.(protoreflect.MessageDescriptor); ok {
-				found = candidate
-				return false
+					found = candidate
+					return false
 				}
 			}
 		}

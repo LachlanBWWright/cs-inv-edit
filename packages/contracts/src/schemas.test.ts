@@ -25,6 +25,14 @@ describe("gameInventorySnapshotSchema", () => {
     }).success).toBe(true);
   });
 
+  it("normalizes legacy null item tags without discarding owned items", () => {
+    const parsed = gameInventorySnapshotSchema.safeParse({
+      game: "tf2", appId: 440, items: [{ ...item, tags: null }], refreshedAt: "now", status: "ready", diagnostics: [],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.items[0]?.tags).toEqual([]);
+  });
+
   it("rejects a mismatched game and AppID", () => {
     expect(gameInventorySnapshotSchema.safeParse({
       game: "tf2", appId: 570, items: [], refreshedAt: "now", status: "ready", diagnostics: [],

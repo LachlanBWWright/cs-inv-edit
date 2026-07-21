@@ -42,6 +42,12 @@ export function itemDisplayName(item: InventoryItemDto) {
   return item.customName || item.marketName || item.name || `CS2 item #${item.defindex}`;
 }
 
+export function isOpenableContainer(item: InventoryItemDto | undefined) {
+  if (!item) return false;
+  if (item.kind === "container" || (item.containerItems?.length ?? 0) > 0) return true;
+  return /(?:container|capsule|case|graffiti box)/i.test(`${item.name} ${item.marketName ?? ""}`);
+}
+
 export function itemWeaponName(item: InventoryItemDto) {
   if (item.kind !== "weapon_skin") return undefined;
   const displayName = item.marketName || item.name;

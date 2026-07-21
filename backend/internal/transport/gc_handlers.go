@@ -97,9 +97,18 @@ func (h *GCHandler) handleClientLogOnResponse(packet *steammsg.Packet) ([]steamc
 		return nil, err
 	}
 	if h.events != nil {
-		h.events <- GCEvent{Type: "steam.logon_response", Payload: body}
+		steamID := uint64(0)
+		if header, ok := packet.Header().(*steammsg.ProtoHeader); ok && header.Proto != nil {
+			steamID = header.Proto.GetSteamid()
+		}
+		h.events <- GCEvent{Type: "steam.logon_response", Payload: steamLogonResponse{Body: body, SteamID: steamID}}
 	}
 	return []steamcm.Event{steamcm.MakeEvent(steamcm.EventType_Incoming, steamcm.EventPacketReceived{Packet: packet})}, nil
+}
+
+type steamLogonResponse struct {
+	Body    *steampb.CMsgClientLogonResponse
+	SteamID uint64
 }
 
 func (h *GCHandler) handleClientLoggedOff(packet *steammsg.Packet) ([]steamcm.Event, error) {

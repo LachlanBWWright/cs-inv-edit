@@ -13,7 +13,7 @@ func TestAvatarURLReadsSteamCommunityProfile(t *testing.T) {
 			t.Fatalf("unexpected request: %s", r.URL.String())
 		}
 		w.Header().Set("Content-Type", "text/xml")
-		_, _ = w.Write([]byte(`<profile><avatarFull><![CDATA[https://avatars.steamstatic.com/example_full.jpg]]></avatarFull></profile>`))
+		_, _ = w.Write([]byte(`<profile><steamID><![CDATA[Example User]]></steamID><avatarFull><![CDATA[https://avatars.steamstatic.com/example_full.jpg]]></avatarFull></profile>`))
 	}))
 	defer server.Close()
 
@@ -24,6 +24,28 @@ func TestAvatarURLReadsSteamCommunityProfile(t *testing.T) {
 	}
 	if avatarURL != "https://avatars.steamstatic.com/example_full.jpg" {
 		t.Fatalf("AvatarURL() = %q", avatarURL)
+	}
+}
+
+func TestProfileReturnsIdentityAndCachesIt(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`<profile><steamID><![CDATA[Example User]]></steamID><avatarFull><![CDATA[https://avatars.steamstatic.com/example_full.jpg]]></avatarFull></profile>`))
+	}))
+	defer server.Close()
+	resolver := &Resolver{client: server.Client(), baseURL: server.URL, cache: make(map[string]cacheEntry)}
+	for range 2 {
+		profile, err := resolver.Profile(context.Background(), "76561198000000000")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if profile.Name != "Example User" || profile.ProfileURL != server.URL+"/profiles/76561198000000000/" {
+			t.Fatalf("profile = %#v", profile)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
 	}
 }
 

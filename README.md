@@ -10,11 +10,11 @@ A responsive SolidJS control surface for managing Counter-Strike inventory edits
 
 ## Quality gates
 
-- `npm run lint`
-- `npm run test`
-- `npm run build`
-- `npm run desktop:dev`
-- `npm run mobile:sync`
+- `pnpm lint`
+- `pnpm test`
+- `pnpm build`
+- `pnpm desktop:dev`
+- `pnpm mobile:sync`
 
 ## UI documentation
 

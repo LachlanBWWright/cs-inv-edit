@@ -9,8 +9,14 @@
     ".": "./src/index.tsx",
     "./styles.css": "./src/styles.css"
   },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
   "dependencies": {
-    "@cs-inv-edit/contracts": "*",
+    "@cs-inv-edit/contracts": "workspace:*",
     "neverthrow": "^8.2.0",
     "qrcode": "^1.5.4",
     "solid-js": "^1.9.10"

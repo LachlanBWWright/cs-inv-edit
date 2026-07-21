@@ -1,3 +1,368 @@
 package transport
 
-// Implementation moved to split companion files.
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"fmt"
+	"log"
+	"math"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"cs-inv-edit/backend/internal/proto/gametracking"
+	"github.com/Lucino772/envelop/pkg/steam/steampb"
+	"google.golang.org/protobuf/proto"
+)
+
+const cs2AppID uint32 = 730
+const emsgStoreGetUserData uint32 = 2500
+const emsgStoreGetUserDataResponse uint32 = 2501
+const emsgStorePurchaseInit uint32 = 2510
+const emsgStorePurchaseInitResponse uint32 = 2511
+
+func (s *SteamGCClient) RequestStore(ctx context.Context, version uint32, currency int32) (GCStoreData, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	s.steamTraceActive.Store(true)
+	defer s.steamTraceActive.Store(false)
+	s.mu.Lock()
+	conn := s.conn
+	s.mu.Unlock()
+	if conn == nil {
+		return GCStoreData{}, ErrNotConnected
+	}
+	wallet := new(steampb.CUserAccount_GetWalletDetails_Response)
+	walletRequest := &steampb.CUserAccount_GetClientWalletDetails_Request{
+		IncludeFormattedBalance: proto.Bool(true),
+	}
+	if err := sendNonAuthedUnified(ctx, newNonAuthedUnifiedHandler(), conn, "UserAccount.GetClientWalletDetails#1", walletRequest, wallet, newDiagnosticTrace("steam wallet context request started")); err != nil {
+		return GCStoreData{}, fmt.Errorf("load authoritative Steam wallet currency: %w", err)
+	}
+	economyCurrency, err := steamWalletCurrencyToEconomyCurrency(wallet.GetCurrencyCode())
+	if err != nil {
+		return GCStoreData{}, err
+	}
+	body, err := gametracking.MarshalStoreGetUserData(version, currency)
+	if err != nil {
+		return GCStoreData{}, err
+	}
+	if err = s.SendProtoToGC(ctx, cs2AppID, emsgStoreGetUserData, body); err != nil {
+		return GCStoreData{}, err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return GCStoreData{}, fmt.Errorf("store catalogue response: %w", ctx.Err())
+		case event := <-s.events:
+			message, ok := event.Payload.(GCMessage)
+			if event.Type != "gc.message" || !ok || message.AppID != cs2AppID || message.EMsg != emsgStoreGetUserDataResponse {
+				continue
+			}
+			response, err := gametracking.UnmarshalStoreGetUserDataResponse(message.Body)
+			if err != nil {
+				return GCStoreData{}, fmt.Errorf("decode store catalogue response: %w", err)
+			}
+			country := wallet.GetWalletCountryCode()
+			if country == "" {
+				country = wallet.GetUserCountryCode()
+			}
+			return GCStoreData{Result: response.Result, Currency: economyCurrency, Country: country, PriceSheetVersion: response.PriceSheetVersion, PriceSheet: bytes.Clone(response.PriceSheet)}, nil
+		}
+	}
+}
+
+func steamWalletCurrencyToEconomyCurrency(walletCurrency int32) (int32, error) {
+	// Steam's ECurrencyCode starts USD/GBP/EUR at 1/2/3, while the GC
+	// economy ECurrency uses 0/1/2. Later supported values currently align,
+	// except PLN (Steam 6, GC 23) and BRL (Steam 7, GC 4).
+	remap := map[int32]int32{
+		1: 0, 2: 1, 3: 2, 4: 24, 5: 3, 6: 23, 7: 4,
+		8: 8, 9: 9, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14,
+		15: 15, 16: 16, 17: 17, 18: 18, 19: 19, 20: 20, 21: 21,
+		22: 22, 23: 25, 24: 28, 25: 34, 26: 33, 27: 32, 28: 31,
+		29: 27, 30: 26, 31: 30, 32: 29,
+	}
+	if economyCurrency, ok := remap[walletCurrency]; ok {
+		return economyCurrency, nil
+	}
+	return 0, fmt.Errorf("Steam wallet returned unsupported currency code %d", walletCurrency)
+}
+
+func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (result StorePurchaseTransportResult, resultErr error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	// Keep the raw Steam-message observer enabled for the entire handoff. The
+	// authorization path is account/session dependent, so diagnostics must not
+	// assume that ClientMicroTxnAuthRequest is the only packet that can follow
+	// the accepted GC response.
+	s.steamTraceActive.Store(true)
+	defer s.steamTraceActive.Store(false)
+	trace := newDiagnosticTrace("Purchase trace started")
+	trace.Add("SESSION routing identity platform=SteamClient os=Linux client_os_type=20 active_game=Counter-Strike 2 appid=730")
+	defer func() {
+		if resultErr != nil {
+			resultErr = trace.Error(resultErr)
+		}
+	}()
+	body, err := gametracking.MarshalStorePurchaseInit(gametracking.StorePurchaseRequest{Country: request.Country, Language: request.Language, Currency: request.Currency, Lines: []gametracking.StorePurchaseLine{{ItemDefID: request.ItemDefID, Quantity: request.Quantity, Cost: request.Cost, PurchaseType: request.PurchaseType, SupplementalData: request.SupplementalData}}})
+	if err != nil {
+		return StorePurchaseTransportResult{}, err
+	}
+	innerEnvelope, envelopeErr := encodeGCProtoPayload(emsgStorePurchaseInit, body)
+	if envelopeErr != nil {
+		return StorePurchaseTransportResult{}, fmt.Errorf("encode purchase trace envelope: %w", envelopeErr)
+	}
+	log.Printf("[store-purchase] sending GC request appid=%d emsg=%d proto=true country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%d supplemental_data=%d body_bytes=%d body_hex=%x inner_envelope_bytes=%d inner_envelope_hex=%x",
+		cs2AppID, emsgStorePurchaseInit, request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, request.PurchaseType, request.SupplementalData, len(body), body, len(innerEnvelope), innerEnvelope)
+	trace.Add(fmt.Sprintf("SEND GC appid=%d emsg=%d (CMsgGCStorePurchaseInit)", cs2AppID, emsgStorePurchaseInit))
+	trace.Add(fmt.Sprintf("SEND fields country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%d supplemental_data=%d", request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, request.PurchaseType, request.SupplementalData))
+	trace.Add(fmt.Sprintf("SEND protobuf body (%d bytes): %x", len(body), body))
+	trace.Add(fmt.Sprintf("SEND GC inner envelope (%d bytes): %x", len(innerEnvelope), innerEnvelope))
+	if err = s.SendProtoToGC(ctx, cs2AppID, emsgStorePurchaseInit, body); err != nil {
+		log.Printf("[store-purchase] GC request send failed appid=%d emsg=%d error=%v", cs2AppID, emsgStorePurchaseInit, err)
+		return StorePurchaseTransportResult{}, err
+	}
+	log.Printf("[store-purchase] GC request sent appid=%d emsg=%d; waiting for GC emsg=%d and observing all subsequent Steam and GC messages", cs2AppID, emsgStorePurchaseInit, emsgStorePurchaseInitResponse)
+	trace.Add(fmt.Sprintf("WAIT GC emsg=%d (CMsgGCStorePurchaseInitResponse); observe every subsequent Steam and CS2 GC message", emsgStorePurchaseInitResponse))
+	var gc *gametracking.StorePurchaseResponse
+	var auth map[string]any
+	observed := make(map[string]int)
+	for gc == nil || auth == nil {
+		select {
+		case <-ctx.Done():
+			missing := "GC purchase response and Steam authorization transaction details"
+			if gc != nil {
+				missing = "Steam authorization transaction details after the accepted GC order"
+			} else if auth != nil {
+				missing = "GC purchase response"
+			}
+			gcDetail := "gc_response=missing"
+			if gc != nil {
+				gcDetail = fmt.Sprintf("gc_result=%d txn_id=%d gc_catalog_url_present=%t item_ids=%d", gc.Result, gc.TransactionID, gc.URL != "", len(gc.ItemIDs))
+			}
+			log.Printf("[store-purchase] wait ended error=%v missing=%q %s observed=%s", ctx.Err(), missing, gcDetail, formatObservedEvents(observed))
+			return StorePurchaseTransportResult{}, fmt.Errorf("purchase initialization timed out waiting for %s; do not retry automatically: %w (%s; request item_def_id=%d quantity=%d cost=%d currency=%d purchase_type=%d supplemental_data=%d; observed %s)", missing, ctx.Err(), gcDetail, request.ItemDefID, request.Quantity, request.Cost, request.Currency, request.PurchaseType, request.SupplementalData, formatObservedEvents(observed))
+		case event := <-s.events:
+			observed[event.Type]++
+			logStorePurchaseEvent(event)
+			trace.Add(formatStorePurchaseEvent(event))
+			if event.Type == "gc.message" {
+				if message, ok := event.Payload.(GCMessage); ok && message.AppID == cs2AppID && message.EMsg == emsgStorePurchaseInitResponse {
+					response, err := gametracking.UnmarshalStorePurchaseInitResponse(message.Body)
+					if err != nil {
+						log.Printf("[store-purchase] GC response decode failed emsg=%d body_hex=%x error=%v", message.EMsg, message.Body, err)
+						return StorePurchaseTransportResult{}, err
+					}
+					gc = &response
+					resultInfo := storePurchaseResult(gc.Result)
+					log.Printf("[store-purchase] decoded GC response result=%d result_name=%s result_description=%q txn_id=%d url=%q item_ids=%v", gc.Result, resultInfo.code, resultInfo.description, gc.TransactionID, gc.URL, gc.ItemIDs)
+					trace.Add(fmt.Sprintf("DECODE GC CMsgGCStorePurchaseInitResponse.result=%d (%s: %s)", gc.Result, resultInfo.code, resultInfo.description))
+					trace.Add(fmt.Sprintf("DECODE GC CMsgGCStorePurchaseInitResponse.txn_id=%d", gc.TransactionID))
+					trace.Add(fmt.Sprintf("DECODE GC CMsgGCStorePurchaseInitResponse.url=%q (present=%t)", gc.URL, gc.URL != ""))
+					trace.Add(fmt.Sprintf("DECODE GC CMsgGCStorePurchaseInitResponse.item_ids=%v (count=%d)", gc.ItemIDs, len(gc.ItemIDs)))
+					if gc.Result != 1 {
+						return StorePurchaseTransportResult{}, fmt.Errorf("item_def_id=%d quantity=%d cost=%d currency=%d purchase_type=%d supplemental_data=%d: %w", request.ItemDefID, request.Quantity, request.Cost, request.Currency, request.PurchaseType, request.SupplementalData, StorePurchaseRejectedError{Result: gc.Result})
+					}
+					// The response URL is a catalogue/buy-item route used by some coupon
+					// offers. It is not a transaction authorization URL and fails for
+					// ordinary store tools such as Name Tags. Only the separate Steam
+					// ClientMicroTxnAuthRequest contains the transaction IDs needed for
+					// the user-facing approval handoff.
+				}
+			}
+			if event.Type == "gc.failed" {
+				return StorePurchaseTransportResult{}, fmt.Errorf("Steam reported that the CS2 store purchase message failed")
+			}
+			if event.Type == "steam.microtxn_authorization" {
+				if raw, ok := event.Payload.([]byte); ok {
+					parsed, err := parseMicroTxnAuthorization(raw)
+					if err != nil {
+						log.Printf("[store-purchase] Steam emsg=5504 BinaryKV decode failed body_hex=%x error=%v", raw, err)
+						return StorePurchaseTransportResult{}, err
+					}
+					auth = parsed
+					log.Printf("[store-purchase] decoded Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"])
+					trace.Add(fmt.Sprintf("DECODE Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"]))
+				}
+			}
+		}
+	}
+	orderID, ok := kvUint64(auth, "orderid")
+	if !ok || orderID != gc.TransactionID {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam order did not match GC transaction")
+	}
+	if appID, ok := kvUint64(auth, "appid"); ok && appID != uint64(cs2AppID) {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization app did not match CS2")
+	}
+	if itemDefID, ok := kvUint64(auth, "gameitemid"); !ok || itemDefID != uint64(request.ItemDefID) {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization item did not match store offer")
+	}
+	if quantity, ok := kvUint64(auth, "quantity"); !ok || quantity != uint64(request.Quantity) {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization quantity did not match store request")
+	}
+	if amount, ok := kvUint64(auth, "amount"); !ok || amount != request.Cost {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization amount did not match store offer")
+	}
+	checkoutURL := gc.URL
+	if ValidateSteamCheckoutURL(checkoutURL) != nil {
+		transID, ok := kvUint64(auth, "transid")
+		if !ok || transID == 0 {
+			return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization did not include a checkout transaction ID")
+		}
+		checkoutURL = steamCheckoutURL(transID, orderID)
+	}
+	if err := ValidateSteamCheckoutURL(checkoutURL); err != nil {
+		return StorePurchaseTransportResult{}, err
+	}
+	trace.Add(fmt.Sprintf("READY checkout_url=%q", checkoutURL))
+	return StorePurchaseTransportResult{TransactionID: gc.TransactionID, OrderID: orderID, CheckoutURL: checkoutURL, ItemIDs: append([]uint64(nil), gc.ItemIDs...), Authorization: auth, Diagnostics: trace.Lines()}, nil
+}
+
+func formatStorePurchaseEvent(event GCEvent) string {
+	switch payload := event.Payload.(type) {
+	case GCMessage:
+		emsg := payload.EMsg &^ protoMask
+		name := fmt.Sprintf("GC message %d", emsg)
+		switch emsg {
+		case emsgStorePurchaseInit:
+			name = "CMsgGCStorePurchaseInit"
+		case emsgStorePurchaseInitResponse:
+			name = "CMsgGCStorePurchaseInitResponse"
+		}
+		if event.Type == "gc.message" {
+			return fmt.Sprintf("RECV event=%s appid=%d emsg=%d (%s) decoded_protobuf_body=true body_bytes=%d body_hex=%x", event.Type, payload.AppID, emsg, name, len(payload.Body), payload.Body)
+		}
+		return fmt.Sprintf("RECV event=%s appid=%d emsg=%d (%s) protobuf_envelope=%t body_bytes=%d body_hex=%x", event.Type, payload.AppID, emsg, name, payload.EMsg&protoMask != 0, len(payload.Body), payload.Body)
+	case []byte:
+		return fmt.Sprintf("RECV event=%s body_bytes=%d body_hex=%x", event.Type, len(payload), payload)
+	default:
+		return fmt.Sprintf("RECV event=%s payload_type=%T payload=%v", event.Type, event.Payload, event.Payload)
+	}
+}
+
+func logStorePurchaseEvent(event GCEvent) {
+	switch payload := event.Payload.(type) {
+	case GCMessage:
+		log.Printf("[store-purchase] received event=%s appid=%d emsg=%d steamid=%d gcname=%q body_bytes=%d body_hex=%x", event.Type, payload.AppID, payload.EMsg, payload.SteamID, payload.GCName, len(payload.Body), payload.Body)
+	case []byte:
+		log.Printf("[store-purchase] received event=%s body_bytes=%d body_hex=%x", event.Type, len(payload), payload)
+	default:
+		log.Printf("[store-purchase] received event=%s payload_type=%T payload=%v", event.Type, event.Payload, event.Payload)
+	}
+}
+
+func steamCheckoutURL(transID uint64, orderID uint64) string {
+	return fmt.Sprintf("https://checkout.steampowered.com/checkout/approvetxn/%d/?returnurl=https%%3A%%2F%%2Fstore.steampowered.com%%2Fbuyitem%%2F730%%2Ffinalize%%2F%d%%3Fcanceledurl%%3Dhttps%%253A%%252F%%252Fstore.steampowered.com%%252F%%26returnhost%%3Dstore.steampowered.com&canceledurl=https%%3A%%2F%%2Fstore.steampowered.com%%2F", transID, orderID)
+}
+
+func ValidateSteamCheckoutURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Hostname() == "" || netParseIP(parsed.Hostname()) {
+		return fmt.Errorf("Steam checkout URL is invalid")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "checkout.steampowered.com" || !strings.HasPrefix(parsed.EscapedPath(), "/checkout/approvetxn/") {
+		return fmt.Errorf("URL is not a Steam transaction-approval page")
+	}
+	return nil
+}
+func netParseIP(host string) bool {
+	for _, c := range host {
+		if (c < '0' || c > '9') && c != '.' && c != ':' {
+			return false
+		}
+	}
+	return true
+}
+
+func parseMicroTxnAuthorization(raw []byte) (map[string]any, error) {
+	if len(raw) < 2 {
+		return nil, fmt.Errorf("Steam microtransaction authorization was empty")
+	}
+	values := map[string]any{}
+	reader := bytes.NewReader(raw[1:])
+	if err := parseBinaryKV(reader, values); err != nil {
+		return nil, fmt.Errorf("decode Steam microtransaction authorization: %w", err)
+	}
+	return values, nil
+}
+func parseBinaryKV(r *bytes.Reader, out map[string]any) error {
+	for {
+		kind, err := r.ReadByte()
+		if err != nil {
+			return err
+		}
+		if kind == 8 || kind == 11 {
+			return nil
+		}
+		key, err := readCString(r)
+		if err != nil {
+			return err
+		}
+		normalized := strings.ToLower(key)
+		switch kind {
+		case 0:
+			if err := parseBinaryKV(r, out); err != nil {
+				return err
+			}
+		case 1:
+			value, err := readCString(r)
+			if err != nil {
+				return err
+			}
+			out[normalized] = value
+		case 2, 3, 5:
+			var value uint32
+			if err := binary.Read(r, binary.LittleEndian, &value); err != nil {
+				return err
+			}
+			out[normalized] = uint64(value)
+		case 7, 9, 10:
+			var value uint64
+			if err := binary.Read(r, binary.LittleEndian, &value); err != nil {
+				return err
+			}
+			out[normalized] = value
+		case 6:
+			var value uint32
+			if err := binary.Read(r, binary.LittleEndian, &value); err != nil {
+				return err
+			}
+			out[normalized] = uint64(value)
+		default:
+			return fmt.Errorf("unsupported binary KeyValues type %d", kind)
+		}
+	}
+}
+func readCString(r *bytes.Reader) (string, error) {
+	var b []byte
+	for len(b) <= math.MaxUint16 {
+		c, err := r.ReadByte()
+		if err != nil {
+			return "", err
+		}
+		if c == 0 {
+			return string(b), nil
+		}
+		b = append(b, c)
+	}
+	return "", fmt.Errorf("binary KeyValues string too long")
+}
+func kvUint64(values map[string]any, keys ...string) (uint64, bool) {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case uint64:
+			return typed, true
+		case string:
+			parsed, err := strconv.ParseUint(typed, 10, 64)
+			return parsed, err == nil
+		}
+	}
+	return 0, false
+}

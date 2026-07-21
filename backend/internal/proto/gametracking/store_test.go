@@ -1,6 +1,8 @@
 package gametracking
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -73,5 +75,30 @@ func TestStoreDynamicMessagesRoundTrip(t *testing.T) {
 	supplemental := line.Descriptor().Fields().ByName("supplemental_data")
 	if !line.Has(supplemental) || line.Get(supplemental).Uint() != 0 {
 		t.Fatal("supplemental_data must be explicitly present when zero")
+	}
+}
+
+func TestMessageNameForEMsgClientHello(t *testing.T) {
+	name, ok := MessageNameForEMsg(4006)
+	if !ok || name != "CMsgClientHello" {
+		t.Fatalf("MessageNameForEMsg(4006) = %q, %v; want CMsgClientHello, true", name, ok)
+	}
+}
+
+func TestDecodeClientHelloTracePayload(t *testing.T) {
+	body, err := hex.DecodeString("08eb8f7a180020004800")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeMessageJSON("CMsgClientHello", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(decoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["version"] != float64(2000875) {
+		t.Fatalf("decoded version = %#v; want 2000875", fields["version"])
 	}
 }

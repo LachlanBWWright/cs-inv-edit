@@ -3,7 +3,7 @@ import type { JSX } from "solid-js";
 import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryDetailsPanel } from "./InventoryDetailsPanel.js";
 import { Alert } from "./ui/Alert.js";
-import { InventoryFilters, InventoryGrid } from "./inventory-view-content-sections.js";
+import { InventoryGrid } from "./inventory-view-content-sections.js";
 import type { InventoryMode } from "../view.js";
 
 export interface InventoryViewContentProps {
@@ -12,15 +12,6 @@ export interface InventoryViewContentProps {
   selectedItemIds: string[];
   connection: ConnectionStatus | undefined;
   settings: SettingsData | undefined;
-  query: string;
-  kindFilter: "all" | InventoryItemDto["kind"];
-  rarityFilter: string;
-  weaponFilter: string;
-  collectionFilter: string;
-  sort: import("./inventory-view-utils.js").InventorySort;
-  rarityOptions: string[];
-  weaponOptions: string[];
-  collectionOptions: string[];
   filteredItems: InventoryItemDto[];
   selectedItem: InventoryItemDto | undefined;
   selectedItemKey: string | undefined;
@@ -36,18 +27,12 @@ export interface InventoryViewContentProps {
   connected: boolean;
   nameTagTools: InventoryItemDto[];
   compatibleContainerKey: InventoryItemDto | undefined;
+  compatibleContainerKeys: InventoryItemDto[];
+  selectedContainerKeyId: string;
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
   compactMode: "icons" | "concise" | "detailed";
-  onRefresh: () => void;
   onMarketPreview: (marketName: string) => Promise<import("@cs-inv-edit/contracts").RelatedItemDto | undefined>;
-  onQueryChange: (value: string) => void;
-  onKindFilterChange: (value: "all" | InventoryItemDto["kind"]) => void;
-  onRarityFilterChange: (value: string) => void;
-  onWeaponFilterChange: (value: string) => void;
-  onCollectionFilterChange: (value: string) => void;
-  onSortChange: (value: import("./inventory-view-utils.js").InventorySort) => void;
-  onCompactModeChange: (value: "icons" | "concise" | "detailed") => void;
   onSelectItem: (item: InventoryItemDto) => void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRenameSubmit: () => Promise<void> | void;
@@ -56,6 +41,8 @@ export interface InventoryViewContentProps {
   onCloseRename: () => void;
   onDraftNameChange: (value: string) => void;
   onSelectedToolChange: (value: string) => void;
+  onSelectedContainerKeyChange: (value: string) => void;
+  onRefresh: () => void;
 }
 
 function SelectionAlert(props: Pick<InventoryViewContentProps, 'selectionMode' | 'selectedItemIds'>): JSX.Element | null {
@@ -150,6 +137,8 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
       inventoryDebugEnabled={inventoryDebugEnabled()}
       nameTagTools={props.nameTagTools}
       compatibleContainerKey={props.compatibleContainerKey}
+      compatibleContainerKeys={props.compatibleContainerKeys}
+      selectedContainerKeyId={props.selectedContainerKeyId}
       canOpenContainer={props.canOpenContainer}
       canUseNameTagOn={props.canUseNameTagOn}
       containerStatusMessage={props.containerStatusMessage}
@@ -161,14 +150,14 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
       onCloseRename={props.onCloseRename}
       onDraftNameChange={props.onDraftNameChange}
       onSelectedToolChange={props.onSelectedToolChange}
+      onSelectedContainerKeyChange={props.onSelectedContainerKeyChange}
     />
   );
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       <InventoryAlerts inventory={props.inventory} inventoryDiagnostics={props.inventoryDiagnostics} inventoryError={props.inventoryError} selectionMode={props.selectionMode} selectedItemIds={props.selectedItemIds} statusMessage={props.statusMessage} connected={props.connected} />
-      <InventoryFilters kindFilter={props.kindFilter} rarityFilter={props.rarityFilter} weaponFilter={props.weaponFilter} collectionFilter={props.collectionFilter} sort={props.sort} rarityOptions={props.rarityOptions} weaponOptions={props.weaponOptions} collectionOptions={props.collectionOptions} onKindFilterChange={props.onKindFilterChange} onRarityFilterChange={props.onRarityFilterChange} onWeaponFilterChange={props.onWeaponFilterChange} onCollectionFilterChange={props.onCollectionFilterChange} onSortChange={props.onSortChange} />
-      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} onSelectItem={props.onSelectItem} detailsPanel={detailsPanel} />
+      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} onSelectItem={props.onSelectItem} onRefresh={props.onRefresh} detailsPanel={detailsPanel} />
     </div>
   );
 }
