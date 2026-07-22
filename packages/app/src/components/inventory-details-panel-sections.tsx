@@ -68,6 +68,40 @@ function PropertyField(props: { label: string; children: JSX.Element | string | 
   );
 }
 
+function scrapePercent(wear: number | undefined) {
+  return wear === undefined ? undefined : Math.round(Math.max(0, Math.min(1, wear)) * 100);
+}
+
+function AppliedItemGallery(props: { items: NonNullable<InventoryItemDto["appliedItems"]> }) {
+  return (
+    <div class="sm:col-span-2">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Applied items</p>
+      <div class="mt-2 flex flex-wrap gap-3">
+        <For each={props.items}>{(applied) => {
+          const scraped = () => applied.kind === "sticker" ? scrapePercent(applied.wear) : undefined;
+          return (
+            <div class="w-24 rounded-lg border border-slate-700/80 bg-slate-950/70 p-2">
+              <div class="flex h-16 w-full items-center justify-center overflow-hidden rounded bg-slate-900">
+                <Show when={applied.imageUrl} fallback={<span class="text-xl font-bold text-slate-600">{applied.kind === "charm" ? "C" : applied.kind === "patch" ? "P" : "S"}</span>}>
+                  <img class="h-full w-full object-contain" src={applied.imageUrl} alt={applied.name} loading="lazy" />
+                </Show>
+              </div>
+              <p class="mt-1 line-clamp-2 text-[11px] font-medium leading-tight text-slate-200" title={applied.name}>{applied.name}</p>
+              <p class="mt-1 text-[10px] capitalize text-slate-500">{applied.kind}{applied.slot === undefined ? "" : ` · slot ${applied.slot + 1}`}</p>
+              <Show when={scraped() !== undefined}>
+                <div class="mt-1" title={`Sticker scrape level: ${scraped()}%`}>
+                  <div class="h-1 overflow-hidden rounded bg-slate-700"><div class="h-full bg-amber-400" style={{ width: `${scraped()}%` }} /></div>
+                  <p class="mt-0.5 text-[10px] text-amber-200">{scraped()}% scraped</p>
+                </div>
+              </Show>
+            </div>
+          );
+        }}</For>
+      </div>
+    </div>
+  );
+}
+
 function MarketField(props: { selected: InventoryItemDto; selectedMarketPreview: RelatedItemDto | undefined; selectedMarketLoading: boolean }) {
   const hasMarketValue = props.selected.marketPrice || props.selectedMarketPreview?.price || props.selectedMarketLoading;
   if (!hasMarketValue) return null;
@@ -114,6 +148,11 @@ export function PropertyGrid(props: PropertyGridProps) {
             <p class="mt-1 font-mono font-medium text-slate-100">{formatFloat(props.selected.paintWear!)}</p>
           </PropertyField>
         </Show>
+        <Show when={props.selected.graffitiCharges !== undefined}>
+          <PropertyField label="Charges remaining">
+            <p class="mt-1 font-mono font-medium text-slate-100">{props.selected.graffitiCharges}</p>
+          </PropertyField>
+        </Show>
         <MarketField selected={props.selected} selectedMarketPreview={props.selectedMarketPreview} selectedMarketLoading={props.selectedMarketLoading} />
         <Show when={props.selected.marketSellListings}>
           <PropertyField label="Listings">
@@ -125,6 +164,14 @@ export function PropertyGrid(props: PropertyGridProps) {
             <p class="mt-1 font-medium text-slate-100">{props.selected.stickers?.length}</p>
           </PropertyField>
         </Show>
+        <Show when={(props.selected.appliedItems?.length ?? 0) > 0}>
+          <AppliedItemGallery items={props.selected.appliedItems!} />
+        </Show>
+        <Show when={props.selected.customName}>
+          <PropertyField label="Name Tag">
+            <p class="mt-1 font-medium text-cyan-200">{props.selected.customName}</p>
+          </PropertyField>
+        </Show>
       </div>
     </div>
   );
@@ -132,6 +179,7 @@ export function PropertyGrid(props: PropertyGridProps) {
 
 export interface TradeUpOutcomesProps {
   selected: InventoryItemDto;
+  onPreview?: (item: InventoryItemDto) => void;
 }
 
 function TradeUpOutcomeCard(props: { outcome: RelatedItemDto }) {
@@ -160,7 +208,10 @@ export function TradeUpOutcomes(props: TradeUpOutcomesProps) {
   return (
     <Show when={props.selected.kind === "weapon_skin" && (props.selected.tradeUpItems?.length ?? 0) > 0}>
       <section class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4">
-        <h4 class="font-semibold text-slate-100">Identical-copy trade-up outcomes</h4>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <h4 class="font-semibold text-slate-100">Identical-copy trade-up outcomes</h4>
+          <button type="button" class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500" onClick={() => props.onPreview?.(props.selected)}>Preview trade-up animation</button>
+        </div>
         <p class="mt-1 text-xs text-slate-400">Possible results from {tradeUpInputCount(props.selected)} identical copies. Wear uses normalized input float mapped into each output finish’s range. {props.selected.isSouvenir ? "Souvenir attributes are removed; results are normal items." : ""}</p>
         <div class="mt-3 grid gap-3 sm:grid-cols-2">
           <For each={props.selected.tradeUpItems}>{(outcome) => <TradeUpOutcomeCard outcome={outcome} />}</For>
@@ -183,6 +234,7 @@ export interface ActionBarProps {
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRemoveName: () => Promise<void> | void;
   onShowContents: () => void;
+  onViewStorageContents: () => Promise<void> | void;
   onSelectedContainerKeyChange: (value: string) => void;
 }
 
@@ -216,6 +268,9 @@ export function ActionBar(props: ActionBarProps) {
       </Show>
       <Show when={props.selected.containerItems?.length}>
         <Button variant="secondary" onClick={() => props.onShowContents()}>View possible contents ({props.selected.containerItems?.length})</Button>
+      </Show>
+      <Show when={props.selected.kind === "storage_unit"}>
+        <Button variant="secondary" onClick={() => void props.onViewStorageContents()} disabled={props.pending}>View contents ({props.selected.storageCount ?? 0})</Button>
       </Show>
       <Show when={showOpenContainer()}>
         <div class="flex flex-col gap-2">
@@ -341,9 +396,6 @@ export function ContentsDialog(props: ContentsDialogProps) {
   const odds = containerItemOdds(props.items ?? []);
   return (
     <div class="rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-3 text-xs leading-relaxed text-slate-400">
-      <div class="mb-3 rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-3 text-xs leading-relaxed text-slate-400">
-        Base item odds use the documented 5:1 ratio between adjacent rarity tiers and divide each tier evenly among its listed items. Eligible case weapon finishes have a separate 10% StatTrak™ chance. Float-cap conversion is reserved for expected-value calculations rather than displayed as additional per-item odds.
-      </div>
       <div class="grid gap-2 sm:grid-cols-2">
         <For each={props.items}>{(item) => <RelatedItemPreview item={item} context={props.dialogContext} probability={props.context === "container" ? odds.get(item) : undefined} onRequestMarketPreview={props.onMarketPreview} />}</For>
       </div>

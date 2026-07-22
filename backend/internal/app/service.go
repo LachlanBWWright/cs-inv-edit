@@ -23,53 +23,60 @@ type HealthStatus struct {
 }
 
 type Service struct {
-	mu               sync.Mutex
-	events           []operations.Event
-	operations       []operations.Receipt
-	inventory        domain.InventorySnapshot
-	armory           domain.ArmorySnapshot
-	store            domain.StoreSnapshot
-	purchaseSessions map[string]domain.PurchaseSession
-	purchaseItemIDs  map[string][]uint64
-	storeCountry     string
-	storeCurrencyID  int32
-	settings         domain.Settings
-	connection       domain.ConnectionStatus
-	gcClient         transport.GCClient
-	econProvider     *econ.Provider
-	multiProvider    *multigame.Provider
-	gameInventories  map[string]domain.GameInventorySnapshot
-	gameRefreshes    map[string]uint64
-	gameCancels      map[string]context.CancelFunc
-	lastOperation    operations.Receipt
-	pendingUsername  string
-	pendingPassword  string
-	authCancel       context.CancelFunc
-	profileResolver  *steamprofile.Resolver
-	priceScanner     *pricescanner.Scanner
-	tradeAccessToken string
-	tradeProvider    *steamtrade.Provider
-	trades           steamtrade.Snapshot
+	mu                 sync.Mutex
+	events             []operations.Event
+	operations         []operations.Receipt
+	inventory          domain.InventorySnapshot
+	armory             domain.ArmorySnapshot
+	store              domain.StoreSnapshot
+	purchaseSessions   map[string]domain.PurchaseSession
+	purchaseItemIDs    map[string][]uint64
+	loadedStorageUnits map[uint64]bool
+	storeCountry       string
+	storeCurrencyID    int32
+	settings           domain.Settings
+	connection         domain.ConnectionStatus
+	gcClient           transport.GCClient
+	econProvider       *econ.Provider
+	multiProvider      *multigame.Provider
+	gameInventories    map[string]domain.GameInventorySnapshot
+	gameRefreshes      map[string]uint64
+	gameCancels        map[string]context.CancelFunc
+	gcSessionEpoch     uint64
+	gcSessionContext   context.Context
+	gcSessionCancel    context.CancelFunc
+	gcSessions         map[gcSessionKey]*gcSessionState
+	lastOperation      operations.Receipt
+	pendingUsername    string
+	pendingPassword    string
+	authCancel         context.CancelFunc
+	profileResolver    *steamprofile.Resolver
+	priceScanner       *pricescanner.Scanner
+	tradeAccessToken   string
+	tradeProvider      *steamtrade.Provider
+	trades             steamtrade.Snapshot
 }
 
 func NewService() *Service {
 	service := &Service{
-		inventory:        emptyInventory(),
-		armory:           emptyArmory(),
-		store:            emptyStore(),
-		purchaseSessions: make(map[string]domain.PurchaseSession),
-		purchaseItemIDs:  make(map[string][]uint64),
-		settings:         defaultSettings(),
-		connection:       domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
-		gcClient:         transport.NewSteamGCClient(),
-		econProvider:     econ.NewProvider(),
-		multiProvider:    multigame.NewProvider(),
-		gameInventories:  make(map[string]domain.GameInventorySnapshot),
-		gameRefreshes:    make(map[string]uint64),
-		gameCancels:      make(map[string]context.CancelFunc),
-		profileResolver:  steamprofile.NewResolver(),
-		tradeProvider:    steamtrade.NewProvider(nil),
-		trades:           steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()},
+		inventory:          emptyInventory(),
+		armory:             emptyArmory(),
+		store:              emptyStore(),
+		purchaseSessions:   make(map[string]domain.PurchaseSession),
+		purchaseItemIDs:    make(map[string][]uint64),
+		loadedStorageUnits: make(map[uint64]bool),
+		settings:           defaultSettings(),
+		connection:         domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
+		gcClient:           transport.NewSteamGCClient(),
+		econProvider:       econ.NewProvider(),
+		multiProvider:      multigame.NewProvider(),
+		gameInventories:    make(map[string]domain.GameInventorySnapshot),
+		gameRefreshes:      make(map[string]uint64),
+		gameCancels:        make(map[string]context.CancelFunc),
+		gcSessions:         make(map[gcSessionKey]*gcSessionState),
+		profileResolver:    steamprofile.NewResolver(),
+		tradeProvider:      steamtrade.NewProvider(nil),
+		trades:             steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()},
 		priceScanner: pricescanner.New(
 			pricescanner.NewSteamProvider(nil),
 			pricescanner.NewSkinportProvider(nil),

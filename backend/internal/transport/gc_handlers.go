@@ -17,6 +17,7 @@ type GCHandler struct {
 	steamTraceActive *atomic.Bool
 	protocolTrace    func(*steammsg.Packet)
 	gcProtocolTrace  func(string, uint32, uint32, []byte)
+	sessionEnded     func(string)
 }
 
 func NewGCHandler(events chan<- GCEvent, options ...any) *GCHandler {
@@ -29,6 +30,8 @@ func NewGCHandler(events chan<- GCEvent, options ...any) *GCHandler {
 			handler.protocolTrace = typed
 		case func(string, uint32, uint32, []byte):
 			handler.gcProtocolTrace = typed
+		case func(string):
+			handler.sessionEnded = typed
 		}
 	}
 	return handler
@@ -122,12 +125,18 @@ func (h *GCHandler) handleClientLoggedOff(packet *steammsg.Packet) ([]steamcm.Ev
 	if h.events != nil {
 		h.events <- GCEvent{Type: "steam.logged_off", Payload: body}
 	}
+	if h.sessionEnded != nil {
+		h.sessionEnded("steam.logged_off")
+	}
 	return []steamcm.Event{steamcm.MakeEvent(steamcm.EventType_Incoming, steamcm.EventPacketReceived{Packet: packet})}, nil
 }
 
 func (h *GCHandler) handleClientServerUnavailable(packet *steammsg.Packet) ([]steamcm.Event, error) {
 	if h.events != nil {
 		h.events <- GCEvent{Type: "steam.server_unavailable", Payload: packet.MsgType().String()}
+	}
+	if h.sessionEnded != nil {
+		h.sessionEnded("steam.server_unavailable")
 	}
 	return []steamcm.Event{steamcm.MakeEvent(steamcm.EventType_Incoming, steamcm.EventPacketReceived{Packet: packet})}, nil
 }

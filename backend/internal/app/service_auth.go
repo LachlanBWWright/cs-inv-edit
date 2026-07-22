@@ -59,7 +59,7 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 		return status
 	}
 	s.mu.Lock()
-	s.cancelGameRefreshesForAccountChangeLocked(fmt.Sprintf("%d", result.SteamID))
+	s.activateAccountSessionLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername = ""
 	s.pendingPassword = ""
 	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
@@ -135,7 +135,7 @@ func (s *Service) finishSteamLogin(username string, result transport.LogonResult
 		return
 	}
 	s.mu.Lock()
-	s.cancelGameRefreshesForAccountChangeLocked(fmt.Sprintf("%d", result.SteamID))
+	s.activateAccountSessionLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername, s.pendingPassword = "", ""
 	s.authCancel = nil
 	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
@@ -218,7 +218,7 @@ func (s *Service) SubmitSteamGuard(input map[string]any) domain.ConnectionStatus
 		s.connection = domain.ConnectionStatus{State: "error", Detail: "Steam game coordinator presence failed: " + err.Error(), AccountName: username}
 		return s.connection
 	}
-	s.cancelGameRefreshesForAccountChangeLocked(fmt.Sprintf("%d", result.SteamID))
+	s.activateAccountSessionLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername = ""
 	s.pendingPassword = ""
 	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
@@ -235,6 +235,7 @@ func (s *Service) cancelGameRefreshesForAccountChangeLocked(nextSteamID string) 
 
 func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	s.mu.Lock()
+	s.invalidateAccountSessionLocked()
 	if s.authCancel != nil {
 		s.authCancel()
 		s.authCancel = nil
@@ -247,6 +248,7 @@ func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	s.pendingUsername = ""
 	s.pendingPassword = ""
 	s.mu.Unlock()
+	_ = s.gcClient.Close()
 	receipt := s.newReceipt("steam.disconnect")
 	s.addEvent(receipt, "completed", "steam disconnected")
 	return s.ConnectionStatus()

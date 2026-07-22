@@ -34,7 +34,7 @@ export function AccountView(props: AccountViewProps) {
   createEffect(() => {
     const challenge = props.connection?.qrChallengeUrl;
     if (!challenge) { setQRImage(""); return; }
-    void ResultAsync.fromPromise(QRCode.toDataURL(challenge, { width: 320, margin: 2 }), (cause) => ({ message: "Failed to render Steam QR code", cause }))
+    void ResultAsync.fromPromise(QRCode.toDataURL(challenge, { width: 512, margin: 2 }), (cause) => ({ message: "Failed to render Steam QR code", cause }))
       .match(setQRImage, (error) => setStatus(error.message));
   });
 

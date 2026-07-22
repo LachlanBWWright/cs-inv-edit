@@ -78,10 +78,15 @@ export function compactItemMeta(item: InventoryItemDto) {
   return [type, qualifier].filter((value, index, values): value is string => !!value && values.indexOf(value) === index).join(" · ");
 }
 
-export type InventorySort = "name" | "float-low" | "float-high" | "rarity-low" | "rarity-high";
+export type InventorySort = "name" | "float-low" | "float-high" | "rarity-low" | "rarity-high" | "price-low" | "price-high";
 
-export function sortInventoryItems(items: InventoryItemDto[], sort: InventorySort) {
+export function sortInventoryItems(items: InventoryItemDto[], sort: InventorySort, marketPrices: ReadonlyMap<string, number> = new Map()) {
   return [...items].sort((left, right) => {
+    if (sort === "price-low" || sort === "price-high") {
+      const price = (item: InventoryItemDto) => item.marketable === false ? 0 : marketPrices.get(item.marketName ?? "") ?? 0;
+      const comparison = price(left) - price(right);
+      return (sort === "price-low" ? comparison : -comparison) || itemDisplayName(left).localeCompare(itemDisplayName(right));
+    }
     if (sort === "float-low" || sort === "float-high") {
       if (left.paintWear === undefined) return right.paintWear === undefined ? 0 : 1;
       if (right.paintWear === undefined) return -1;

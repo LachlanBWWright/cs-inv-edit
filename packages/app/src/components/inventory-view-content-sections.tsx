@@ -2,7 +2,7 @@ import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { InventoryItemDto, InventorySnapshot } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
-import { compactItemMeta, compactItemName, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass, type InventorySort } from "./inventory-view-utils.js";
+import { compactItemMeta, compactItemName, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
 import { TradeLockIndicator } from "./TradeLockIndicator.js";
@@ -25,7 +25,6 @@ export interface InventoryFiltersProps {
   rarityFilter: string;
   weaponFilter: string;
   collectionFilter: string;
-  sort: InventorySort;
   rarityOptions: string[];
   weaponOptions: string[];
   collectionOptions: string[];
@@ -33,17 +32,16 @@ export interface InventoryFiltersProps {
   onRarityFilterChange: (value: string) => void;
   onWeaponFilterChange: (value: string) => void;
   onCollectionFilterChange: (value: string) => void;
-  onSortChange: (value: InventorySort) => void;
 }
 
 export function InventoryFilters(props: InventoryFiltersProps) {
+  const selectClass = "mt-1.5 h-10 w-full rounded-xl border border-slate-700/80 bg-slate-900 px-3 text-sm text-slate-100 outline-none transition hover:border-slate-600 focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-400/15";
   return (
-    <div class={props.class ?? "flex flex-wrap gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3"}>
-      <label><span class="sr-only">Item type</span><select aria-label="Item type" class="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.kindFilter} onInput={(event) => props.onKindFilterChange(event.currentTarget.value as "all" | InventoryItemDto["kind"])}><option value="all">All types</option><For each={["weapon_skin", "sticker_item", "container", "storage_unit", "tool_item", "cs2_econ_item", "unknown"] as const}>{(kind) => <option value={kind}>{itemKindLabel(kind)}</option>}</For></select></label>
-      <label><span class="sr-only">Rarity tier</span><select aria-label="Rarity tier" class="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.rarityFilter} onInput={(event) => props.onRarityFilterChange(event.currentTarget.value)}><option value="all">All rarities</option><For each={props.rarityOptions}>{(rarity) => <option value={rarity}>{rarity}</option>}</For></select></label>
-      <label><span class="sr-only">Weapon</span><select aria-label="Weapon" class="h-9 max-w-48 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.weaponFilter} onInput={(event) => props.onWeaponFilterChange(event.currentTarget.value)}><option value="all">All weapons</option><For each={props.weaponOptions}>{(weapon) => <option value={weapon}>{weapon}</option>}</For></select></label>
-      <label><span class="sr-only">Collection</span><select aria-label="Collection" class="h-9 max-w-56 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.collectionFilter} onInput={(event) => props.onCollectionFilterChange(event.currentTarget.value)}><option value="all">All collections</option><For each={props.collectionOptions}>{(collection) => <option value={collection}>{collection}</option>}</For></select></label>
-      <label class="ml-auto"><span class="sr-only">Sort inventory</span><select aria-label="Sort inventory" class="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.sort} onInput={(event) => props.onSortChange(event.currentTarget.value as InventorySort)}><option value="name">Name A–Z</option><option value="float-low">Float: low to high</option><option value="float-high">Float: high to low</option><option value="rarity-high">Rarity: high to low</option><option value="rarity-low">Rarity: low to high</option></select></label>
+    <div class={props.class ?? "grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-2"}>
+      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Item type<select aria-label="Item type" class={selectClass} value={props.kindFilter} onInput={(event) => props.onKindFilterChange(event.currentTarget.value as "all" | InventoryItemDto["kind"])}><option value="all">All types</option><For each={["weapon_skin", "sticker_item", "container", "storage_unit", "tool_item", "cs2_econ_item", "unknown"] as const}>{(kind) => <option value={kind}>{itemKindLabel(kind)}</option>}</For></select></label>
+      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Rarity<select aria-label="Rarity tier" class={selectClass} value={props.rarityFilter} onInput={(event) => props.onRarityFilterChange(event.currentTarget.value)}><option value="all">All rarities</option><For each={props.rarityOptions}>{(rarity) => <option value={rarity}>{rarity}</option>}</For></select></label>
+      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Weapon<select aria-label="Weapon" class={selectClass} value={props.weaponFilter} onInput={(event) => props.onWeaponFilterChange(event.currentTarget.value)}><option value="all">All weapons</option><For each={props.weaponOptions}>{(weapon) => <option value={weapon}>{weapon}</option>}</For></select></label>
+      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Collection<select aria-label="Collection" class={selectClass} value={props.collectionFilter} onInput={(event) => props.onCollectionFilterChange(event.currentTarget.value)}><option value="all">All collections</option><For each={props.collectionOptions}>{(collection) => <option value={collection}>{collection}</option>}</For></select></label>
     </div>
   );
 }
@@ -59,12 +57,18 @@ export interface InventoryGridProps {
   onSelectItem: (item: InventoryItemDto) => void;
   onRefresh: () => void;
   detailsPanel: JSX.Element;
+  browsingStorageUnit: InventoryItemDto | undefined;
+  removeFromStorageMode: boolean;
+  storageSelectedItemIds: string[];
+  onBackFromStorage: () => void;
+  onToggleRemoveFromStorageMode: () => void;
+  onRetrieveFromStorage: () => Promise<void> | void;
 }
 
 export function InventoryGrid(props: InventoryGridProps) {
   const itemCardClass = (item: InventoryItemDto) => {
-    const isSelected = props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id);
-    return `group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "ring-2 ring-cyan-300" : "hover:brightness-110"}`;
+    const isSelected = props.removeFromStorageMode ? props.storageSelectedItemIds.includes(item.id) : props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id);
+    return `inventory-item-card group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "is-selected ring-2 ring-cyan-300" : "hover:brightness-110"}`;
   };
 
   const compactLayout = () => {
@@ -119,10 +123,18 @@ export function InventoryGrid(props: InventoryGridProps) {
   return (
     <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
       <PullToRefresh class="min-h-0 overflow-y-auto pr-1" onRefresh={props.onRefresh}>
+        <Show when={props.browsingStorageUnit}>
+          <div class="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/95 p-2 shadow-lg backdrop-blur">
+            <button type="button" class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:border-cyan-400/50" onClick={props.onBackFromStorage}>← Back</button>
+            <button type="button" aria-pressed={props.removeFromStorageMode} class={`rounded-lg border px-3 py-2 text-sm font-medium ${props.removeFromStorageMode ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-slate-700 text-slate-200 hover:border-amber-400/50"}`} onClick={props.onToggleRemoveFromStorageMode}>Remove item mode</button>
+            <button type="button" class="rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40" disabled={!props.removeFromStorageMode || props.storageSelectedItemIds.length === 0} onClick={() => void props.onRetrieveFromStorage()}>Retrieve from unit ({props.storageSelectedItemIds.length})</button>
+            <span class="ml-auto truncate text-sm text-slate-400">{itemDisplayName(props.browsingStorageUnit!)}</span>
+          </div>
+        </Show>
         <Show when={props.filteredItems.length > 0} fallback={<InventoryEmptyState inventory={props.inventory} inventoryLoading={props.inventoryLoading} />}>
           <div class="grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))" }}>
             <For each={props.filteredItems}>{(item) => (
-              <button type="button" class={`focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`} aria-pressed={props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id)} onClick={(event) => { event.stopPropagation(); props.onSelectItem(item); }}>
+              <button type="button" class={`focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`} aria-pressed={props.removeFromStorageMode ? props.storageSelectedItemIds.includes(item.id) : props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id)} onClick={(event) => { event.stopPropagation(); props.onSelectItem(item); }}>
                 <TradeLockIndicator item={item} />
                 <ItemIcon item={item} large />
                 <div class={compactLayout()}>{compactSummary(item)}</div>
@@ -147,8 +159,8 @@ function InventoryEmptyState(props: { inventory: InventorySnapshot | undefined; 
 }
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
-  const boxClass = () => props.large ? "flex h-36 w-full items-center justify-center bg-slate-950 text-xl font-semibold text-slate-600" : "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
-  const imageClass = () => props.large ? "h-36 w-full bg-slate-950 object-contain object-top" : "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain object-top";
+  const boxClass = () => props.large ? "flex h-36 w-full items-center justify-center bg-transparent text-xl font-semibold text-slate-600" : "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
+  const imageClass = () => props.large ? "h-36 w-full bg-transparent object-contain object-top" : "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain object-top";
   return (
     <div class={props.large ? "w-full" : "w-20 shrink-0"}>
       <Show when={props.item.imageUrl} fallback={<div class={boxClass()}>{itemInitials(props.item)}</div>}>

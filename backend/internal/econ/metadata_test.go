@@ -20,6 +20,17 @@ func TestSchemaParsesPaintKitWearCaps(t *testing.T) {
 	}
 }
 
+func TestStorageUnitUsesDedicatedKindDespiteGenericToolSchema(t *testing.T) {
+	schema := &Schema{items: map[uint32]itemDefinition{
+		1201: {Name: "casket", ItemName: "Storage Unit", ItemClass: "tool", ToolType: "casket"},
+	}}
+
+	metadata := schema.Metadata(1201, 0, map[uint32]uint32{270: 248})
+	if metadata.Kind != "storage_unit" {
+		t.Fatalf("kind = %q, want storage_unit", metadata.Kind)
+	}
+}
+
 func TestCovertTradeUpFindsRareSpecialsFromContainingLootList(t *testing.T) {
 	schema := &Schema{
 		items: map[uint32]itemDefinition{
@@ -31,9 +42,9 @@ func TestCovertTradeUpFindsRareSpecialsFromContainingLootList(t *testing.T) {
 			2: {Name: "fade", Description: "Fade", Rarity: "unusual"},
 		},
 		lootLists: map[string][]string{
-			"case":       {"case_skins", "case_rare"},
-			"case_skins": {"[red]weapon_ak47"},
-			"case_rare":  {"[fade]weapon_knife"},
+			"case":         {"case_skins", "case_unusual"},
+			"case_skins":   {"[red]weapon_ak47"},
+			"case_unusual": {"[fade]weapon_knife"},
 		},
 	}
 	items := schema.rareSpecialTradeUpItems("[red]weapon_ak47")
@@ -121,6 +132,13 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 				"type" "sticker"
 			}
 		}
+		"4609"
+		{
+			"name" "patch"
+			"item_name" "#CSGO_Tool_Patch"
+			"prefab" "csgo_tool"
+			"tool" { "type" "patch" }
+		}
 		"1314"
 		{
 			"name" "musickit"
@@ -194,6 +212,20 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 			"name" "spray_std_gg_01"
 			"item_name" "#StickerKit_spray_std_gg_01"
 		}
+		"4550"
+		{
+			"name" "patch_banana"
+			"item_name" "#PatchKit_patch_banana"
+			"patch_material" "case01/patch_banana"
+			"item_rarity" "mythical"
+		}
+		"377"
+		{
+			"name" "kawaiikiller_t"
+			"item_name" "#StickerKit_comm02_kawaiikiller_t"
+			"sticker_material" "community02/kawaiikiller_t"
+			"item_rarity" "rare"
+		}
 	}
 	"music_definitions"
 	{
@@ -209,6 +241,12 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		{
 			"name" "kc_missinglink_howl"
 			"loc_name" "#keychain_kc_missinglink_howl"
+		}
+		"37"
+		{
+			"name" "kc_sticker_display_case"
+			"loc_name" "#keychain_kc_sticker_display_case"
+			"image_inventory" "econ/keychains/sticker_display_case/kc_sticker_display_case"
 		}
 	}
 }
@@ -228,11 +266,15 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		"CSGO_crate_pin_pack_example_capsule" "Example Pin Capsule"
 		"CSGO_crate_patch_pack_example_capsule" "Example Patch Capsule"
 		"CSGO_Tool_Sticker" "Sticker"
+		"CSGO_Tool_Patch" "Patch"
 		"CSGO_Tool_Keychain" "Charm"
 		"StickerKit_comm02_kawaiikiller" "Kawaii Killer CT"
+		"StickerKit_comm02_kawaiikiller_t" "Kawaii Killer Terrorist"
 		"StickerKit_spray_std_gg_01" "GG"
+		"PatchKit_patch_banana" "Banana"
 		"musickit_feedme_01" "Feed Me, High Noon"
 		"keychain_kc_missinglink_howl" "Lil' Howl"
+		"keychain_kc_sticker_display_case" "Sticker Slab"
 	}
 }
 
@@ -301,9 +343,11 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		wantMarket string
 	}{
 		{name: "sticker", defIndex: 1209, attributes: map[uint32]uint32{113: 42}, wantName: "Kawaii Killer CT", wantMarket: "Sticker | Kawaii Killer CT"},
+		{name: "patch", defIndex: 4609, attributes: map[uint32]uint32{113: 4550}, wantName: "Banana", wantMarket: "Patch | Banana"},
 		{name: "graffiti", defIndex: 1348, attributes: map[uint32]uint32{113: 43}, wantName: "GG", wantMarket: "Sealed Graffiti | GG"},
 		{name: "music", defIndex: 1314, attributes: map[uint32]uint32{166: 7}, wantName: "Feed Me, High Noon", wantMarket: "Music Kit | Feed Me, High Noon"},
 		{name: "keychain", defIndex: 1355, attributes: map[uint32]uint32{299: 11}, wantName: "Lil' Howl", wantMarket: "Charm | Lil' Howl"},
+		{name: "sticker slab", defIndex: 1355, attributes: map[uint32]uint32{299: 37, 321: 377}, wantName: "Sticker Slab", wantMarket: "Sticker Slab | Kawaii Killer Terrorist"},
 	}
 	for _, tt := range enriched {
 		got := schema.Metadata(tt.defIndex, 0, tt.attributes)
@@ -316,6 +360,95 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 	}
 	if got := schema.AppliedItems(1209, map[uint32]uint32{113: 42}); len(got) != 0 {
 		t.Fatalf("generic sticker applied items = %#v, want none", got)
+	}
+	if got := schema.AppliedItems(1355, map[uint32]uint32{299: 37, 321: 377}); len(got) != 1 || got[0].ID != 377 || got[0].Name != "Kawaii Killer Terrorist" {
+		t.Fatalf("sticker slab contained items = %#v", got)
+	}
+}
+
+func TestPaintableGloveMetadataUsesPaintKitNameAndTrackedWearImage(t *testing.T) {
+	const imageKey = "econ/default_generated/specialist_gloves_glove_specialist_abstract_green_heavy"
+	schema := &Schema{
+		items: map[uint32]itemDefinition{5034: {
+			Name: "specialist_gloves", ItemName: "#SpecialistGloves", Prefab: "hands_paintable",
+			Capabilities: map[string]string{"paintable": "1"},
+		}},
+		paintKits: map[uint32]paintKitDefinition{1413: {
+			Name: "glove_specialist_abstract_green", Description: "#EmeraldWeb", Rarity: "ancient",
+		}},
+		tokens:    map[string]string{"specialistgloves": "Specialist Gloves", "emeraldweb": "Emerald Web"},
+		imageURLs: map[string]string{imageKey: "https://cdn.example/specialist-gloves.png"},
+	}
+
+	got := schema.Metadata(5034, 1413, map[uint32]uint32{8: math.Float32bits(0.5)})
+	if got.Name != "Specialist Gloves" || got.MarketName != "Specialist Gloves | Emerald Web" {
+		t.Fatalf("glove metadata = %#v", got)
+	}
+	if got.ImageURL != "https://cdn.example/specialist-gloves.png" || got.ImageKey != imageKey {
+		t.Fatalf("glove image metadata = %#v", got)
+	}
+}
+
+func TestGenericPatchUsesPatchMaterialImage(t *testing.T) {
+	const imageKey = "econ/patches/case01/patch_banana"
+	schema := &Schema{
+		stickerKits: map[uint32]stickerKitDefinition{4550: {
+			Name: "patch_banana", ItemName: "#PatchBanana", PatchMaterial: "case01/patch_banana",
+		}},
+		tokens:    map[string]string{"patchbanana": "Banana"},
+		imageURLs: map[string]string{imageKey: "https://cdn.example/patch-banana.png"},
+	}
+	item := itemDefinition{Name: "patch", ItemName: "Patch", ToolType: "patch"}
+
+	imageURL, resolvedKey := schema.itemImageLookup(item, 0, map[uint32]uint32{113: 4550})
+	if imageURL != "https://cdn.example/patch-banana.png" || resolvedKey != imageKey {
+		t.Fatalf("patch image lookup = (%q, %q), want tracked patch image", imageURL, resolvedKey)
+	}
+}
+
+func TestAppliedStickerCharmAndPatchUseTrackedImages(t *testing.T) {
+	schema := &Schema{
+		items: map[uint32]itemDefinition{
+			7:    {Name: "weapon_ak47", ItemClass: "weapon_ak47"},
+			5036: {Name: "agent", Prefab: "customplayer"},
+		},
+		stickerKits: map[uint32]stickerKitDefinition{
+			42:   {Name: "sticker", Material: "set/sticker"},
+			4550: {Name: "patch", PatchMaterial: "set/patch"},
+		},
+		keychains: map[uint32]keychainDefinition{11: {Name: "charm", Image: "econ/keychains/set/charm"}},
+		imageURLs: map[string]string{
+			"econ/stickers/set/sticker": "https://cdn.example/sticker.png",
+			"econ/patches/set/patch":    "https://cdn.example/patch.png",
+			"econ/keychains/set/charm":  "https://cdn.example/charm.png",
+		},
+	}
+
+	weaponItems := schema.AppliedItems(7, map[uint32]uint32{113: 42, 114: math.Float32bits(0.42), 299: 11})
+	if len(weaponItems) != 2 || weaponItems[0].ImageURL == "" || weaponItems[1].ImageURL == "" {
+		t.Fatalf("weapon applied-item images = %#v", weaponItems)
+	}
+	if weaponItems[0].Wear == nil || math.Abs(*weaponItems[0].Wear-0.42) > 0.000001 {
+		t.Fatalf("sticker wear = %#v, want 0.42", weaponItems[0].Wear)
+	}
+	patches := schema.AppliedItems(5036, map[uint32]uint32{113: 4550})
+	if len(patches) != 1 || patches[0].Kind != "patch" || patches[0].ImageURL != "https://cdn.example/patch.png" {
+		t.Fatalf("agent patch image = %#v", patches)
+	}
+}
+
+func TestStickerSlabUsesContainedStickerCompositeImage(t *testing.T) {
+	const compositeKey = "econ/stickers/community02/kawaiikiller_t_1355_37"
+	const compositeURL = "https://cdn.example/sticker-slab-kawaii-killer.png"
+	schema := &Schema{
+		stickerKits: map[uint32]stickerKitDefinition{377: {Material: "community02/kawaiikiller_t"}},
+		keychains:   map[uint32]keychainDefinition{37: {Image: "econ/keychains/sticker_display_case/kc_sticker_display_case"}},
+		imageURLs:   map[string]string{compositeKey: compositeURL},
+	}
+	item := itemDefinition{Name: "keychain", ItemName: "Sticker Slab", ToolType: "keychain"}
+	imageURL, imageKey := schema.itemImageLookup(item, 0, map[uint32]uint32{299: 37, 321: 377})
+	if imageURL != compositeURL || imageKey != compositeKey {
+		t.Fatalf("sticker slab image lookup = (%q, %q), want (%q, %q)", imageURL, imageKey, compositeURL, compositeKey)
 	}
 }
 

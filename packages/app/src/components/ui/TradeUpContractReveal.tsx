@@ -5,6 +5,7 @@ import { RevealAnimation, type RevealItem } from "./RevealAnimation.js";
 
 interface TradeUpContractRevealProps {
   open: boolean;
+  ready?: boolean;
   mode: TradeUpAnimationMode;
   candidates: RevealItem[];
   result: RevealItem;
@@ -96,6 +97,6 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
         </div>
       </Show>
     </Portal>
-    <RevealAnimation open={props.open && phase() === "reveal"} mode={underlyingMode(props.mode)} title="Trade-up contract" candidates={props.candidates} result={props.result} onComplete={props.onComplete} />
+    <RevealAnimation open={props.open && phase() === "reveal"} ready={props.ready} mode={underlyingMode(props.mode)} title="Trade-up contract" candidates={props.candidates} result={props.result} onComplete={props.onComplete} />
   </>;
 }

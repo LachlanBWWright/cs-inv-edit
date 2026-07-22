@@ -18,11 +18,27 @@ export interface FeatureFlags {
   enableStoreRead?: boolean;
   enableStorePurchases?: boolean;
   enableTf2Inventory: boolean;
+  enableTf2Loadouts: boolean;
+  enableTf2ItemUse: boolean;
+  enableTf2Tools: boolean;
+  enableTf2Crafting: boolean;
+  enableTf2Unboxing: boolean;
+  enableTf2Customization: boolean;
   enableDota2Inventory: boolean;
   enableSteamInventory: boolean;
 }
 
 export type EconomyGame = "steam" | "tf2" | "dota2";
+
+export type TF2OperationRequest =
+  | { type: "tf2.loadout.equip"; game: "tf2"; itemId: string; classId: number; slotId: number }
+  | { type: "tf2.backpack.sort"; game: "tf2"; sortType: number }
+  | { type: "tf2.items.use"; game: "tf2"; itemId: string; confirmed?: boolean }
+  | { type: "tf2.tools.strange-part"; game: "tf2"; toolItemId: string; targetItemId: string; confirmed?: boolean }
+  | { type: "tf2.tools.strange-restriction"; game: "tf2"; toolItemId: string; targetItemId: string; attributeIndex: number; confirmed?: boolean }
+  | { type: "tf2.tools.strange-transfer"; game: "tf2"; toolItemId: string; sourceItemId: string; destinationItemId: string; confirmed?: boolean }
+  | { type: "tf2.crafting.craft"; game: "tf2"; itemIds: string[]; recipeId?: number; confirmed?: boolean }
+  | { type: "tf2.containers.open"; game: "tf2"; itemId: string; keyItemId?: string; confirmed?: boolean };
 
 export interface EconomyTagDto {
   category: string;
@@ -45,6 +61,7 @@ interface EconomyInventoryItemBase {
   quality?: string;
   tradable: boolean;
   marketable: boolean;
+  tradableAfter?: string;
   tags: EconomyTagDto[];
   descriptions?: string[];
 }
@@ -70,6 +87,21 @@ export interface TF2ItemDetails extends EconomyItemDetailsBase {
   equipSlot?: string;
   usableClasses?: string[];
   capabilities?: Record<string, string>;
+  itemKind?: "item" | "weapon" | "cosmetic" | "tool" | "container" | "crafting_material";
+  itemClass?: string;
+  craftClass?: string;
+  craftMaterialType?: string;
+  toolType?: string;
+  description?: string;
+  collection?: string;
+  equipRegions?: string[];
+  schemaTags?: string[];
+  minLevel?: number;
+  maxLevel?: number;
+  properName?: boolean;
+  baseItem?: boolean;
+  hidden?: boolean;
+  staticAttributes?: Record<string, string>;
   hero?: never;
   slot?: never;
 }

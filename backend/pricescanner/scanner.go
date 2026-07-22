@@ -16,6 +16,7 @@ import (
 type Query struct {
 	MarketNames      []string           `json:"marketNames"`
 	Currency         string             `json:"currency"`
+	AppID            int                `json:"appId,omitempty"`
 	PriceMultipliers map[string]float64 `json:"priceMultipliers,omitempty"`
 }
 
@@ -71,6 +72,9 @@ func (s *Scanner) Scan(ctx context.Context, query Query) (Result, error) {
 	query.PriceMultipliers = normalizedMultipliers
 	if query.Currency == "" {
 		query.Currency = "USD"
+	}
+	if query.AppID == 0 {
+		query.AppID = 730
 	}
 	query.MarketNames = uniqueNames(query.MarketNames)
 	if len(query.MarketNames) == 0 {

@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Match, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, Match, Show, Switch } from "solid-js";
 import type {
   ApplyStatTrakSwapRequest,
   ArmoryRedeemRequest,
@@ -16,6 +16,7 @@ import type {
   OperationEvent,
   OperationReceipt,
   OpenContainerRequest,
+  PriceScanResult,
   RemoveItemNameRequest,
   RelatedItemDto,
   SetItemNameRequest,
@@ -83,8 +84,10 @@ export interface AppViewProps {
   onToast: (toast: Omit<ToastItem, "id">) => void;
   onInventoryRefresh: () => void;
   onGameInventoryRefresh: (game: "steam" | "tf2" | "dota2") => void;
+  onGameOperation: (type: string, input: unknown) => Promise<OperationReceipt>;
   onArmoryRefresh: () => Promise<unknown>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
+  onScanPrices: (marketNames: string[]) => Promise<PriceScanResult | undefined>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
   onStoreRefresh: () => Promise<unknown>;
   onStorePurchase: (input: InitializeStorePurchaseRequest) => Promise<PurchaseSession>;
@@ -114,9 +117,29 @@ export function AppView(props: AppViewProps) {
   const [weaponFilter, setWeaponFilter] = createSignal("all");
   const [collectionFilter, setCollectionFilter] = createSignal("all");
   const [sort, setSort] = createSignal<InventorySort>("name");
+  const [marketPrices, setMarketPrices] = createSignal<ReadonlyMap<string, number>>(new Map());
+  let requestedPriceNames = "";
   const rarityOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.rarity).filter((value): value is string => !!value))].sort());
   const weaponOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map(itemWeaponName).filter((value): value is string => !!value))].sort());
   const collectionOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.collection).filter((value): value is string => !!value))].sort());
+  createEffect(() => {
+    if (sort() !== "price-low" && sort() !== "price-high") return;
+    const names = [...new Set((props.inventory?.items ?? []).filter((item) => item.marketable !== false).map((item) => item.marketName).filter((value): value is string => !!value))].sort();
+    const requestKey = names.join("\u0000");
+    if (!requestKey || requestKey === requestedPriceNames) return;
+    requestedPriceNames = requestKey;
+    const batches = Array.from({ length: Math.ceil(names.length / 100) }, (_, index) => names.slice(index * 100, (index + 1) * 100));
+    void Promise.all(batches.map((batch) => props.onScanPrices(batch))).then((results) => {
+      const prices = new Map<string, number>();
+      for (const result of results) {
+        for (const item of result?.items ?? []) {
+          const quote = item.quotes.find((candidate) => candidate.source === "steam");
+          prices.set(item.marketName, quote?.amountMinor ?? 0);
+        }
+      }
+      setMarketPrices(prices);
+    });
+  });
 
   return (
     <main class="flex h-screen min-h-0 flex-col overflow-hidden bg-app text-slate-50">
@@ -193,11 +216,14 @@ export function AppView(props: AppViewProps) {
         weaponFilter={weaponFilter()}
         collectionFilter={collectionFilter()}
         sort={sort()}
+        marketPrices={marketPrices()}
         compactMode={props.compactMode}
         onMarketPreview={props.onMarketPreview}
         onRename={props.onInventoryRename}
         onRemoveName={props.onRemoveName}
         onOpenContainer={props.onOpenContainer}
+        onLoadStorageContents={(casketId) => props.onStorageSubmit("storage.load", { casketId })}
+        onMoveFromStorage={(input) => props.onStorageSubmit("storage.move-out", input)}
         onToast={props.onToast}
         onRefresh={props.onInventoryRefresh}
           />
@@ -205,13 +231,15 @@ export function AppView(props: AppViewProps) {
         <Match when={isEconomyInventoryScreen(props.view)}>
           <GameInventoryView
 			game={props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2"}
-            connected={props.connection ? props.connection.state === "connected" : undefined}
+			connected={props.connection ? props.connection.state === "connected" : undefined}
+			settings={props.settings}
         snapshot={props.view === "steam-inventory" ? props.steamInventory : props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
         query={props.query}
         selectedAssetId={props.selectedItemId}
         setSelectedAssetId={props.setSelectedItemId}
         compactMode={props.compactMode}
-        onRefresh={() => props.onGameInventoryRefresh(props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2")}
+		onRefresh={() => props.onGameInventoryRefresh(props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2")}
+		onOperation={props.onGameOperation}
           />
         </Match>
         <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onMarketPreview={props.onMarketPreview} onRedeem={props.onArmoryRedeem} /></Match>

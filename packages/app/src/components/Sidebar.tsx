@@ -70,6 +70,7 @@ export function Sidebar(props: SidebarProps) {
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [modeMenuOpen, setModeMenuOpen] = createSignal(false);
   const [kindMenuOpen, setKindMenuOpen] = createSignal(false);
+  const [sortMenuOpen, setSortMenuOpen] = createSignal(false);
   const [compactMenuOpen, setCompactMenuOpen] = createSignal(false);
   const chooseMode = (mode: AppMode) => {
     props.setView(mode);
@@ -78,6 +79,16 @@ export function Sidebar(props: SidebarProps) {
   const currentMode = createMemo(() => modeForScreen(props.view));
   const currentGroup = createMemo(() => modeGroups.find((group) => group.modes.includes(currentMode()))?.label ?? "Mode");
   const enabledModes = createMemo(() => new Set(availableModes(props.settings?.featureFlags)));
+  const activeFilterCount = createMemo(() => [props.kindFilter, props.rarityFilter, props.weaponFilter, props.collectionFilter].filter((value) => value !== "all").length);
+  const sortOptions: { value: InventorySort; label: string; detail: string }[] = [
+    { value: "name", label: "Name", detail: "A to Z" },
+    { value: "float-low", label: "Float", detail: "Low to high" },
+    { value: "float-high", label: "Float", detail: "High to low" },
+    { value: "rarity-high", label: "Rarity", detail: "High to low" },
+    { value: "rarity-low", label: "Rarity", detail: "Low to high" },
+    { value: "price-high", label: "Steam price", detail: "High to low" },
+    { value: "price-low", label: "Steam price", detail: "Low to high" },
+  ];
 
   return (
     <header class="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-slate-800/80 bg-slate-950/90 px-3 py-2 backdrop-blur lg:px-4">
@@ -138,27 +149,41 @@ export function Sidebar(props: SidebarProps) {
             <Input class="w-full min-w-0" placeholder="Search" value={props.query} onInput={(event) => props.setQuery((event.currentTarget as HTMLInputElement | null)?.value ?? "")} />
           </div>
           <Show when={isInventoryScreen(props.view)}><Popover class="relative" open={kindMenuOpen()} onOpenChange={setKindMenuOpen}>
-            <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Filter inventory" aria-haspopup="menu" aria-expanded={kindMenuOpen()} onClick={() => { setKindMenuOpen((value) => !value); setCompactMenuOpen(false); setSettingsOpen(false); }}>
+            <button class={`flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${activeFilterCount() > 0 ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-cyan-400/50 hover:text-cyan-100"}`} aria-label={`Filter inventory${activeFilterCount() > 0 ? `, ${activeFilterCount()} active` : ""}`} aria-haspopup="menu" aria-expanded={kindMenuOpen()} onClick={() => { setKindMenuOpen((value) => !value); setSortMenuOpen(false); setCompactMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 5h16" />
                 <path d="M8 12h8" />
                 <path d="M10 19h4" />
               </svg>
               <span class="hidden sm:inline">Filter</span>
+              <Show when={activeFilterCount() > 0}><span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-cyan-300 px-1 text-[10px] font-bold text-slate-950">{activeFilterCount()}</span></Show>
               <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
             </button>
             <Show when={kindMenuOpen()}>
-              <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-700/80 bg-slate-950/98 p-3 shadow-2xl shadow-black/40">
-                <div class="mb-3 flex items-center justify-between">
-                  <div><p class="text-sm font-semibold text-slate-100">Inventory filters</p><p class="text-xs text-slate-500">Narrow and sort CS2 items</p></div>
-                  <button class="rounded-lg px-2 py-1 text-xs font-medium text-cyan-300 hover:bg-cyan-400/10" onClick={() => { props.setKindFilter("all"); props.setRarityFilter("all"); props.setWeaponFilter("all"); props.setCollectionFilter("all"); props.setSort("name"); }}>Reset</button>
+              <div class="absolute right-0 top-full z-30 mt-2 w-[min(92vw,28rem)] overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/98 shadow-2xl shadow-black/50">
+                <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+                  <div><p class="text-sm font-semibold text-slate-100">Inventory filters</p><p class="mt-0.5 text-xs text-slate-500">Narrow the items shown below</p></div>
+                  <button class="rounded-lg px-2 py-1 text-xs font-medium text-cyan-300 hover:bg-cyan-400/10" onClick={() => { props.setKindFilter("all"); props.setRarityFilter("all"); props.setWeaponFilter("all"); props.setCollectionFilter("all"); }}>Reset</button>
                 </div>
-                <InventoryFilters class="grid gap-2 [&_label]:block [&_select]:w-full" kindFilter={props.kindFilter} rarityFilter={props.rarityFilter} weaponFilter={props.weaponFilter} collectionFilter={props.collectionFilter} sort={props.sort} rarityOptions={props.rarityOptions} weaponOptions={props.weaponOptions} collectionOptions={props.collectionOptions} onKindFilterChange={props.setKindFilter} onRarityFilterChange={props.setRarityFilter} onWeaponFilterChange={props.setWeaponFilter} onCollectionFilterChange={props.setCollectionFilter} onSortChange={props.setSort} />
+                <InventoryFilters class="grid gap-3 p-4 sm:grid-cols-2" kindFilter={props.kindFilter} rarityFilter={props.rarityFilter} weaponFilter={props.weaponFilter} collectionFilter={props.collectionFilter} rarityOptions={props.rarityOptions} weaponOptions={props.weaponOptions} collectionOptions={props.collectionOptions} onKindFilterChange={props.setKindFilter} onRarityFilterChange={props.setRarityFilter} onWeaponFilterChange={props.setWeaponFilter} onCollectionFilterChange={props.setCollectionFilter} />
               </div>
             </Show>
           </Popover></Show>
+          <Show when={isInventoryScreen(props.view)}><Popover class="relative" open={sortMenuOpen()} onOpenChange={setSortMenuOpen}>
+            <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Sort inventory" aria-haspopup="menu" aria-expanded={sortMenuOpen()} onClick={() => { setSortMenuOpen((value) => !value); setKindMenuOpen(false); setCompactMenuOpen(false); setSettingsOpen(false); }}>
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h11" /><path d="M8 12h8" /><path d="M8 18h5" /><path d="m3 16 2 2 2-2" /><path d="M5 18V5" /></svg>
+              <span class="hidden sm:inline">Sort</span>
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <Show when={sortMenuOpen()}><div class="absolute right-0 top-full z-30 mt-2 w-64 rounded-2xl border border-slate-700/80 bg-slate-950/98 p-2 shadow-2xl shadow-black/50" role="menu" aria-label="Sort inventory">
+              <For each={sortOptions}>{(option) => <button class={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${props.sort === option.value ? "border-cyan-400/25 bg-cyan-400/10" : "border-transparent hover:border-slate-700/70 hover:bg-slate-800/70"}`} role="menuitemradio" aria-checked={props.sort === option.value} onClick={() => { props.setSort(option.value); setSortMenuOpen(false); }}>
+                <span class={`flex h-4 w-4 items-center justify-center rounded-full border ${props.sort === option.value ? "border-cyan-300" : "border-slate-600"}`}><Show when={props.sort === option.value}><span class="h-2 w-2 rounded-full bg-cyan-300" /></Show></span>
+                <span class="flex-1 text-sm font-medium text-slate-100">{option.label}</span><span class="text-xs text-slate-500">{option.detail}</span>
+              </button>}</For>
+            </div></Show>
+          </Popover></Show>
           <Popover class="relative" open={compactMenuOpen()} onOpenChange={setCompactMenuOpen}>
-            <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Inventory display size" aria-haspopup="menu" aria-expanded={compactMenuOpen()} onClick={() => { setCompactMenuOpen((value) => !value); setKindMenuOpen(false); setSettingsOpen(false); }}>
+            <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Inventory display size" aria-haspopup="menu" aria-expanded={compactMenuOpen()} onClick={() => { setCompactMenuOpen((value) => !value); setKindMenuOpen(false); setSortMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="4" width="7" height="7" rx="1.2" />
                 <rect x="13" y="4" width="7" height="7" rx="1.2" />

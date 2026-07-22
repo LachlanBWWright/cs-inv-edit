@@ -3,6 +3,7 @@ package econ
 import (
 	_ "embed"
 	"html"
+	"sort"
 	"strings"
 )
 
@@ -12,6 +13,7 @@ func RelatedItemMarketNames(items []RelatedItem) []string {
 		if item.MarketName != "" {
 			names = append(names, item.MarketName)
 		}
+		names = append(names, RelatedItemMarketNames(item.Items)...)
 	}
 	return names
 }
@@ -24,6 +26,7 @@ func ApplyRelatedItemDescriptions(items []RelatedItem, descriptions map[string]M
 			out[index].Price = description.Price.SellPriceText
 			out[index].ListingName = firstNonEmpty(description.HashName, description.MarketHashName, description.MarketName)
 		}
+		out[index].Items = ApplyRelatedItemDescriptions(out[index].Items, descriptions)
 	}
 	return out
 }
@@ -48,31 +51,56 @@ func (s *Schema) lootListItems(name string, seen map[string]bool) []RelatedItem 
 		return nil
 	}
 	seen[name] = true
-	var keys []string
+	var items []RelatedItem
 	for _, entry := range s.lootLists[name] {
 		if _, nested := s.lootLists[entry]; nested {
-			keys = append(keys, s.relatedItemKeysFromLootList(entry, seen)...)
+			nestedItems := s.lootListItems(entry, seen)
+			if rarity := nestedLootListRarity(name, entry); rarity != "" {
+				for index := range nestedItems {
+					nestedItems[index].Rarity = rarity
+				}
+				if rarity == "unusual" {
+					items = append(items, rareSpecialCollection(nestedItems))
+					continue
+				}
+			}
+			items = append(items, nestedItems...)
 			continue
 		}
-		keys = append(keys, entry)
+		if strings.HasSuffix(strings.ToLower(entry), "_unusual") {
+			collectionItems := s.relatedItems(s.collections[entry].Items)
+			items = append(items, rareSpecialCollection(collectionItems))
+			continue
+		}
+		items = append(items, s.relatedItems([]string{entry})...)
 	}
-	return s.relatedItems(keys)
+	sort.SliceStable(items, func(i, j int) bool {
+		left, right := rarityRank(items[i].Rarity), rarityRank(items[j].Rarity)
+		if left != right {
+			return left > right
+		}
+		return items[i].MarketName < items[j].MarketName
+	})
+	return items
 }
 
-func (s *Schema) relatedItemKeysFromLootList(name string, seen map[string]bool) []string {
-	if seen[name] {
-		return nil
+func rareSpecialCollection(items []RelatedItem) RelatedItem {
+	return RelatedItem{Name: "Rare Special Items", Kind: "item_collection", Rarity: "unusual", Items: items}
+}
+
+func nestedLootListRarity(parent string, child string) string {
+	parent = strings.ToLower(parent)
+	child = strings.ToLower(child)
+	parent = strings.TrimSuffix(parent, "_lootlist")
+	if !strings.HasPrefix(child, parent+"_") {
+		return ""
 	}
-	seen[name] = true
-	var keys []string
-	for _, entry := range s.lootLists[name] {
-		if _, nested := s.lootLists[entry]; nested {
-			keys = append(keys, s.relatedItemKeysFromLootList(entry, seen)...)
-		} else {
-			keys = append(keys, entry)
+	for _, rarity := range []string{"common", "uncommon", "rare", "mythical", "legendary", "ancient", "unusual"} {
+		if strings.HasSuffix(child, "_"+rarity) {
+			return rarity
 		}
 	}
-	return keys
+	return ""
 }
 
 func parseTokens(root kvObject) map[string]string {
@@ -161,6 +189,14 @@ func isGenericGraffitiItem(item itemDefinition, name string) bool {
 	return strings.Contains(lower, "spray") || strings.Contains(lower, "graffiti")
 }
 
+func isGenericPatchItem(item itemDefinition, name string) bool {
+	if itemKind(item) == "container" {
+		return false
+	}
+	lower := strings.ToLower(item.Name + " " + item.ToolType + " " + item.Prefab + " " + name)
+	return strings.Contains(lower, "patch")
+}
+
 func isGenericMusicItem(item itemDefinition, name string) bool {
 	lowerName := strings.ToLower(name)
 	return strings.Contains(strings.ToLower(item.Prefab), "musickit") || strings.Contains(strings.ToLower(item.Name), "musickit") || lowerName == "music kit"
@@ -225,6 +261,10 @@ func isWeaponItem(item itemDefinition) bool {
 	itemClass := strings.ToLower(item.ItemClass)
 	prefab := strings.ToLower(item.Prefab)
 	return strings.HasPrefix(itemClass, "weapon_") || strings.Contains(prefab, "weapon")
+}
+
+func isPaintableItem(item itemDefinition) bool {
+	return isWeaponItem(item) || strings.HasPrefix(strings.ToLower(item.Name), "weapon_") || strings.TrimSpace(item.Capabilities["paintable"]) == "1"
 }
 
 func steamIconURL(icon string) string {

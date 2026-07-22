@@ -54,7 +54,10 @@ func (s *Service) setInventoryLoadingStage(message string) {
 	s.mu.Unlock()
 }
 
-func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapshot, error) {
+func (s *Service) fetchInventory(parent context.Context, progress func(string)) (domain.InventorySnapshot, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
 	report := func(message string) {
 		if progress != nil {
 			progress(message)
@@ -64,18 +67,23 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 	steamID := s.connection.SteamID
 	includeDebug := s.settings.FeatureFlags.EnableInventoryDebug
 	showStorageUnitItems := s.settings.FeatureFlags.ShowStorageUnitItems
+	requestedStorageUnits := make(map[uint64]bool, len(s.loadedStorageUnits))
+	for id := range s.loadedStorageUnits {
+		requestedStorageUnits[id] = true
+	}
 	s.mu.Unlock()
 	report("Waiting for CS2 Game Coordinator inventory data")
-	gcCtx, cancelGC := context.WithTimeout(context.Background(), 45*time.Second)
+	gcCtx, cancelGC := context.WithTimeout(parent, 45*time.Second)
 	defer cancelGC()
 	gcItems, err := s.gcClient.RequestInventory(gcCtx)
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("CS2 GC inventory request failed: %w", err)
 	}
+	s.markGCSessionReady(protocol.AppIDCS2)
 	storageUnitsLoaded := 0
-	if showStorageUnitItems {
+	if showStorageUnitItems || len(requestedStorageUnits) > 0 {
 		for _, item := range gcItems {
-			if item.DefIndex != 1201 || item.Attributes[270] == 0 {
+			if item.DefIndex != 1201 || item.Attributes[270] == 0 || (!showStorageUnitItems && !requestedStorageUnits[item.ID]) {
 				continue
 			}
 			body, encodeErr := cs2pb.EncodeLoadCasketContents(item.ID)
@@ -96,8 +104,8 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 		}
 	}
 	report(fmt.Sprintf("Received %d owned items; loading schema and Steam descriptions", len(gcItems)))
-	schemaCtx, cancelSchema := context.WithTimeout(context.Background(), 20*time.Second)
-	descriptionCtx, cancelDescriptions := context.WithTimeout(context.Background(), 20*time.Second)
+	schemaCtx, cancelSchema := context.WithTimeout(parent, 20*time.Second)
+	descriptionCtx, cancelDescriptions := context.WithTimeout(parent, 20*time.Second)
 	var metadata *econ.Schema
 	var schemaErr error
 	var descriptions map[string]econ.InventoryDescription
@@ -132,7 +140,8 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 		if item.DefIndex == 0 {
 			continue
 		}
-		if item.Inventory == 0 && (!showStorageUnitItems || gcItemCasketID(item) == 0) {
+		casketID := gcItemCasketID(item)
+		if item.Inventory == 0 && (casketID == 0 || (!showStorageUnitItems && !requestedStorageUnits[casketID])) {
 			continue
 		}
 		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
@@ -199,6 +208,7 @@ func (s *Service) fetchInventory(progress func(string)) (domain.InventorySnapsho
 		if count := item.Attributes[270]; count > 0 {
 			inventoryItem.StorageCount = &count
 		}
+		inventoryItem.GraffitiCharges = gcItemGraffitiCharges(item, itemMetadata.ToolType)
 		if casketID := gcItemCasketID(item); casketID > 0 {
 			formatted := strconv.FormatUint(casketID, 10)
 			inventoryItem.CasketID = &formatted
@@ -241,6 +251,17 @@ func isXRayScannerLoadedCase(item transport.GCInventoryItem, metadata econ.Metad
 
 func gcItemCasketID(item transport.GCInventoryItem) uint64 {
 	return uint64(item.Attributes[272]) | uint64(item.Attributes[273])<<32
+}
+
+func gcItemGraffitiCharges(item transport.GCInventoryItem, toolType string) *uint32 {
+	if toolType != "spraypaint" {
+		return nil
+	}
+	charges, present := item.Attributes[232]
+	if !present {
+		return nil
+	}
+	return &charges
 }
 
 func mergeGCInventoryItems(existing, loaded []transport.GCInventoryItem) []transport.GCInventoryItem {
@@ -303,7 +324,7 @@ func paintExterior(wear *float64) string {
 func domainRelatedItems(items []econ.RelatedItem) []domain.RelatedItem {
 	out := make([]domain.RelatedItem, 0, len(items))
 	for _, item := range items {
-		out = append(out, domain.RelatedItem{Name: item.Name, MarketName: item.MarketName, ListingName: item.ListingName, Kind: item.Kind, Rarity: item.Rarity, ImageURL: item.ImageURL, Price: item.Price, PaintWear: item.PaintWear, WearMin: item.WearMin, WearMax: item.WearMax})
+		out = append(out, domain.RelatedItem{Name: item.Name, MarketName: item.MarketName, ListingName: item.ListingName, Kind: item.Kind, Rarity: item.Rarity, ImageURL: item.ImageURL, Price: item.Price, PaintWear: item.PaintWear, WearMin: item.WearMin, WearMax: item.WearMax, Items: domainRelatedItems(item.Items)})
 	}
 	return out
 }
@@ -417,15 +438,15 @@ func domainAppliedItems(items []econ.AppliedItem, images []string) []domain.Appl
 	out := make([]domain.AppliedItem, 0, len(items))
 	for _, item := range items {
 		slot, id := item.Slot, item.ID
-		imageURL := ""
-		if len(images) > len(out) {
+		imageURL := item.ImageURL
+		if imageURL == "" && len(images) > len(out) {
 			imageURL = images[len(out)]
 		}
 		var slotPointer *uint32
 		if item.Kind != "charm" {
 			slotPointer = &slot
 		}
-		out = append(out, domain.AppliedItem{Kind: item.Kind, Slot: slotPointer, ID: &id, Name: item.Name, ImageURL: imageURL})
+		out = append(out, domain.AppliedItem{Kind: item.Kind, Slot: slotPointer, ID: &id, Name: item.Name, ImageURL: imageURL, Wear: item.Wear})
 	}
 	return out
 }

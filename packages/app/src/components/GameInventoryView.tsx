@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import type { EconomyGame, EconomyInventoryItemDto, GameInventorySnapshot } from "@cs-inv-edit/contracts";
+import type { EconomyGame, EconomyInventoryItemDto, GameInventorySnapshot, OperationReceipt, SettingsData } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
 import type { LoadingStage } from "./ui/LoadingProgress.js";
@@ -38,10 +38,12 @@ function ItemImage(props: { item: EconomyInventoryItemDto; large?: boolean }) {
   </Show>;
 }
 
-export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInventorySnapshot; connected?: boolean; query: string; selectedAssetId?: string; setSelectedAssetId: (id: string | undefined) => void; compactMode: "icons" | "concise" | "detailed"; onRefresh: () => void }) {
+export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInventorySnapshot; connected?: boolean; settings?: SettingsData; query: string; selectedAssetId?: string; setSelectedAssetId: (id: string | undefined) => void; compactMode: "icons" | "concise" | "detailed"; onRefresh: () => void; onOperation?: (type: string, input: unknown) => Promise<OperationReceipt> }) {
 	const [tagFilter, setTagFilter] = createSignal("");
 	const [scrollTop, setScrollTop] = createSignal(0);
 	const [viewport, setViewport] = createSignal({ width: 800, height: 600 });
+	const [operationStatus, setOperationStatus] = createSignal("");
+	const [confirmUseItemId, setConfirmUseItemId] = createSignal<string>();
 	let gridViewport: HTMLDivElement | undefined;
 	const snapshot = () => snapshotForGame(props.game, props.snapshot);
 	const title = () => props.game === "steam" ? "Steam Inventory" : props.game === "tf2" ? "Team Fortress 2 Inventory" : "Dota 2 Inventory";
@@ -81,7 +83,17 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
 			return queryMatches && tagMatches;
 		});
   });
-  const selected = createMemo(() => items().find((item) => item.assetId === props.selectedAssetId) ?? items()[0]);
+	const selected = createMemo(() => items().find((item) => item.assetId === props.selectedAssetId) ?? items()[0]);
+	const selectedTF2Details = createMemo(() => {
+		const item = selected();
+		return item?.game === "tf2" ? item.details : undefined;
+	});
+	const submitTF2Operation = async (type: string, input: unknown) => {
+		if (!props.onOperation) return;
+		setOperationStatus("Submitting…");
+		const receipt = await props.onOperation(type, input);
+		setOperationStatus(receipt.message ?? receipt.state);
+	};
 	const virtualGrid = createMemo(() => {
 		const window = calculateVirtualInventoryWindow(items().length, viewport().width, viewport().height, scrollTop(), props.compactMode);
 		return { ...window, visibleItems: items().slice(window.firstItem, window.lastItem) };
@@ -126,6 +138,9 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
 			<div><dt class="text-xs uppercase tracking-wide text-slate-500">Level and style</dt><dd class="mt-1 text-slate-200">Level {item().details.level} · Style {item().details.style}</dd></div>
 			<Show when={item().game === "tf2" && item().details.game === "tf2" && item().details.equipSlot}><div><dt class="text-xs uppercase tracking-wide text-slate-500">Equip slot</dt><dd class="mt-1 text-slate-200">{item().details.game === "tf2" ? item().details.equipSlot : ""}</dd></div></Show>
 			<Show when={item().game === "tf2" && item().details.game === "tf2" && item().details.usableClasses?.length}><div><dt class="text-xs uppercase tracking-wide text-slate-500">Usable classes</dt><dd class="mt-1 text-slate-200">{item().details.game === "tf2" ? item().details.usableClasses?.join(", ") : ""}</dd></div></Show>
+			<Show when={selectedTF2Details()?.itemKind}><div><dt class="text-xs uppercase tracking-wide text-slate-500">TF2 item kind</dt><dd class="mt-1 text-slate-200">{selectedTF2Details()?.itemKind}</dd></div></Show>
+			<Show when={selectedTF2Details()?.collection}><div><dt class="text-xs uppercase tracking-wide text-slate-500">Collection</dt><dd class="mt-1 text-slate-200">{selectedTF2Details()?.collection}</dd></div></Show>
+			<Show when={selectedTF2Details()?.equipRegions?.length}><div><dt class="text-xs uppercase tracking-wide text-slate-500">Equip regions</dt><dd class="mt-1 text-slate-200">{selectedTF2Details()?.equipRegions?.join(", ")}</dd></div></Show>
 			<Show when={item().game === "dota2" && item().details.game === "dota2" && item().details.hero}><div><dt class="text-xs uppercase tracking-wide text-slate-500">Hero</dt><dd class="mt-1 text-slate-200">{item().details.game === "dota2" ? item().details.hero : ""}</dd></div></Show>
 			<Show when={item().game === "dota2" && item().details.game === "dota2" && item().details.slot}><div><dt class="text-xs uppercase tracking-wide text-slate-500">Slot</dt><dd class="mt-1 text-slate-200">{item().details.game === "dota2" ? item().details.slot : ""}</dd></div></Show>
           </dl>
@@ -133,6 +148,13 @@ export function GameInventoryView(props: { game: EconomyGame; snapshot?: GameInv
 		  <Show when={Object.keys(item().details.attributeBytes ?? {}).length}><details class="mt-3"><summary class="cursor-pointer text-sm font-medium text-slate-300">Binary/socket attributes ({Object.keys(item().details.attributeBytes ?? {}).length})</summary><dl class="mt-2 grid gap-1 font-mono text-xs text-slate-400"><For each={Object.entries(item().details.attributeBytes ?? {})}>{([id, value]) => <div class="grid grid-cols-[auto_1fr] gap-3"><dt>{id}</dt><dd class="break-all text-right">{value}</dd></div>}</For></dl></details></Show>
 		  <Show when={item().details.equippedStates?.length}><p class="mt-3 text-xs text-slate-400">Equipped states: {item().details.equippedStates?.map((state) => `class ${state.class}, slot ${state.slot}`).join(" · ")}</p></Show>
 		  <Show when={item().details.interiorItemId}><p class="mt-2 text-xs text-slate-400">Contained economy item: <span class="font-mono">{item().details.interiorItemId}</span></p></Show>
+		  <Show when={selectedTF2Details()?.description}><p class="mt-3 text-sm text-slate-400">{selectedTF2Details()?.description}</p></Show>
+		  <Show when={item().game === "tf2"}><div class="mt-4 space-y-2 border-t border-slate-800 pt-4">
+			<Show when={props.settings?.featureFlags.enableTf2ItemUse && confirmUseItemId() !== item().assetId}><button type="button" class="w-full rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100" onClick={() => setConfirmUseItemId(item().assetId)}>Use TF2 item</button></Show>
+			<Show when={props.settings?.featureFlags.enableTf2ItemUse && confirmUseItemId() === item().assetId}><div class="rounded-xl border border-red-500/40 bg-red-950/30 p-3"><p class="text-xs text-red-100">This permanently consumes or changes {item().name}. Confirm the exact item ID <span class="font-mono">{item().assetId}</span>.</p><div class="mt-2 flex gap-2"><button type="button" class="rounded-lg bg-red-700 px-3 py-1.5 text-xs text-white" onClick={() => { setConfirmUseItemId(undefined); void submitTF2Operation("tf2.items.use", { game: "tf2", itemId: item().assetId, confirmed: true }); }}>Confirm permanent use</button><button type="button" class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300" onClick={() => setConfirmUseItemId(undefined)}>Cancel</button></div></div></Show>
+			<Show when={selectedTF2Details()?.itemKind === "container"}><p class="text-xs text-slate-500">TF2 unboxing remains capture-gated. Enabling its permanent-action flag does not bypass the backend protocol-evidence block.</p></Show>
+			<Show when={operationStatus()}><p class="text-xs text-slate-400">{operationStatus()}</p></Show>
+		  </div></Show>
           <Show when={item().marketName && item().marketable}><a class="mt-4 inline-block text-sm font-medium text-sky-300 underline underline-offset-4" href={marketURL(item())} target="_blank" rel="noreferrer">Open exact Steam listing ↗</a></Show>
           <Show when={item().descriptions?.length}><div class="mt-4 space-y-2 border-t border-slate-800 pt-4 text-sm text-slate-400"><For each={item().descriptions}>{(line) => <p>{line}</p>}</For></div></Show>
         </div>}</Show>

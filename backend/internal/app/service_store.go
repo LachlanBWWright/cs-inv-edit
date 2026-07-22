@@ -12,6 +12,7 @@ import (
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/econ"
 	"cs-inv-edit/backend/internal/operations"
+	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
 )
 
@@ -56,7 +57,7 @@ func (s *Service) RefreshStore() operations.Receipt {
 	s.store.Status, s.store.Message = "loading", "Waiting for the CS2 Game Coordinator price sheet"
 	s.mu.Unlock()
 	welcomeCtx, cancelWelcome := context.WithTimeout(context.Background(), 20*time.Second)
-	_, err := s.gcClient.RequestInventory(welcomeCtx)
+	err := s.ensureGCSession(welcomeCtx, protocol.AppIDCS2)
 	cancelWelcome()
 	if err != nil {
 		s.mu.Lock()
@@ -204,7 +205,13 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	s.purchaseSessions[sessionID] = session
 	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	result, err := s.gcClient.InitializeStorePurchase(ctx, purchaseRequest)
+	var result transport.StorePurchaseTransportResult
+	err := s.ensureGCSession(ctx, protocol.AppIDCS2)
+	if err == nil {
+		result, err = s.gcClient.InitializeStorePurchase(ctx, purchaseRequest)
+	} else {
+		err = fmt.Errorf("CS2 GC session is not ready; store purchase was not sent: %w", err)
+	}
 	cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()

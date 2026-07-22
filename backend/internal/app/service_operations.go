@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
+	cs2pb "cs-inv-edit/backend/internal/proto/generated"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
 )
@@ -30,12 +32,22 @@ func (s *Service) RefreshInventory() operations.Receipt {
 	s.inventory.Error = ""
 	s.inventory.Diagnostics = nil
 	s.inventory.RefreshedAt = now()
+	requestKey, accountCtx, _ := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 	s.mu.Unlock()
 
-	snapshot, err := s.fetchInventory(s.setInventoryLoadingStage)
+	snapshot, err := s.fetchInventory(accountCtx, s.setInventoryLoadingStage)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	currentKey, _, currentKeyErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
+	if currentKeyErr != nil || currentKey != requestKey {
+		receipt.State = "completed"
+		receipt.Message = "inventory refresh superseded by an account change"
+		s.operations = append(s.operations, receipt)
+		s.events = append(s.events, operations.NewEvent(receipt, receipt.State, receipt.Message))
+		s.lastOperation = receipt
+		return receipt
+	}
 	if err != nil {
 		s.inventory = inventoryError(err.Error(), transport.DiagnosticsFromError(err))
 		receipt.State = "failed"
@@ -130,6 +142,24 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if value, ok := next["enableTf2Inventory"].(bool); ok {
 				flags.EnableTF2Inventory = value
 			}
+			if value, ok := next["enableTf2Loadouts"].(bool); ok {
+				flags.EnableTF2Loadouts = value
+			}
+			if value, ok := next["enableTf2ItemUse"].(bool); ok {
+				flags.EnableTF2ItemUse = value
+			}
+			if value, ok := next["enableTf2Tools"].(bool); ok {
+				flags.EnableTF2Tools = value
+			}
+			if value, ok := next["enableTf2Crafting"].(bool); ok {
+				flags.EnableTF2Crafting = value
+			}
+			if value, ok := next["enableTf2Unboxing"].(bool); ok {
+				flags.EnableTF2Unboxing = value
+			}
+			if value, ok := next["enableTf2Customization"].(bool); ok {
+				flags.EnableTF2Customization = value
+			}
 			if value, ok := next["enableDota2Inventory"].(bool); ok {
 				flags.EnableDota2Inventory = value
 			}
@@ -162,6 +192,9 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		receipt.Message = "settings updated"
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
+	}
+	if _, ok := protocol.TF2OperationMapping(opType); ok {
+		return s.submitTF2Operation(receipt, opType, input)
 	}
 	if gameID, _ := input["game"].(string); gameID != "" && gameID != "cs2" {
 		receipt.State = "failed"
@@ -199,6 +232,59 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		}
 		receipt.Message = message
 		receipt.Result = result
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if opType == "storage.load" {
+		casketIDText, _ := input["casketId"].(string)
+		casketID, parseErr := strconv.ParseUint(casketIDText, 10, 64)
+		s.mu.Lock()
+		enabled := s.settings.FeatureFlags.EnableStorageMutations
+		connected := s.connection.State == "connected"
+		if parseErr == nil && casketID != 0 && enabled && connected {
+			s.loadedStorageUnits[casketID] = true
+		}
+		s.mu.Unlock()
+		switch {
+		case !enabled:
+			receipt.State, receipt.Message = "blocked_by_feature_flag", "storage operations disabled"
+		case !connected:
+			receipt.State, receipt.Message = "failed", "connect a Steam account before loading storage contents"
+		case parseErr != nil || casketID == 0:
+			receipt.State, receipt.Message = "failed", "storage unit id must be a valid Steam item id"
+		default:
+			receipt.State, receipt.Message = "completed", "storage unit selected for contents loading"
+		}
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if opType == "storage.move-out" {
+		casketIDText, _ := input["casketId"].(string)
+		itemIDText, _ := input["itemId"].(string)
+		casketID, casketParseErr := strconv.ParseUint(casketIDText, 10, 64)
+		itemID, itemParseErr := strconv.ParseUint(itemIDText, 10, 64)
+		s.mu.Lock()
+		enabled := s.settings.FeatureFlags.EnableStorageMutations
+		connected := s.connection.State == "connected"
+		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
+		s.mu.Unlock()
+		switch {
+		case !enabled:
+			receipt.State, receipt.Message = "blocked_by_feature_flag", "storage operations disabled"
+		case !connected || sessionErr != nil:
+			receipt.State, receipt.Message = "failed", "connect a Steam account before retrieving storage contents"
+		case casketParseErr != nil || casketID == 0 || itemParseErr != nil || itemID == 0:
+			receipt.State, receipt.Message = "failed", "storage unit and item ids must be valid Steam item ids"
+		default:
+			body, encodeErr := cs2pb.EncodeCasketItem(casketID, itemID)
+			if encodeErr != nil {
+				receipt.State, receipt.Message = "failed", "encode storage retrieval request: "+encodeErr.Error()
+			} else if sendErr := s.gcClient.SendProtoToGC(accountCtx, protocol.AppIDCS2, protocol.EMsgCasketItemExtract, body); sendErr != nil {
+				receipt.State, receipt.Message = "failed", "send storage retrieval request: "+sendErr.Error()
+			} else {
+				receipt.State, receipt.Message = "awaiting_gc_confirmation", "storage retrieval request sent to CS2"
+			}
+		}
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}

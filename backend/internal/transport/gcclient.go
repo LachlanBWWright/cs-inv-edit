@@ -13,18 +13,24 @@ import (
 )
 
 type SteamGCClient struct {
-	mu               sync.Mutex
-	requestMu        sync.Mutex
-	conn             *steamcm.SteamConnection
-	events           chan GCEvent
-	state            GCConnectionState
-	pendingAuth      *steamAuthSession
-	lastWelcome      []byte
-	steamTraceActive atomic.Bool
-	protocolMu       sync.Mutex
-	protocolEnabled  bool
-	protocolNextID   uint64
-	protocolTrace    []ProtocolTraceEntry
+	mu                sync.Mutex
+	sessionMu         sync.Mutex
+	requestMu         sync.Mutex
+	conn              *steamcm.SteamConnection
+	events            chan GCEvent
+	state             GCConnectionState
+	pendingAuth       *steamAuthSession
+	activeSteamID     uint64
+	connectionEpoch   uint64
+	reauthCredentials LogonCredentials
+	gamesPlayed       []uint32
+	heartbeatCancel   context.CancelFunc
+	lastWelcome       []byte
+	steamTraceActive  atomic.Bool
+	protocolMu        sync.Mutex
+	protocolEnabled   bool
+	protocolNextID    uint64
+	protocolTrace     []ProtocolTraceEntry
 }
 
 func NewSteamGCClient() *SteamGCClient {
@@ -51,10 +57,13 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 
 	events := s.events
 	unified := newNonAuthedUnifiedHandler()
-	conn := steamcm.NewSteamConnection(
+	var conn *steamcm.SteamConnection
+	conn = steamcm.NewSteamConnection(
 		steamcm.NewSteamBaseHandler(),
 		unified,
-		NewGCHandler(events, &s.steamTraceActive, s.recordIncomingProtocol, s.recordGCProtocol),
+		NewGCHandler(events, &s.steamTraceActive, s.recordIncomingProtocol, s.recordGCProtocol, func(eventType string) {
+			s.handleSteamSessionEnded(conn, eventType)
+		}),
 	)
 	s.mu.Lock()
 	s.conn = conn
@@ -118,8 +127,44 @@ func (s *SteamGCClient) Close() error {
 	}
 	s.conn = nil
 	s.pendingAuth = nil
+	if s.heartbeatCancel != nil {
+		s.heartbeatCancel()
+		s.heartbeatCancel = nil
+	}
+	s.activeSteamID = 0
+	s.reauthCredentials = LogonCredentials{}
+	s.gamesPlayed = nil
+	s.connectionEpoch++
+	s.lastWelcome = nil
 	s.state = GCConnectionState{State: "closed"}
 	return nil
+}
+
+func (s *SteamGCClient) handleSteamSessionEnded(conn *steamcm.SteamConnection, eventType string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn != conn {
+		return
+	}
+	if s.heartbeatCancel != nil {
+		s.heartbeatCancel()
+		s.heartbeatCancel = nil
+	}
+	s.conn = nil
+	s.activeSteamID = 0
+	s.connectionEpoch++
+	s.lastWelcome = nil
+	s.state = GCConnectionState{State: "session_lost:" + eventType}
+}
+
+func (s *SteamGCClient) activateAuthenticatedAccount(steamID uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeSteamID = steamID
+	s.connectionEpoch++
+	// ClientWelcome and its SOCaches belong to exactly one authenticated
+	// account and connection epoch. Never expose them after a relogin.
+	s.lastWelcome = nil
 }
 
 func (s *SteamGCClient) clearConn(conn *steamcm.SteamConnection) {

@@ -30,7 +30,11 @@ func (p *SteamProvider) Scan(ctx context.Context, query Query) ([]Quote, error) 
 	}
 	var quotes []Quote
 	for _, name := range query.MarketNames {
-		params := url.Values{"appid": {strconv.Itoa(p.AppID)}, "currency": {steamCurrency(query.Currency)}, "market_hash_name": {name}}
+		appID := query.AppID
+		if appID == 0 {
+			appID = p.AppID
+		}
+		params := url.Values{"appid": {strconv.Itoa(appID)}, "currency": {steamCurrency(query.Currency)}, "market_hash_name": {name}}
 		var payload struct {
 			Success bool   `json:"success"`
 			Lowest  string `json:"lowest_price"`
@@ -43,7 +47,7 @@ func (p *SteamProvider) Scan(ctx context.Context, query Query) ([]Quote, error) 
 			continue
 		}
 		count := parseCount(payload.Volume)
-		quotes = append(quotes, Quote{Source: p.ID(), MarketName: name, Currency: query.Currency, AmountMinor: parseFormattedMinor(payload.Lowest), DisplayPrice: payload.Lowest, ListingCount: count, URL: "https://steamcommunity.com/market/listings/730/" + url.PathEscape(name), ObservedAt: nowRFC3339()})
+		quotes = append(quotes, Quote{Source: p.ID(), MarketName: name, Currency: query.Currency, AmountMinor: parseFormattedMinor(payload.Lowest), DisplayPrice: payload.Lowest, ListingCount: count, URL: "https://steamcommunity.com/market/listings/" + strconv.Itoa(appID) + "/" + url.PathEscape(name), ObservedAt: nowRFC3339()})
 	}
 	return quotes, nil
 }
@@ -71,6 +75,9 @@ func NewSkinportProvider(client HTTPDoer) *SkinportProvider {
 }
 func (*SkinportProvider) ID() string { return "skinport" }
 func (p *SkinportProvider) Scan(ctx context.Context, query Query) ([]Quote, error) {
+	if query.AppID != 0 && query.AppID != 730 {
+		return []Quote{}, nil
+	}
 	client := p.Client
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
@@ -138,6 +145,9 @@ func NewCSFloatProvider(client HTTPDoer, apiKey string) *CSFloatProvider {
 }
 func (*CSFloatProvider) ID() string { return "csfloat" }
 func (p *CSFloatProvider) Scan(ctx context.Context, query Query) ([]Quote, error) {
+	if query.AppID != 0 && query.AppID != 730 {
+		return []Quote{}, nil
+	}
 	if query.Currency != "USD" {
 		return nil, fmt.Errorf("CSFloat quotes are USD; requested %s (no exchange-rate conversion is performed)", query.Currency)
 	}

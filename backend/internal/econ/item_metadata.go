@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"strconv"
 	"strings"
 )
+
+const stickerSlabKeychainID uint32 = 37
 
 func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint32]uint32) Metadata {
 	item, ok := s.items[defIndex]
@@ -22,6 +25,9 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		name = fmt.Sprintf("CS2 item #%d", defIndex)
 	}
 	kind := itemKind(item)
+	if defIndex == 1201 {
+		kind = "storage_unit"
+	}
 	marketName := name
 	rarity := item.Rarity
 	var wearMin, wearMax *float64
@@ -33,7 +39,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			if paintName == "" {
 				paintName = paint.Name
 			}
-			if paintName != "" && isWeaponItem(item) {
+			if paintName != "" && isPaintableItem(item) {
 				marketName = fmt.Sprintf("%s | %s", name, paintName)
 				kind = "weapon_skin"
 			}
@@ -67,6 +73,15 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			kind = "sticker_item"
 		}
 	}
+	if sticker := s.matchStickerKit(attributes); sticker != nil && isGenericPatchItem(item, name) {
+		rarity = firstNonEmpty(sticker.Rarity, rarity)
+		patchName := firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name))
+		if patchName != "" {
+			name = patchName
+			marketName = "Patch | " + patchName
+			kind = "sticker_item"
+		}
+	}
 	if music := s.matchMusicDefinition(attributes); music != nil && isGenericMusicItem(item, name) {
 		musicName := s.localize(music.ItemName)
 		if musicName == "" {
@@ -87,6 +102,14 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			name = keychainName
 			marketName = "Charm | " + keychainName
 			kind = "tool_item"
+		}
+	}
+	if sticker := s.matchStickerSlabSticker(attributes); sticker != nil && isStickerSlab(attributes) {
+		stickerName := firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name))
+		if stickerName != "" {
+			name = "Sticker Slab"
+			marketName = "Sticker Slab | " + stickerName
+			rarity = firstNonEmpty(sticker.Rarity, rarity)
 		}
 	}
 	return s.metadataResult(item, name, marketName, kind, rarity, paintKit, attributes, wearMin, wearMax)
@@ -123,7 +146,7 @@ func (s *Schema) itemImageURL(item itemDefinition, paintKit uint32, attributes m
 func (s *Schema) itemImageLookup(item itemDefinition, paintKit uint32, attributes map[uint32]uint32) (string, string) {
 	var candidates []string
 	itemName := s.localize(item.ItemName)
-	if paint, ok := s.paintKits[paintKit]; ok && paintKit != 0 && strings.HasPrefix(item.Name, "weapon_") {
+	if paint, ok := s.paintKits[paintKit]; ok && paintKit != 0 && isPaintableItem(item) {
 		prefix := "econ/default_generated/" + item.Name + "_" + paint.Name + "_"
 		tiers := []string{"light", "medium", "heavy"}
 		if wearBits, ok := attributes[8]; ok {
@@ -142,10 +165,17 @@ func (s *Schema) itemImageLookup(item itemDefinition, paintKit uint32, attribute
 	if sticker := s.matchStickerKit(attributes); sticker != nil && (isGenericStickerItem(item, itemName) || isGenericGraffitiItem(item, itemName)) {
 		candidates = append(candidates, "econ/stickers/"+strings.TrimPrefix(sticker.Material, "econ/stickers/"))
 	}
+	if sticker := s.matchStickerKit(attributes); sticker != nil && isGenericPatchItem(item, itemName) {
+		candidates = append(candidates, "econ/patches/"+strings.TrimPrefix(sticker.PatchMaterial, "econ/patches/"))
+	}
 	if music := s.matchMusicDefinition(attributes); music != nil && isGenericMusicItem(item, itemName) {
 		candidates = append(candidates, music.Image)
 	}
 	if keychain := s.matchKeychain(attributes); keychain != nil && isGenericKeychainItem(item, itemName) {
+		if sticker := s.matchStickerSlabSticker(attributes); sticker != nil && isStickerSlab(attributes) {
+			material := strings.TrimPrefix(sticker.Material, "econ/stickers/")
+			candidates = append(candidates, "econ/stickers/"+material+"_1355_"+strconv.FormatUint(uint64(attributes[299]), 10))
+		}
 		candidates = append(candidates, keychain.Image)
 	}
 	candidates = append(candidates, item.Image)
@@ -187,11 +217,15 @@ func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []A
 	}
 	// Attribute 113 identifies the sticker item itself on generic sticker
 	// definitions; it is only an applied slot on weapons and agents.
-	if isGenericStickerItem(item, itemName) || isGenericGraffitiItem(item, itemName) {
+	if isGenericStickerItem(item, itemName) || isGenericGraffitiItem(item, itemName) || isGenericPatchItem(item, itemName) {
 		return nil
 	}
 	isAgent := strings.Contains(strings.ToLower(item.Prefab+" "+item.ItemClass+" "+item.Name), "customplayer")
 	out := make([]AppliedItem, 0, 7)
+	if sticker := s.matchStickerSlabSticker(attributes); sticker != nil && isStickerSlab(attributes) {
+		name := firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name), fmt.Sprintf("Sticker #%d", attributes[321]))
+		out = append(out, AppliedItem{Kind: "sticker", Slot: 0, ID: attributes[321], Name: name, ImageURL: s.stickerImageURL(*sticker, false)})
+	}
 	for slot := uint32(0); slot < 6; slot++ {
 		id := attributes[113+slot*4]
 		if id == 0 {
@@ -206,7 +240,12 @@ func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []A
 		if isAgent {
 			kind = "patch"
 		}
-		out = append(out, AppliedItem{Kind: kind, Slot: slot, ID: id, Name: name})
+		var wear *float64
+		if wearBits, ok := attributes[114+slot*4]; ok && !isAgent {
+			value := float64(math.Float32frombits(wearBits))
+			wear = &value
+		}
+		out = append(out, AppliedItem{Kind: kind, Slot: slot, ID: id, Name: name, ImageURL: s.stickerImageURL(sticker, isAgent), Wear: wear})
 	}
 	if id := attributes[299]; id != 0 && !isGenericKeychainItem(item, itemName) {
 		keychain, ok := s.keychains[id]
@@ -214,9 +253,34 @@ func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []A
 		if ok {
 			name = firstNonEmpty(s.localize(keychain.ItemName), humanizeIdentifier(keychain.Name), name)
 		}
-		out = append(out, AppliedItem{Kind: "charm", ID: id, Name: name})
+		out = append(out, AppliedItem{Kind: "charm", ID: id, Name: name, ImageURL: s.trackedImageURL(keychain.Image)})
 	}
 	return out
+}
+
+func (s *Schema) stickerImageURL(sticker stickerKitDefinition, patch bool) string {
+	if patch {
+		return s.trackedImageURL("econ/patches/" + strings.TrimPrefix(sticker.PatchMaterial, "econ/patches/"))
+	}
+	return s.trackedImageURL("econ/stickers/" + strings.TrimPrefix(sticker.Material, "econ/stickers/"))
+}
+
+func (s *Schema) trackedImageURL(key string) string {
+	if imageURL := s.imageURLs[strings.TrimSpace(key)]; validTrackedImageURL(imageURL) {
+		return imageURL
+	}
+	return ""
+}
+
+func (s *Schema) matchStickerSlabSticker(attributes map[uint32]uint32) *stickerKitDefinition {
+	if sticker, ok := s.stickerKits[attributes[321]]; ok {
+		return &sticker
+	}
+	return nil
+}
+
+func isStickerSlab(attributes map[uint32]uint32) bool {
+	return attributes[299] == stickerSlabKeychainID && attributes[321] != 0
 }
 
 func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {

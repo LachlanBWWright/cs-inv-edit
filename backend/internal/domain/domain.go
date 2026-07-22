@@ -17,11 +17,12 @@ type Sticker struct {
 }
 
 type AppliedItem struct {
-	Kind     string  `json:"kind"`
-	Slot     *uint32 `json:"slot,omitempty"`
-	ID       *uint32 `json:"id,omitempty"`
-	Name     string  `json:"name"`
-	ImageURL string  `json:"imageUrl,omitempty"`
+	Kind     string   `json:"kind"`
+	Slot     *uint32  `json:"slot,omitempty"`
+	ID       *uint32  `json:"id,omitempty"`
+	Name     string   `json:"name"`
+	ImageURL string   `json:"imageUrl,omitempty"`
+	Wear     *float64 `json:"wear,omitempty"`
 }
 
 type InventoryItem struct {
@@ -47,6 +48,7 @@ type InventoryItem struct {
 	Marketable            *bool         `json:"marketable,omitempty"`
 	TradableAfter         string        `json:"tradableAfter,omitempty"`
 	StorageCount          *uint32       `json:"storageCount,omitempty"`
+	GraffitiCharges       *uint32       `json:"graffitiCharges,omitempty"`
 	CasketID              *string       `json:"casketId,omitempty"`
 	Collection            string        `json:"collection,omitempty"`
 	CollectionItems       []RelatedItem `json:"collectionItems,omitempty"`
@@ -65,16 +67,17 @@ type InventoryItem struct {
 }
 
 type RelatedItem struct {
-	Name        string   `json:"name"`
-	MarketName  string   `json:"marketName,omitempty"`
-	ListingName string   `json:"listingName,omitempty"`
-	Kind        string   `json:"kind,omitempty"`
-	Rarity      string   `json:"rarity,omitempty"`
-	ImageURL    string   `json:"imageUrl,omitempty"`
-	Price       string   `json:"price,omitempty"`
-	PaintWear   *float64 `json:"paintWear,omitempty"`
-	WearMin     *float64 `json:"wearMin,omitempty"`
-	WearMax     *float64 `json:"wearMax,omitempty"`
+	Name        string        `json:"name"`
+	MarketName  string        `json:"marketName,omitempty"`
+	ListingName string        `json:"listingName,omitempty"`
+	Kind        string        `json:"kind,omitempty"`
+	Rarity      string        `json:"rarity,omitempty"`
+	ImageURL    string        `json:"imageUrl,omitempty"`
+	Price       string        `json:"price,omitempty"`
+	PaintWear   *float64      `json:"paintWear,omitempty"`
+	WearMin     *float64      `json:"wearMin,omitempty"`
+	WearMax     *float64      `json:"wearMax,omitempty"`
+	Items       []RelatedItem `json:"items,omitempty"`
 }
 
 type InventorySnapshot struct {
@@ -187,6 +190,12 @@ type FeatureFlags struct {
 	EnableStoreRead        bool `json:"enableStoreRead"`
 	EnableStorePurchases   bool `json:"enableStorePurchases"`
 	EnableTF2Inventory     bool `json:"enableTf2Inventory"`
+	EnableTF2Loadouts      bool `json:"enableTf2Loadouts"`
+	EnableTF2ItemUse       bool `json:"enableTf2ItemUse"`
+	EnableTF2Tools         bool `json:"enableTf2Tools"`
+	EnableTF2Crafting      bool `json:"enableTf2Crafting"`
+	EnableTF2Unboxing      bool `json:"enableTf2Unboxing"`
+	EnableTF2Customization bool `json:"enableTf2Customization"`
 	EnableDota2Inventory   bool `json:"enableDota2Inventory"`
 	EnableSteamInventory   bool `json:"enableSteamInventory"`
 }
@@ -215,6 +224,21 @@ type EconomyItemDetails struct {
 	EquipSlot         string            `json:"equipSlot,omitempty"`
 	UsableClasses     []string          `json:"usableClasses,omitempty"`
 	Capabilities      map[string]string `json:"capabilities,omitempty"`
+	ItemKind          string            `json:"itemKind,omitempty"`
+	ItemClass         string            `json:"itemClass,omitempty"`
+	CraftClass        string            `json:"craftClass,omitempty"`
+	CraftMaterialType string            `json:"craftMaterialType,omitempty"`
+	ToolType          string            `json:"toolType,omitempty"`
+	Description       string            `json:"description,omitempty"`
+	Collection        string            `json:"collection,omitempty"`
+	EquipRegions      []string          `json:"equipRegions,omitempty"`
+	SchemaTags        []string          `json:"schemaTags,omitempty"`
+	MinLevel          uint32            `json:"minLevel,omitempty"`
+	MaxLevel          uint32            `json:"maxLevel,omitempty"`
+	ProperName        bool              `json:"properName,omitempty"`
+	BaseItem          bool              `json:"baseItem,omitempty"`
+	Hidden            bool              `json:"hidden,omitempty"`
+	StaticAttributes  map[string]string `json:"staticAttributes,omitempty"`
 	Hero              string            `json:"hero,omitempty"`
 	Slot              string            `json:"slot,omitempty"`
 }
@@ -241,6 +265,7 @@ type EconomyInventoryItem struct {
 	Quality      string             `json:"quality,omitempty"`
 	Tradable     bool               `json:"tradable"`
 	Marketable   bool               `json:"marketable"`
+	TradableAfter string             `json:"tradableAfter,omitempty"`
 	Tags         []EconomyTag       `json:"tags"`
 	Descriptions []string           `json:"descriptions,omitempty"`
 	Details      EconomyItemDetails `json:"details"`

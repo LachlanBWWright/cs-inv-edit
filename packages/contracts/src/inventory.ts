@@ -19,6 +19,7 @@ export interface AppliedItemDto {
   id?: number;
   name: string;
   imageUrl?: string;
+  wear?: number;
 }
 
 export interface InventoryItemDto {
@@ -37,6 +38,7 @@ export interface InventoryItemDto {
   paintWearMin?: number;
   paintWearMax?: number;
   storageCount?: number;
+  graffitiCharges?: number;
   casketId?: string;
   collection?: string;
   collectionItems?: RelatedItemDto[];
@@ -72,9 +74,10 @@ export interface RelatedItemDto {
   paintWear?: number;
   wearMin?: number;
   wearMax?: number;
+  items?: RelatedItemDto[];
 }
 
-export interface PriceScanRequest { marketNames: string[]; currency: string; priceMultipliers?: Record<string, number> }
+export interface PriceScanRequest { marketNames: string[]; currency: string; appId?: number; priceMultipliers?: Record<string, number> }
 export interface PriceQuoteDto { source: string; marketName: string; currency: string; amountMinor?: number; displayPrice: string; priceMultiplier: number; adjustedAmountMinor?: number; adjustedDisplayPrice?: string; listingCount?: number; url?: string; observedAt: string }
 export interface PriceScanResult { currency: string; items: Array<{ marketName: string; quotes: PriceQuoteDto[] }>; listings: PriceQuoteDto[]; errors: Array<{ source: string; message: string }>; scannedAt: string }
 

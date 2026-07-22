@@ -10,6 +10,7 @@ import (
 	"cs-inv-edit/backend/internal/operations"
 	cs2pb "cs-inv-edit/backend/internal/proto/generated"
 	"cs-inv-edit/backend/internal/protocol"
+	"cs-inv-edit/backend/internal/transport"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -34,7 +35,11 @@ func (s *Service) RefreshArmory() operations.Receipt {
 	s.armory.Message = "Waiting for CS2 Game Coordinator Armory state"
 	s.mu.Unlock()
 	gcCtx, cancelGC := context.WithTimeout(context.Background(), 10*time.Second)
-	state, err := s.gcClient.RequestArmory(gcCtx)
+	err := s.ensureGCSession(gcCtx, protocol.AppIDCS2)
+	var state transport.GCArmorySnapshot
+	if err == nil {
+		state, err = s.gcClient.RequestArmory(gcCtx)
+	}
 	cancelGC()
 	var catalog []econ.ArmoryOffer
 	if err == nil {
@@ -88,12 +93,6 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.settings.ValidationMode {
-		s.mu.Unlock()
-		receipt.State, receipt.Message = "requires_validation", "disable validation mode only after verifying the live Armory offer"
-		s.addEvent(receipt, receipt.State, receipt.Message)
-		return receipt
-	}
 	campaignID, err1 := requiredUint32Input(input, "campaignId")
 	redeemID, err2 := requiredUint32Input(input, "redeemId")
 	balance, err3 := requiredUint32Input(input, "redeemableBalance")
@@ -133,7 +132,21 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 	if pacing == 0 {
 		pacing = 5
 	}
+	beforeInventory := cloneInventory(s.inventory)
+	requestKey, accountCtx, _ := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 	s.mu.Unlock()
+	// A cached Armory snapshot can outlive the GC session that produced it. Prove
+	// that CS2 has accepted a fresh ClientHello before sending the irreversible
+	// redemption message; otherwise a stale session can silently discard it.
+	preflightCtx, cancelPreflight := context.WithTimeout(accountCtx, 15*time.Second)
+	preflightErr := s.ensureGCSession(preflightCtx, protocol.AppIDCS2)
+	cancelPreflight()
+	if preflightErr != nil {
+		receipt.State = "failed"
+		receipt.Message = fmt.Sprintf("Armory purchase was not sent because the CS2 GC session could not be refreshed: %v", preflightErr)
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
 	var err error
 	for index := uint32(0); index < quantity; index++ {
 		prePurchaseBalance := balance - index*cost
@@ -142,7 +155,7 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 			err = marshalErr
 			break
 		}
-		if err = s.gcClient.SendProtoToGC(context.Background(), protocol.AppIDCS2, protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, body); err != nil {
+		if err = s.gcClient.SendProtoToGC(accountCtx, protocol.AppIDCS2, protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, body); err != nil {
 			break
 		}
 		if index+1 < quantity {
@@ -153,8 +166,61 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 		receipt.State, receipt.Message = "failed", fmt.Sprintf("Armory purchase send failed: %v", err)
 	} else {
 		receipt.State, receipt.Message = "awaiting_gc_confirmation", fmt.Sprintf("%d Armory purchase message(s) sent; refresh to reconcile stars and inventory", quantity)
-		receipt.Result = map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "quantity": quantity, "preBalance": balance, "generationTime": generation, "pacingSeconds": pacing}
+		result := map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "quantity": quantity, "preBalance": balance, "generationTime": generation, "pacingSeconds": pacing}
+		receipt.Result = result
+		if quantity == 1 {
+			if snapshot, openedItem, reconcileErr := s.reconcileArmoryReward(accountCtx, beforeInventory); reconcileErr == nil && openedItem != nil {
+				snapshot.Message = fmt.Sprintf("Armory reward received: %s", openedInventoryItemName(openedItem))
+				s.mu.Lock()
+				currentKey, _, keyErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
+				if keyErr == nil && currentKey == requestKey {
+					s.inventory = snapshot
+					s.applyConfirmedArmoryRedemptionLocked(cost)
+				} else {
+					reconcileErr = fmt.Errorf("Armory result superseded by an account change")
+				}
+				s.mu.Unlock()
+				if reconcileErr != nil {
+					receipt.State, receipt.Message = "failed", reconcileErr.Error()
+				} else {
+					receipt.State = "completed"
+					receipt.Message = snapshot.Message
+					result["openedItem"] = openedItem
+				}
+			} else if reconcileErr != nil {
+				result["diagnostics"] = []string{reconcileErr.Error()}
+				receipt.State = "failed"
+				receipt.Message = "Armory redemption was sent, but the GC did not add a reward to inventory"
+			}
+		}
 	}
 	s.addEvent(receipt, receipt.State, receipt.Message)
 	return receipt
+}
+
+func (s *Service) applyConfirmedArmoryRedemptionLocked(cost uint32) {
+	if cost > s.armory.Balance {
+		return
+	}
+	s.armory.Balance -= cost
+	s.armory.RefreshedAt = now()
+	s.armory.Message = fmt.Sprintf("Armory reward confirmed; %d stars remaining", s.armory.Balance)
+}
+
+func (s *Service) reconcileArmoryReward(ctx context.Context, before domain.InventorySnapshot) (domain.InventorySnapshot, *domain.InventoryItem, error) {
+	const attempts = 4
+	var lastSnapshot domain.InventorySnapshot
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Second)
+		}
+		snapshot, openedItem, err := s.reconcileNewInventoryItemOnce(ctx, before)
+		lastSnapshot = snapshot
+		if err == nil && openedItem != nil {
+			return snapshot, openedItem, nil
+		}
+		lastErr = err
+	}
+	return lastSnapshot, nil, fmt.Errorf("Armory reward was not present after %d GC inventory reconciliations: %w", attempts, lastErr)
 }

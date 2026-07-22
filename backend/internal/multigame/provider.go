@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,6 +113,7 @@ type description struct {
 	Marketable     int               `json:"marketable"`
 	Tags           []tag             `json:"tags"`
 	Descriptions   []descriptionLine `json:"descriptions"`
+	OwnerDescriptions []descriptionLine `json:"owner_descriptions"`
 }
 
 type tag struct {
@@ -205,6 +207,7 @@ func (p *Provider) load(ctx context.Context, steamID string, game Game, webAcces
 				item.Type = desc.Type
 				item.Tradable = desc.Tradable != 0
 				item.Marketable = desc.Marketable != 0
+				item.TradableAfter = descriptionTradableAfter(append(append([]descriptionLine(nil), desc.Descriptions...), desc.OwnerDescriptions...))
 				for _, sourceTag := range desc.Tags {
 					item.Tags = append(item.Tags, domain.EconomyTag{Category: sourceTag.Category, InternalName: sourceTag.InternalName, Name: sourceTag.LocalizedTagName})
 					switch strings.ToLower(sourceTag.Category) {
@@ -242,6 +245,26 @@ func (p *Provider) load(ctx context.Context, steamID string, game Game, webAcces
 	p.overlays[cacheKey] = overlayCacheEntry{snapshot: cloneGameSnapshot(snapshot), expiresAt: time.Now().Add(5 * time.Minute)}
 	p.overlayMu.Unlock()
 	return snapshot, nil
+}
+
+var descriptionHTML = regexp.MustCompile(`<[^>]+>`)
+
+func descriptionTradableAfter(lines []descriptionLine) string {
+	for _, line := range lines {
+		value := strings.TrimSpace(descriptionHTML.ReplaceAllString(line.Value, ""))
+		index := strings.Index(strings.ToLower(value), "tradable after ")
+		if index < 0 {
+			continue
+		}
+		date := strings.TrimSpace(value[index+len("tradable after "):])
+		for _, layout := range []string{"Jan 2, 2006 (15:04:05) MST", "Jan 2, 2006 (15:04:05)", "2 Jan, 2006 (15:04:05) MST"} {
+			parsed, err := time.Parse(layout, date)
+			if err == nil {
+				return parsed.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+	return ""
 }
 
 func communityInventoryDiagnostic(game Game) string {
@@ -299,6 +322,24 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 			item.Details.Capabilities = make(map[string]string, len(definition.Capabilities))
 			for capability, value := range definition.Capabilities {
 				item.Details.Capabilities[capability] = value
+			}
+			item.Details.ItemKind = definition.ItemKind
+			item.Details.ItemClass = definition.ItemClass
+			item.Details.CraftClass = definition.CraftClass
+			item.Details.CraftMaterialType = definition.CraftMaterialType
+			item.Details.ToolType = definition.ToolType
+			item.Details.Description = definition.Description
+			item.Details.Collection = definition.Collection
+			item.Details.EquipRegions = append([]string(nil), definition.EquipRegions...)
+			item.Details.SchemaTags = append([]string(nil), definition.Tags...)
+			item.Details.MinLevel = definition.MinLevel
+			item.Details.MaxLevel = definition.MaxLevel
+			item.Details.ProperName = definition.ProperName
+			item.Details.BaseItem = definition.BaseItem
+			item.Details.Hidden = definition.Hidden
+			item.Details.StaticAttributes = make(map[string]string, len(definition.StaticAttributes))
+			for name, value := range definition.StaticAttributes {
+				item.Details.StaticAttributes[name] = value
 			}
 		}
 		definitionID := source.DefIndex

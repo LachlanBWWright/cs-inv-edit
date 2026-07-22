@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"regexp"
@@ -70,13 +71,16 @@ type RelatedItem struct {
 	PaintWear   *float64
 	WearMin     *float64
 	WearMax     *float64
+	Items       []RelatedItem
 }
 
 type AppliedItem struct {
-	Kind string
-	Slot uint32
-	ID   uint32
-	Name string
+	Kind     string
+	Slot     uint32
+	ID       uint32
+	Name     string
+	ImageURL string
+	Wear     *float64
 }
 
 type MarketPrice struct {
@@ -194,10 +198,11 @@ type paintKitDefinition struct {
 }
 
 type stickerKitDefinition struct {
-	Name     string
-	ItemName string
-	Material string
-	Rarity   string
+	Name          string
+	ItemName      string
+	Material      string
+	PatchMaterial string
+	Rarity        string
 }
 
 type musicDefinition struct {
@@ -335,7 +340,7 @@ func parseArmoryOffers(itemsText string, schema *Schema) []ArmoryOffer {
 	}
 	matches := armoryGoodsPattern.FindAllStringSubmatch(section, -1)
 	offers := make([]ArmoryOffer, 0, len(matches))
-	for redeemID, match := range matches {
+	for _, match := range matches {
 		object, err := parseKeyValues(match[1])
 		if err != nil {
 			continue
@@ -345,12 +350,15 @@ func parseArmoryOffers(itemsText string, schema *Schema) []ArmoryOffer {
 			continue
 		}
 		itemName := object.string("item_name")
+		if itemName == "" {
+			continue
+		}
 		name := schema.localize(object.string("callout"))
 		if name == "" {
 			name = humanizeIdentifier(strings.TrimPrefix(itemName, "lootlist:"))
 		}
 		lootListName := schema.armoryLootListName(itemName)
-		offers = append(offers, ArmoryOffer{CampaignID: uint32(campaignID), RedeemID: uint32(redeemID), ExpectedCost: uint32(cost), ItemName: itemName, Name: name, Category: object.string("ui_order"), Items: schema.lootListItems(lootListName, nil)})
+		offers = append(offers, ArmoryOffer{CampaignID: uint32(campaignID), RedeemID: crc32.ChecksumIEEE([]byte(itemName)), ExpectedCost: uint32(cost), ItemName: itemName, Name: name, Category: object.string("ui_order"), Items: schema.lootListItems(lootListName, nil)})
 	}
 	return offers
 }

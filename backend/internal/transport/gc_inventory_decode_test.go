@@ -3,6 +3,7 @@ package transport
 import (
 	"encoding/hex"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +11,14 @@ import (
 	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestMergeGamesPlayedPreservesAllGameCoordinatorPresence(t *testing.T) {
+	got := mergeGamesPlayed([]uint32{730, 440}, []uint32{730, 570, 440})
+	want := []uint32{730, 440, 570}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mergeGamesPlayed() = %v, want %v", got, want)
+	}
+}
 
 func TestDecodeInventoryIgnoresNonEconSOCacheTypes(t *testing.T) {
 	foreign, err := proto.Marshal(&cs2pb.CSOAccountItemPersonalStore{GenerationTime: proto.Uint32(4001), Items: []uint64{36}})

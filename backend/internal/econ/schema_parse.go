@@ -61,10 +61,11 @@ func (s *Schema) parseItems(root kvObject) {
 		}
 		sticker := node.objectValue()
 		s.stickerKits[uint32(stickerKit)] = stickerKitDefinition{
-			Name:     sticker.string("name"),
-			ItemName: sticker.string("item_name"),
-			Material: sticker.string("sticker_material"),
-			Rarity:   sticker.string("item_rarity"),
+			Name:          sticker.string("name"),
+			ItemName:      sticker.string("item_name"),
+			Material:      sticker.string("sticker_material"),
+			PatchMaterial: sticker.string("patch_material"),
+			Rarity:        sticker.string("item_rarity"),
 		}
 	}
 	for key, node := range itemsGame.object("music_definitions") {
@@ -221,6 +222,17 @@ func (s *Schema) rareSpecialTradeUpItems(inputKey string) []RelatedItem {
 			continue
 		}
 		for _, item := range s.lootListItems(lootList, nil) {
+			if len(item.Items) > 0 {
+				for _, special := range item.Items {
+					key := special.MarketName
+					if key == "" || seenItems[key] {
+						continue
+					}
+					seenItems[key] = true
+					out = append(out, special)
+				}
+				continue
+			}
 			key := item.MarketName
 			if rarityRank(item.Rarity) != 7 || key == "" || seenItems[key] {
 				continue

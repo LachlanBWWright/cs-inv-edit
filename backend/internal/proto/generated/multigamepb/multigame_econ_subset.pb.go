@@ -702,6 +702,412 @@ func (x *CSOEconItem) GetEquippedState() []*CSOEconItemEquipped {
 	return nil
 }
 
+// TF2 protobuf-backed economy operations. These declarations are copied
+// field-for-field from GameTracking-TF2/Protobufs/base_gcmessages.proto.
+type CMsgAdjustItemEquippedState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        *uint64                `protobuf:"varint,1,opt,name=item_id,json=itemId" json:"item_id,omitempty"`
+	NewClass      *uint32                `protobuf:"varint,2,opt,name=new_class,json=newClass" json:"new_class,omitempty"`
+	NewSlot       *uint32                `protobuf:"varint,3,opt,name=new_slot,json=newSlot" json:"new_slot,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgAdjustItemEquippedState) Reset() {
+	*x = CMsgAdjustItemEquippedState{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgAdjustItemEquippedState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgAdjustItemEquippedState) ProtoMessage() {}
+
+func (x *CMsgAdjustItemEquippedState) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgAdjustItemEquippedState.ProtoReflect.Descriptor instead.
+func (*CMsgAdjustItemEquippedState) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CMsgAdjustItemEquippedState) GetItemId() uint64 {
+	if x != nil && x.ItemId != nil {
+		return *x.ItemId
+	}
+	return 0
+}
+
+func (x *CMsgAdjustItemEquippedState) GetNewClass() uint32 {
+	if x != nil && x.NewClass != nil {
+		return *x.NewClass
+	}
+	return 0
+}
+
+func (x *CMsgAdjustItemEquippedState) GetNewSlot() uint32 {
+	if x != nil && x.NewSlot != nil {
+		return *x.NewSlot
+	}
+	return 0
+}
+
+type CMsgSortItems struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SortType      *uint32                `protobuf:"varint,1,opt,name=sort_type,json=sortType" json:"sort_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSortItems) Reset() {
+	*x = CMsgSortItems{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSortItems) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSortItems) ProtoMessage() {}
+
+func (x *CMsgSortItems) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSortItems.ProtoReflect.Descriptor instead.
+func (*CMsgSortItems) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CMsgSortItems) GetSortType() uint32 {
+	if x != nil && x.SortType != nil {
+		return *x.SortType
+	}
+	return 0
+}
+
+type CMsgUseItem struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	ItemId                  *uint64                `protobuf:"varint,1,opt,name=item_id,json=itemId" json:"item_id,omitempty"`
+	TargetSteamId           *uint64                `protobuf:"fixed64,2,opt,name=target_steam_id,json=targetSteamId" json:"target_steam_id,omitempty"`
+	Gift_PotentialTargets   []uint32               `protobuf:"varint,3,rep,name=gift__potential_targets,json=giftPotentialTargets" json:"gift__potential_targets,omitempty"`
+	Duel_ClassLock          *uint32                `protobuf:"varint,4,opt,name=duel__class_lock,json=duelClassLock" json:"duel__class_lock,omitempty"`
+	InitiatorSteamId        *uint64                `protobuf:"fixed64,5,opt,name=initiator_steam_id,json=initiatorSteamId" json:"initiator_steam_id,omitempty"`
+	Itempack_AckImmediately *bool                  `protobuf:"varint,6,opt,name=itempack__ack_immediately,json=itempackAckImmediately" json:"itempack__ack_immediately,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *CMsgUseItem) Reset() {
+	*x = CMsgUseItem{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgUseItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgUseItem) ProtoMessage() {}
+
+func (x *CMsgUseItem) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgUseItem.ProtoReflect.Descriptor instead.
+func (*CMsgUseItem) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CMsgUseItem) GetItemId() uint64 {
+	if x != nil && x.ItemId != nil {
+		return *x.ItemId
+	}
+	return 0
+}
+
+func (x *CMsgUseItem) GetTargetSteamId() uint64 {
+	if x != nil && x.TargetSteamId != nil {
+		return *x.TargetSteamId
+	}
+	return 0
+}
+
+func (x *CMsgUseItem) GetGift_PotentialTargets() []uint32 {
+	if x != nil {
+		return x.Gift_PotentialTargets
+	}
+	return nil
+}
+
+func (x *CMsgUseItem) GetDuel_ClassLock() uint32 {
+	if x != nil && x.Duel_ClassLock != nil {
+		return *x.Duel_ClassLock
+	}
+	return 0
+}
+
+func (x *CMsgUseItem) GetInitiatorSteamId() uint64 {
+	if x != nil && x.InitiatorSteamId != nil {
+		return *x.InitiatorSteamId
+	}
+	return 0
+}
+
+func (x *CMsgUseItem) GetItempack_AckImmediately() bool {
+	if x != nil && x.Itempack_AckImmediately != nil {
+		return *x.Itempack_AckImmediately
+	}
+	return false
+}
+
+type CMsgApplyStrangePart struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	StrangePartItemId *uint64                `protobuf:"varint,1,opt,name=strange_part_item_id,json=strangePartItemId" json:"strange_part_item_id,omitempty"`
+	ItemItemId        *uint64                `protobuf:"varint,2,opt,name=item_item_id,json=itemItemId" json:"item_item_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CMsgApplyStrangePart) Reset() {
+	*x = CMsgApplyStrangePart{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgApplyStrangePart) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgApplyStrangePart) ProtoMessage() {}
+
+func (x *CMsgApplyStrangePart) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgApplyStrangePart.ProtoReflect.Descriptor instead.
+func (*CMsgApplyStrangePart) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CMsgApplyStrangePart) GetStrangePartItemId() uint64 {
+	if x != nil && x.StrangePartItemId != nil {
+		return *x.StrangePartItemId
+	}
+	return 0
+}
+
+func (x *CMsgApplyStrangePart) GetItemItemId() uint64 {
+	if x != nil && x.ItemItemId != nil {
+		return *x.ItemItemId
+	}
+	return 0
+}
+
+type CMsgApplyStrangeRestriction struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	StrangePartItemId *uint64                `protobuf:"varint,1,opt,name=strange_part_item_id,json=strangePartItemId" json:"strange_part_item_id,omitempty"`
+	ItemItemId        *uint64                `protobuf:"varint,2,opt,name=item_item_id,json=itemItemId" json:"item_item_id,omitempty"`
+	StrangeAttrIndex  *uint32                `protobuf:"varint,3,opt,name=strange_attr_index,json=strangeAttrIndex" json:"strange_attr_index,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CMsgApplyStrangeRestriction) Reset() {
+	*x = CMsgApplyStrangeRestriction{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgApplyStrangeRestriction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgApplyStrangeRestriction) ProtoMessage() {}
+
+func (x *CMsgApplyStrangeRestriction) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgApplyStrangeRestriction.ProtoReflect.Descriptor instead.
+func (*CMsgApplyStrangeRestriction) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *CMsgApplyStrangeRestriction) GetStrangePartItemId() uint64 {
+	if x != nil && x.StrangePartItemId != nil {
+		return *x.StrangePartItemId
+	}
+	return 0
+}
+
+func (x *CMsgApplyStrangeRestriction) GetItemItemId() uint64 {
+	if x != nil && x.ItemItemId != nil {
+		return *x.ItemItemId
+	}
+	return 0
+}
+
+func (x *CMsgApplyStrangeRestriction) GetStrangeAttrIndex() uint32 {
+	if x != nil && x.StrangeAttrIndex != nil {
+		return *x.StrangeAttrIndex
+	}
+	return 0
+}
+
+type CMsgApplyStrangeCountTransfer struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ToolItemId     *uint64                `protobuf:"varint,1,opt,name=tool_item_id,json=toolItemId" json:"tool_item_id,omitempty"`
+	ItemSrcItemId  *uint64                `protobuf:"varint,2,opt,name=item_src_item_id,json=itemSrcItemId" json:"item_src_item_id,omitempty"`
+	ItemDestItemId *uint64                `protobuf:"varint,3,opt,name=item_dest_item_id,json=itemDestItemId" json:"item_dest_item_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CMsgApplyStrangeCountTransfer) Reset() {
+	*x = CMsgApplyStrangeCountTransfer{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgApplyStrangeCountTransfer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgApplyStrangeCountTransfer) ProtoMessage() {}
+
+func (x *CMsgApplyStrangeCountTransfer) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgApplyStrangeCountTransfer.ProtoReflect.Descriptor instead.
+func (*CMsgApplyStrangeCountTransfer) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CMsgApplyStrangeCountTransfer) GetToolItemId() uint64 {
+	if x != nil && x.ToolItemId != nil {
+		return *x.ToolItemId
+	}
+	return 0
+}
+
+func (x *CMsgApplyStrangeCountTransfer) GetItemSrcItemId() uint64 {
+	if x != nil && x.ItemSrcItemId != nil {
+		return *x.ItemSrcItemId
+	}
+	return 0
+}
+
+func (x *CMsgApplyStrangeCountTransfer) GetItemDestItemId() uint64 {
+	if x != nil && x.ItemDestItemId != nil {
+		return *x.ItemDestItemId
+	}
+	return 0
+}
+
+type CMsgSetItemPositions struct {
+	state         protoimpl.MessageState               `protogen:"open.v1"`
+	ItemPositions []*CMsgSetItemPositions_ItemPosition `protobuf:"bytes,1,rep,name=item_positions,json=itemPositions" json:"item_positions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSetItemPositions) Reset() {
+	*x = CMsgSetItemPositions{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSetItemPositions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSetItemPositions) ProtoMessage() {}
+
+func (x *CMsgSetItemPositions) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSetItemPositions.ProtoReflect.Descriptor instead.
+func (*CMsgSetItemPositions) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CMsgSetItemPositions) GetItemPositions() []*CMsgSetItemPositions_ItemPosition {
+	if x != nil {
+		return x.ItemPositions
+	}
+	return nil
+}
+
 type CMsgSOCacheSubscribed_SubscribedType struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TypeId        *int32                 `protobuf:"varint,1,opt,name=type_id,json=typeId" json:"type_id,omitempty"`
@@ -712,7 +1118,7 @@ type CMsgSOCacheSubscribed_SubscribedType struct {
 
 func (x *CMsgSOCacheSubscribed_SubscribedType) Reset() {
 	*x = CMsgSOCacheSubscribed_SubscribedType{}
-	mi := &file_multigame_econ_subset_proto_msgTypes[9]
+	mi := &file_multigame_econ_subset_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -724,7 +1130,7 @@ func (x *CMsgSOCacheSubscribed_SubscribedType) String() string {
 func (*CMsgSOCacheSubscribed_SubscribedType) ProtoMessage() {}
 
 func (x *CMsgSOCacheSubscribed_SubscribedType) ProtoReflect() protoreflect.Message {
-	mi := &file_multigame_econ_subset_proto_msgTypes[9]
+	mi := &file_multigame_econ_subset_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -752,6 +1158,58 @@ func (x *CMsgSOCacheSubscribed_SubscribedType) GetObjectData() [][]byte {
 		return x.ObjectData
 	}
 	return nil
+}
+
+type CMsgSetItemPositions_ItemPosition struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        *uint64                `protobuf:"varint,1,opt,name=item_id,json=itemId" json:"item_id,omitempty"`
+	Position      *uint32                `protobuf:"varint,2,opt,name=position" json:"position,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CMsgSetItemPositions_ItemPosition) Reset() {
+	*x = CMsgSetItemPositions_ItemPosition{}
+	mi := &file_multigame_econ_subset_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CMsgSetItemPositions_ItemPosition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CMsgSetItemPositions_ItemPosition) ProtoMessage() {}
+
+func (x *CMsgSetItemPositions_ItemPosition) ProtoReflect() protoreflect.Message {
+	mi := &file_multigame_econ_subset_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CMsgSetItemPositions_ItemPosition.ProtoReflect.Descriptor instead.
+func (*CMsgSetItemPositions_ItemPosition) Descriptor() ([]byte, []int) {
+	return file_multigame_econ_subset_proto_rawDescGZIP(), []int{15, 0}
+}
+
+func (x *CMsgSetItemPositions_ItemPosition) GetItemId() uint64 {
+	if x != nil && x.ItemId != nil {
+		return *x.ItemId
+	}
+	return 0
+}
+
+func (x *CMsgSetItemPositions_ItemPosition) GetPosition() uint32 {
+	if x != nil && x.Position != nil {
+		return *x.Position
+	}
+	return 0
 }
 
 var File_multigame_econ_subset_proto protoreflect.FileDescriptor
@@ -825,7 +1283,39 @@ const file_multigame_econ_subset_proto_rawDesc = "" +
 	"\voriginal_id\x18\x10 \x01(\x04R\n" +
 	"originalId\x126\n" +
 	"\x17contains_equipped_state\x18\x11 \x01(\bR\x15containsEquippedState\x12I\n" +
-	"\x0eequipped_state\x18\x12 \x03(\v2\".multigameecon.CSOEconItemEquippedR\requippedStateB:Z8cs-inv-edit/backend/internal/proto/generated/multigamepb"
+	"\x0eequipped_state\x18\x12 \x03(\v2\".multigameecon.CSOEconItemEquippedR\requippedState\"n\n" +
+	"\x1bCMsgAdjustItemEquippedState\x12\x17\n" +
+	"\aitem_id\x18\x01 \x01(\x04R\x06itemId\x12\x1b\n" +
+	"\tnew_class\x18\x02 \x01(\rR\bnewClass\x12\x19\n" +
+	"\bnew_slot\x18\x03 \x01(\rR\anewSlot\",\n" +
+	"\rCMsgSortItems\x12\x1b\n" +
+	"\tsort_type\x18\x01 \x01(\rR\bsortType\"\x97\x02\n" +
+	"\vCMsgUseItem\x12\x17\n" +
+	"\aitem_id\x18\x01 \x01(\x04R\x06itemId\x12&\n" +
+	"\x0ftarget_steam_id\x18\x02 \x01(\x06R\rtargetSteamId\x125\n" +
+	"\x17gift__potential_targets\x18\x03 \x03(\rR\x14giftPotentialTargets\x12'\n" +
+	"\x10duel__class_lock\x18\x04 \x01(\rR\rduelClassLock\x12,\n" +
+	"\x12initiator_steam_id\x18\x05 \x01(\x06R\x10initiatorSteamId\x129\n" +
+	"\x19itempack__ack_immediately\x18\x06 \x01(\bR\x16itempackAckImmediately\"i\n" +
+	"\x14CMsgApplyStrangePart\x12/\n" +
+	"\x14strange_part_item_id\x18\x01 \x01(\x04R\x11strangePartItemId\x12 \n" +
+	"\fitem_item_id\x18\x02 \x01(\x04R\n" +
+	"itemItemId\"\x9e\x01\n" +
+	"\x1bCMsgApplyStrangeRestriction\x12/\n" +
+	"\x14strange_part_item_id\x18\x01 \x01(\x04R\x11strangePartItemId\x12 \n" +
+	"\fitem_item_id\x18\x02 \x01(\x04R\n" +
+	"itemItemId\x12,\n" +
+	"\x12strange_attr_index\x18\x03 \x01(\rR\x10strangeAttrIndex\"\x95\x01\n" +
+	"\x1dCMsgApplyStrangeCountTransfer\x12 \n" +
+	"\ftool_item_id\x18\x01 \x01(\x04R\n" +
+	"toolItemId\x12'\n" +
+	"\x10item_src_item_id\x18\x02 \x01(\x04R\ritemSrcItemId\x12)\n" +
+	"\x11item_dest_item_id\x18\x03 \x01(\x04R\x0eitemDestItemId\"\xb4\x01\n" +
+	"\x14CMsgSetItemPositions\x12W\n" +
+	"\x0eitem_positions\x18\x01 \x03(\v20.multigameecon.CMsgSetItemPositions.ItemPositionR\ritemPositions\x1aC\n" +
+	"\fItemPosition\x12\x17\n" +
+	"\aitem_id\x18\x01 \x01(\x04R\x06itemId\x12\x1a\n" +
+	"\bposition\x18\x02 \x01(\rR\bpositionB:Z8cs-inv-edit/backend/internal/proto/generated/multigamepb"
 
 var (
 	file_multigame_econ_subset_proto_rawDescOnce sync.Once
@@ -839,7 +1329,7 @@ func file_multigame_econ_subset_proto_rawDescGZIP() []byte {
 	return file_multigame_econ_subset_proto_rawDescData
 }
 
-var file_multigame_econ_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_multigame_econ_subset_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_multigame_econ_subset_proto_goTypes = []any{
 	(*CMsgClientHello)(nil),                      // 0: multigameecon.CMsgClientHello
 	(*CMsgClientWelcome)(nil),                    // 1: multigameecon.CMsgClientWelcome
@@ -850,23 +1340,32 @@ var file_multigame_econ_subset_proto_goTypes = []any{
 	(*CSOEconItemAttribute)(nil),                 // 6: multigameecon.CSOEconItemAttribute
 	(*CSOEconItemEquipped)(nil),                  // 7: multigameecon.CSOEconItemEquipped
 	(*CSOEconItem)(nil),                          // 8: multigameecon.CSOEconItem
-	(*CMsgSOCacheSubscribed_SubscribedType)(nil), // 9: multigameecon.CMsgSOCacheSubscribed.SubscribedType
+	(*CMsgAdjustItemEquippedState)(nil),          // 9: multigameecon.CMsgAdjustItemEquippedState
+	(*CMsgSortItems)(nil),                        // 10: multigameecon.CMsgSortItems
+	(*CMsgUseItem)(nil),                          // 11: multigameecon.CMsgUseItem
+	(*CMsgApplyStrangePart)(nil),                 // 12: multigameecon.CMsgApplyStrangePart
+	(*CMsgApplyStrangeRestriction)(nil),          // 13: multigameecon.CMsgApplyStrangeRestriction
+	(*CMsgApplyStrangeCountTransfer)(nil),        // 14: multigameecon.CMsgApplyStrangeCountTransfer
+	(*CMsgSetItemPositions)(nil),                 // 15: multigameecon.CMsgSetItemPositions
+	(*CMsgSOCacheSubscribed_SubscribedType)(nil), // 16: multigameecon.CMsgSOCacheSubscribed.SubscribedType
+	(*CMsgSetItemPositions_ItemPosition)(nil),    // 17: multigameecon.CMsgSetItemPositions.ItemPosition
 }
 var file_multigame_econ_subset_proto_depIdxs = []int32{
-	3, // 0: multigameecon.CMsgClientWelcome.outofdate_subscribed_caches:type_name -> multigameecon.CMsgSOCacheSubscribed
-	4, // 1: multigameecon.CMsgClientWelcome.uptodate_subscribed_caches:type_name -> multigameecon.CMsgSOCacheSubscriptionCheck
-	9, // 2: multigameecon.CMsgSOCacheSubscribed.objects:type_name -> multigameecon.CMsgSOCacheSubscribed.SubscribedType
-	2, // 3: multigameecon.CMsgSOCacheSubscribed.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
-	2, // 4: multigameecon.CMsgSOCacheSubscriptionCheck.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
-	2, // 5: multigameecon.CMsgSOCacheSubscriptionRefresh.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
-	6, // 6: multigameecon.CSOEconItem.attribute:type_name -> multigameecon.CSOEconItemAttribute
-	8, // 7: multigameecon.CSOEconItem.interior_item:type_name -> multigameecon.CSOEconItem
-	7, // 8: multigameecon.CSOEconItem.equipped_state:type_name -> multigameecon.CSOEconItemEquipped
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	3,  // 0: multigameecon.CMsgClientWelcome.outofdate_subscribed_caches:type_name -> multigameecon.CMsgSOCacheSubscribed
+	4,  // 1: multigameecon.CMsgClientWelcome.uptodate_subscribed_caches:type_name -> multigameecon.CMsgSOCacheSubscriptionCheck
+	16, // 2: multigameecon.CMsgSOCacheSubscribed.objects:type_name -> multigameecon.CMsgSOCacheSubscribed.SubscribedType
+	2,  // 3: multigameecon.CMsgSOCacheSubscribed.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
+	2,  // 4: multigameecon.CMsgSOCacheSubscriptionCheck.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
+	2,  // 5: multigameecon.CMsgSOCacheSubscriptionRefresh.owner_soid:type_name -> multigameecon.CMsgSOIDOwner
+	6,  // 6: multigameecon.CSOEconItem.attribute:type_name -> multigameecon.CSOEconItemAttribute
+	8,  // 7: multigameecon.CSOEconItem.interior_item:type_name -> multigameecon.CSOEconItem
+	7,  // 8: multigameecon.CSOEconItem.equipped_state:type_name -> multigameecon.CSOEconItemEquipped
+	17, // 9: multigameecon.CMsgSetItemPositions.item_positions:type_name -> multigameecon.CMsgSetItemPositions.ItemPosition
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_multigame_econ_subset_proto_init() }
@@ -880,7 +1379,7 @@ func file_multigame_econ_subset_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_multigame_econ_subset_proto_rawDesc), len(file_multigame_econ_subset_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -84,12 +84,47 @@ func TestStorageContentsAreRecognizedFromAuthoritativeCasketAttributes(t *testin
 	}
 }
 
+func TestGraffitiChargesUseAuthoritativeSpraysRemainingAttribute(t *testing.T) {
+	item := transport.GCInventoryItem{Attributes: map[uint32]uint32{232: 494, 233: 19}}
+	charges := gcItemGraffitiCharges(item, "spraypaint")
+	if charges == nil || *charges != 494 {
+		t.Fatalf("graffiti charges = %v, want 494", charges)
+	}
+	if got := gcItemGraffitiCharges(item, ""); got != nil {
+		t.Fatalf("non-graffiti charges = %v, want nil", *got)
+	}
+}
+
 func TestMergeGCInventoryItemsKeepsLoadedStorageContents(t *testing.T) {
 	main := []transport.GCInventoryItem{{ID: 1, Inventory: 1}}
 	loaded := []transport.GCInventoryItem{{ID: 1, Inventory: 1}, {ID: 2, Attributes: map[uint32]uint32{272: 9}}}
 	merged := mergeGCInventoryItems(main, loaded)
 	if len(merged) != 2 || merged[1].ID != 2 || gcItemCasketID(merged[1]) != 9 {
 		t.Fatalf("merged inventory = %#v", merged)
+	}
+}
+
+func TestStorageMoveOutSendsAuthoritativeCasketExtractMessage(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.settings.FeatureFlags.EnableStorageMutations = true
+
+	receipt := service.SubmitOperation("storage.move-out", map[string]any{"casketId": "17224167524", "itemId": "123456789"})
+	if receipt.State != "awaiting_gc_confirmation" || len(client.SentProtoMessages) != 1 {
+		t.Fatalf("receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
+	}
+	sent := client.SentProtoMessages[0]
+	if sent.EMsg != protocol.EMsgCasketItemExtract {
+		t.Fatalf("emsg=%d want=%d", sent.EMsg, protocol.EMsgCasketItemExtract)
+	}
+	var message cs2pb.CMsgCasketItem
+	if err := proto.Unmarshal(sent.Body, &message); err != nil {
+		t.Fatal(err)
+	}
+	if message.GetCasketItemId() != 17224167524 || message.GetItemItemId() != 123456789 {
+		t.Fatalf("message=%#v", &message)
 	}
 }
 
@@ -114,6 +149,48 @@ func TestBulkArmoryPurchaseSendsAdjustedBalances(t *testing.T) {
 		if message.GetRedeemableBalance() != wantBalance {
 			t.Fatalf("message %d balance=%d want=%d", index, message.GetRedeemableBalance(), wantBalance)
 		}
+	}
+}
+
+func TestArmoryPurchaseIsNotSentWhenGCSessionPreflightFails(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	client.InventoryFunc = func(context.Context) ([]transport.GCInventoryItem, error) {
+		return nil, errors.New("no current ClientWelcome")
+	}
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected"}
+	service.settings.FeatureFlags.EnableArmoryRedemption = true
+	service.armory = domain.ArmorySnapshot{Status: "ready", Balance: 10, GenerationTime: 7, Offers: []domain.ArmoryOffer{{CampaignID: 11, RedeemID: 2, ExpectedCost: 4}}}
+
+	receipt := service.RedeemArmory(map[string]any{"campaignId": float64(11), "redeemId": float64(2), "redeemableBalance": float64(10), "expectedCost": float64(4), "generationTime": float64(7), "quantity": float64(1)})
+
+	if receipt.State != "failed" || !strings.Contains(receipt.Message, "purchase was not sent") {
+		t.Fatalf("receipt=%#v", receipt)
+	}
+	if len(client.SentProtoMessages) != 0 {
+		t.Fatalf("sent %d redemption messages after failed preflight", len(client.SentProtoMessages))
+	}
+}
+
+func TestFirstNewInventoryItemFindsArmoryReward(t *testing.T) {
+	before := domain.InventorySnapshot{Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}}}
+	after := domain.InventorySnapshot{Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}, {ID: "2", Name: "Armory reward", MarketName: "AK-47 | Reward"}}}
+
+	reward := firstNewInventoryItem(before, after)
+	if reward == nil || reward.ID != "2" || reward.MarketName != "AK-47 | Reward" {
+		t.Fatalf("reward=%#v", reward)
+	}
+}
+
+func TestConfirmedArmoryRedemptionUpdatesBalanceForNextRequest(t *testing.T) {
+	service := NewService()
+	service.armory = domain.ArmorySnapshot{Status: "ready", Balance: 10, GenerationTime: 7}
+
+	service.applyConfirmedArmoryRedemptionLocked(4)
+
+	if service.armory.Balance != 6 || service.armory.GenerationTime != 7 {
+		t.Fatalf("armory=%#v, want balance 6 with unchanged generation", service.armory)
 	}
 }
 
@@ -198,18 +275,18 @@ func TestRefreshInventoryRequiresConnection(t *testing.T) {
 	}
 }
 
-func TestArmoryReadEnabledAndPurchasesDisabledByDefault(t *testing.T) {
+func TestArmoryReadAndRedemptionEnabledByDefault(t *testing.T) {
 	service := NewService()
 	settings := service.Settings()
 	if !settings.FeatureFlags.EnableArmoryRead {
 		t.Fatal("expected Armory reads enabled by default")
 	}
-	if settings.FeatureFlags.EnableArmoryRedemption {
-		t.Fatal("expected Armory purchases disabled by default")
+	if !settings.FeatureFlags.EnableArmoryRedemption {
+		t.Fatal("expected Armory purchases enabled by default")
 	}
 	receipt := service.RedeemArmory(map[string]any{})
-	if receipt.State != "blocked_by_feature_flag" {
-		t.Fatalf("expected blocked purchase, got %q", receipt.State)
+	if receipt.State == "blocked_by_feature_flag" || receipt.State == "requires_validation" {
+		t.Fatalf("expected redemption to pass default feature and validation gates, got %q", receipt.State)
 	}
 }
 

@@ -82,6 +82,9 @@ func (s *Service) RefreshGameInventory(gameID string) operations.Receipt {
 	} else {
 		gcCtx, cancelGC := context.WithTimeout(refreshCtx, 30*time.Second)
 		gcItems, gcErr := s.gcClient.RequestGameInventory(gcCtx, game.AppID)
+		if gcErr == nil {
+			s.markGCSessionReady(game.AppID)
+		}
 		cancelGC()
 		err = gcErr
 		if err == nil {

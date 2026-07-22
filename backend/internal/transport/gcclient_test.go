@@ -2,10 +2,12 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"testing"
 
 	"cs-inv-edit/backend/internal/protocol"
+	"github.com/Lucino772/envelop/pkg/steam/steamcm"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 	"github.com/Lucino772/envelop/pkg/steam/steammsg"
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
@@ -149,5 +151,63 @@ func TestSteamGCClientSendToGCRequiresConnection(t *testing.T) {
 	}
 	if err := client.SendGamesPlayed(t.Context(), 730); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("expected ErrNotConnected, got %v", err)
+	}
+}
+
+func TestSteamGCClientSendToGCHonorsCancelledContextBeforeTransmission(t *testing.T) {
+	client := NewSteamGCClient()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := client.SendProtoToGC(ctx, 730, 9209, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+}
+
+func TestAuthenticatedAccountEpochClearsPreviousClientWelcome(t *testing.T) {
+	client := NewSteamGCClient()
+	client.lastWelcome = []byte{1, 2, 3}
+	client.activeSteamID = 111
+	client.connectionEpoch = 4
+
+	client.activateAuthenticatedAccount(222)
+
+	if client.activeSteamID != 222 || client.connectionEpoch != 5 {
+		t.Fatalf("identity=%d epoch=%d", client.activeSteamID, client.connectionEpoch)
+	}
+	if len(client.lastWelcome) != 0 {
+		t.Fatalf("new account inherited ClientWelcome bytes: %x", client.lastWelcome)
+	}
+}
+
+func TestSteamSessionEndInvalidatesConnectionButRetainsReauthState(t *testing.T) {
+	client := NewSteamGCClient()
+	conn := &steamcm.SteamConnection{}
+	client.conn = conn
+	client.state = GCConnectionState{State: "logged_on"}
+	client.activeSteamID = 76561198000000000
+	client.lastWelcome = []byte{1, 2, 3}
+	client.reauthCredentials = LogonCredentials{Username: "test", AccessToken: "refresh-token"}
+	client.gamesPlayed = []uint32{730}
+
+	client.handleSteamSessionEnded(conn, "steam.logged_off")
+
+	if client.conn != nil || client.activeSteamID != 0 || len(client.lastWelcome) != 0 {
+		t.Fatalf("ended session retained live state: conn=%v steamID=%d welcome=%x", client.conn, client.activeSteamID, client.lastWelcome)
+	}
+	if client.state.State != "session_lost:steam.logged_off" {
+		t.Fatalf("state = %q", client.state.State)
+	}
+	if client.reauthCredentials.AccessToken != "refresh-token" || len(client.gamesPlayed) != 1 || client.gamesPlayed[0] != 730 {
+		t.Fatalf("recovery state was discarded: credentials=%#v games=%v", client.reauthCredentials, client.gamesPlayed)
+	}
+}
+
+func TestEncodeClientHeartbeatPacket(t *testing.T) {
+	packet, err := encodeClientHeartbeatPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.MsgType() != steamlang.EMsg_ClientHeartBeat || !packet.IsProto() {
+		t.Fatalf("heartbeat packet type=%v proto=%t", packet.MsgType(), packet.IsProto())
 	}
 }

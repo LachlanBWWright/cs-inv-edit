@@ -342,10 +342,85 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 				return result, fmt.Errorf("steam logon failed: %s", steamResultName(resultCode))
 			}
 			s.setState("logged_on")
+			s.activateAuthenticatedAccount(steamID)
+			s.rememberAuthenticatedSession(credentials, response.GetHeartbeatSeconds())
 			s.events <- GCEvent{Type: "steam.logged_on", Payload: result}
 			return result, nil
 		}
 	}
+}
+
+func (s *SteamGCClient) rememberAuthenticatedSession(credentials LogonCredentials, heartbeatSeconds int32) {
+	credentials.Password = ""
+	credentials.AuthCode = ""
+	credentials.TwoFactorCode = ""
+	s.mu.Lock()
+	s.reauthCredentials = credentials
+	if s.heartbeatCancel != nil {
+		s.heartbeatCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.heartbeatCancel = cancel
+	conn := s.conn
+	s.mu.Unlock()
+	if heartbeatSeconds <= 0 {
+		heartbeatSeconds = 30
+	}
+	go s.runSteamHeartbeat(ctx, conn, time.Duration(heartbeatSeconds)*time.Second)
+}
+
+func (s *SteamGCClient) runSteamHeartbeat(ctx context.Context, conn *steamcm.SteamConnection, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			packet, err := encodeClientHeartbeatPacket()
+			if err != nil {
+				continue
+			}
+			s.mu.Lock()
+			current := s.conn == conn && s.state.State == "logged_on"
+			s.mu.Unlock()
+			if !current {
+				return
+			}
+			if err := conn.SendPacket(packet); err != nil {
+				s.handleSteamSessionEnded(conn, "heartbeat_failed")
+				return
+			}
+		}
+	}
+}
+
+func (s *SteamGCClient) ensureSteamSession(ctx context.Context) error {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	s.mu.Lock()
+	if s.conn != nil && s.state.State == "logged_on" {
+		s.mu.Unlock()
+		return nil
+	}
+	credentials := s.reauthCredentials
+	gamesPlayed := append([]uint32(nil), s.gamesPlayed...)
+	s.mu.Unlock()
+	if credentials.AccessToken == "" {
+		return fmt.Errorf("Steam session ended and no refresh token is available for automatic logon")
+	}
+	if err := s.Connect(ctx); err != nil {
+		return err
+	}
+	if _, err := s.LogOn(ctx, credentials); err != nil {
+		return err
+	}
+	if len(gamesPlayed) > 0 {
+		if err := s.sendGamesPlayed(gamesPlayed); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func authenticatedSteamID(response steamLogonResponse) uint64 {
@@ -709,6 +784,11 @@ func encodeClientHelloPacket() (*steammsg.Packet, error) {
 		ProtocolVersion: proto.Uint32(65580),
 	}
 	return steammsg.EncodePacket(header, body, nil)
+}
+
+func encodeClientHeartbeatPacket() (*steammsg.Packet, error) {
+	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientHeartBeat)
+	return steammsg.EncodePacket(header, &steampb.CMsgClientHeartBeat{SendReply: proto.Bool(false)}, nil)
 }
 
 func steamMachineID(accountName string) []byte {

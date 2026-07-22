@@ -1,7 +1,6 @@
 import { Show } from "solid-js";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
-import { Card, CardContent, CardHeader } from "./ui/Card.js";
 import { Input } from "./ui/Input.js";
 
 export interface AccountViewLayoutProps {
@@ -34,7 +33,7 @@ function renderConnectionPanel(props: AccountViewLayoutProps) {
   }
 
   return (
-    <div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_1px_18rem] md:items-stretch">
+    <div class="grid flex-1 gap-8 md:grid-cols-[minmax(0,1fr)_1px_minmax(20rem,1.15fr)] md:items-stretch lg:gap-10">
       <CredentialsForm username={props.username} password={props.password} passwordVisible={props.passwordVisible} loading={props.loading} onUsernameChange={props.onUsernameChange} onPasswordChange={props.onPasswordChange} onPasswordToggle={props.onPasswordToggle} onConnect={props.onConnect} />
       <div class="hidden w-px bg-slate-800 md:block" aria-hidden="true" />
       <QrSignInPanel qrImage={props.qrImage} qrLoadingText={props.qrLoadingText} />
@@ -47,21 +46,17 @@ export function AccountViewLayout(props: AccountViewLayoutProps) {
     ? "Approve the sign-in on your phone, or enter a Steam Guard code below."
     : "Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account.";
   return (
-    <div class="mx-auto max-w-4xl">
-      <Card class="overflow-hidden">
-        <CardHeader>
-          <div class="flex flex-col gap-2">
-            <h2 class="text-2xl font-semibold text-slate-50">Steam inventory access</h2>
-            <p class="text-sm text-slate-400">{descriptionText}</p>
-          </div>
-        </CardHeader>
-        <CardContent class="space-y-5">
-          <Show when={props.status}>
-            <Alert variant="warning">{props.status}</Alert>
-          </Show>
+    <div class="h-full overflow-y-auto">
+      <div class="mx-auto flex min-h-full w-full max-w-6xl flex-col px-1 py-2 sm:px-2 lg:py-4">
+        <header class="mb-6 flex flex-col gap-2 border-b border-slate-800 pb-5">
+          <h2 class="text-2xl font-semibold text-slate-50">Steam inventory access</h2>
+          <p class="max-w-3xl text-sm text-slate-400">{descriptionText}</p>
+        </header>
+        <Show when={props.status}>
+          <Alert class="mb-5" variant="warning">{props.status}</Alert>
+        </Show>
         {renderConnectionPanel(props)}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -148,7 +143,7 @@ function PasswordToggle(props: { passwordVisible: boolean; onPasswordToggle: () 
 
 function CredentialsForm(props: CredentialsFormProps) {
   return (
-    <form class="space-y-4" onSubmit={props.onConnect}>
+    <form class="w-full space-y-5 md:self-center" onSubmit={props.onConnect}>
       <h3 class="font-semibold text-slate-100">Sign in with your account</h3>
       <div class="space-y-2">
         <label class="text-sm font-medium text-slate-200">Steam username</label>
@@ -173,11 +168,11 @@ interface QrSignInPanelProps {
 
 function QrSignInPanel(props: QrSignInPanelProps) {
   return (
-    <section class="flex min-h-72 flex-col items-center border-t border-slate-800 pt-6 text-center md:border-0 md:pt-0" aria-labelledby="qr-sign-in-heading">
+    <section class="flex min-h-80 flex-col items-center justify-center border-t border-slate-800 pt-8 text-center md:border-0 md:pt-0" aria-labelledby="qr-sign-in-heading">
       <h3 id="qr-sign-in-heading" class="font-semibold text-slate-100">Sign in with a QR code</h3>
-      <p class="mt-2 max-w-64 text-sm text-slate-400">Open the Steam mobile app, choose the QR scanner, and scan this code.</p>
-      <Show when={props.qrImage} fallback={<div class="mt-5 flex h-64 w-64 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/60 px-4 text-sm text-slate-400" role="status" aria-live="polite">{props.qrLoadingText}</div>}>
-        <img class="mt-5 h-64 w-64 rounded-xl bg-white p-2" src={props.qrImage} alt="Steam sign-in QR code" />
+      <p class="mt-2 max-w-sm text-sm text-slate-400">Open the Steam mobile app, choose the QR scanner, and scan this code.</p>
+      <Show when={props.qrImage} fallback={<div class="mt-5 flex aspect-square w-full max-w-md items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 px-6 text-sm text-slate-400" role="status" aria-live="polite">{props.qrLoadingText}</div>}>
+        <img class="mt-5 aspect-square w-full max-w-md rounded-2xl bg-white p-3" src={props.qrImage} alt="Steam sign-in QR code" />
       </Show>
     </section>
   );

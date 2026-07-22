@@ -6,7 +6,7 @@ import { WearRangeBar } from "./ui/WearRangeBar.js";
 
 export type RelatedItemPreviewContext = "collection" | "container" | "trade-up";
 
-export function RelatedItemPreview(props: { item: RelatedItemDto; context?: RelatedItemPreviewContext; probability?: number; onRequestMarketPreview?: (marketName: string) => Promise<RelatedItemDto | undefined> }) {
+export function RelatedItemPreview(props: { item: RelatedItemDto; context?: RelatedItemPreviewContext; probability?: number; onRequestMarketPreview?: (marketName: string) => Promise<RelatedItemDto | undefined>; onOpenCollection?: (item: RelatedItemDto) => void }) {
   const [failed, setFailed] = createSignal(false);
   const [marketPreview, setMarketPreview] = createSignal<RelatedItemDto>();
   const [marketLoading, setMarketLoading] = createSignal(false);
@@ -54,6 +54,7 @@ export function RelatedItemPreview(props: { item: RelatedItemDto; context?: Rela
       </Show>
       <Show when={marketLoading()}><p class="mt-2 animate-pulse text-cyan-200">Loading this listing from Steam Market…</p></Show>
       <Show when={!item().price && !marketLoading()}><p class="mt-2 text-slate-500">Expand this item to load its current Steam Market listing.</p></Show>
+      <Show when={item().kind === "item_collection"}><button class="mt-3 rounded-lg bg-cyan-400/10 px-3 py-2 font-medium text-cyan-200 hover:bg-cyan-400/20" onClick={() => props.onOpenCollection?.(item())}>View collection{item().items?.length ? ` (${item().items!.length})` : ""}</button></Show>
     </div>
   </details>;
 }

@@ -98,6 +98,17 @@ describe("inventory filtering helpers", () => {
   it("sorts by CS2 rarity tier", () => {
     expect(sortInventoryItems(items, "rarity-high").map((item) => item.id)).toEqual(["b", "a", "c"]);
   });
+
+  it("sorts by Steam price and treats unmarketable or unpriced items as zero", () => {
+    const pricedItems = [
+      { id: "cheap", name: "Cheap", kind: "weapon_skin", marketName: "Cheap", marketable: true },
+      { id: "expensive", name: "Expensive", kind: "weapon_skin", marketName: "Expensive", marketable: true },
+      { id: "unmarketable", name: "Unmarketable", kind: "tool_item", marketable: false },
+    ] as const;
+    const prices = new Map([["Cheap", 125], ["Expensive", 5000]]);
+    expect(sortInventoryItems([...pricedItems], "price-high", prices).map((item) => item.id)).toEqual(["expensive", "cheap", "unmarketable"]);
+    expect(sortInventoryItems([...pricedItems], "price-low", prices).map((item) => item.id)).toEqual(["unmarketable", "cheap", "expensive"]);
+  });
 });
 
 describe("resolveSelectedInventoryItem", () => {

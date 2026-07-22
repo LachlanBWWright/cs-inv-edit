@@ -20,14 +20,23 @@ func TestParseArmoryOffersUsesCurrentXpShopGoods(t *testing.T) {
 	if len(offers) != 2 {
 		t.Fatalf("offers = %#v, want two current XP Shop goods", offers)
 	}
-	if offers[0].CampaignID != 11 || offers[0].RedeemID != 0 || offers[0].ExpectedCost != 4 || offers[0].Name != "First Collection" {
+	if offers[0].CampaignID != 11 || offers[0].RedeemID != 3_221_022_487 || offers[0].ExpectedCost != 4 || offers[0].Name != "First Collection" {
 		t.Fatalf("first offer = %#v", offers[0])
 	}
 	if len(offers[0].Items) != 1 || offers[0].Items[0].Name != "Test Weapon" {
 		t.Fatalf("first offer contents = %#v", offers[0].Items)
 	}
-	if offers[1].RedeemID != 1 || offers[1].ExpectedCost != 1 || offers[1].Name != "Second Capsule" {
+	if offers[1].RedeemID != 2_572_705_846 || offers[1].ExpectedCost != 1 || offers[1].Name != "Second Capsule" {
 		t.Fatalf("second offer = %#v", offers[1])
+	}
+}
+
+func TestArmoryRedeemIDUsesSchemaItemNameCRC32(t *testing.T) {
+	schema := &Schema{}
+	items := `"seasonaloperations" { "11" { "redeemable_goods" "xpshop" "operational_point_redeemable" { "points" "4" "item_name" "lootlist:set_overpass_2024" } } } "pro_event_results" {}`
+	offers := parseArmoryOffers(items, schema)
+	if len(offers) != 1 || offers[0].RedeemID != 2_917_110_498 {
+		t.Fatalf("redeem id = %#v, want unsigned item_name CRC-32", offers)
 	}
 }
 
@@ -43,6 +52,46 @@ func TestRelatedItemsSortHighToLowAndApplySteamIcons(t *testing.T) {
 	items = ApplyRelatedItemDescriptions(items, map[string]MarketDescription{"Ancient Item": {IconURL: "https://steamcdn.example/icon"}})
 	if items[0].ImageURL != "https://steamcdn.example/icon" {
 		t.Fatalf("Steam icon not applied: %#v", items[0])
+	}
+}
+
+func TestArmoryCollectionUsesNestedLootListRarities(t *testing.T) {
+	schema := &Schema{
+		tokens: map[string]string{"monster": "AK-47 | B the Monster", "white": "M4A1-S | Wash me plz"},
+		lootLists: map[string][]string{
+			"set_overpass_2024":          {"set_overpass_2024_uncommon", "set_overpass_2024_ancient"},
+			"set_overpass_2024_uncommon": {"white"},
+			"set_overpass_2024_ancient":  {"monster"},
+		},
+		items: map[uint32]itemDefinition{
+			1: {Name: "white", ItemName: "#white", Rarity: "common"},
+			2: {Name: "monster", ItemName: "#monster", Rarity: "legendary"},
+		},
+	}
+
+	items := schema.lootListItems("set_overpass_2024", nil)
+	if len(items) != 2 || items[0].Rarity != "ancient" || items[1].Rarity != "uncommon" {
+		t.Fatalf("Armory collection rarities = %#v, want ancient then uncommon", items)
+	}
+}
+
+func TestCaseUsesNestedLootListRaritiesWithoutOverridingRareSpecials(t *testing.T) {
+	schema := &Schema{
+		tokens: map[string]string{"skin": "Kilowatt skin", "knife": "Rare special item"},
+		lootLists: map[string][]string{
+			"crate_kilowatt_lootlist": {"crate_kilowatt_ancient", "crate_kilowatt_unusual"},
+			"crate_kilowatt_ancient":  {"skin"},
+			"crate_kilowatt_unusual":  {"knife"},
+		},
+		items: map[uint32]itemDefinition{
+			1: {Name: "skin", ItemName: "#skin", Rarity: "legendary"},
+			2: {Name: "knife", ItemName: "#knife", Rarity: "unusual"},
+		},
+	}
+
+	items := schema.lootListItems("crate_kilowatt_lootlist", nil)
+	if len(items) != 2 || items[0].Rarity != "unusual" || len(items[0].Items) != 1 || items[1].Rarity != "ancient" {
+		t.Fatalf("case rarities = %#v, want unusual rare special then ancient weapon skin", items)
 	}
 }
 

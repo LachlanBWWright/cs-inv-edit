@@ -45,8 +45,31 @@ func (s *SteamGCClient) sendGamesPlayed(appIDs []uint32) error {
 	if err := conn.SendPacket(packet); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	s.gamesPlayed = append([]uint32(nil), appIDs...)
+	s.mu.Unlock()
 	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appids=%v", steamlang.EMsg_ClientGamesPlayed.String(), appIDs)}
 	return nil
+}
+
+func (s *SteamGCClient) ensureGamesPlayedIncludes(appIDs ...uint32) error {
+	s.mu.Lock()
+	current := append([]uint32(nil), s.gamesPlayed...)
+	s.mu.Unlock()
+	return s.sendGamesPlayed(mergeGamesPlayed(current, appIDs))
+}
+
+func mergeGamesPlayed(current, required []uint32) []uint32 {
+	seen := make(map[uint32]struct{}, len(current)+len(required))
+	merged := make([]uint32, 0, len(current)+len(required))
+	for _, appID := range append(append([]uint32(nil), current...), required...) {
+		if _, exists := seen[appID]; exists {
+			continue
+		}
+		seen[appID] = struct{}{}
+		merged = append(merged, appID)
+	}
+	return merged
 }
 
 func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
@@ -56,7 +79,10 @@ func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) 
 		return nil, fmt.Errorf("unsupported multi-game inventory AppID %d", appID)
 	}
 	trace := newDiagnosticTrace(fmt.Sprintf("appid=%d GC inventory request started", appID))
-	if err := s.sendGamesPlayed([]uint32{protocol.AppIDCS2, appID}); err != nil {
+	if err := s.ensureSteamSession(ctx); err != nil {
+		return nil, trace.Error(fmt.Errorf("steam session recovery failed: %w", err))
+	}
+	if err := s.ensureGamesPlayedIncludes(protocol.AppIDCS2, appID); err != nil {
 		return nil, trace.Error(fmt.Errorf("multi-game presence failed: %w", err))
 	}
 	hello, err := gameClientHello(appID)
@@ -262,15 +288,20 @@ func decodeGenericSubscribedTypes(appID uint32, types []*multigamepb.CMsgSOCache
 	return nil, false, nil
 }
 
-func (s *SteamGCClient) SendToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
-	return s.sendToGC(appID, emsg, body, false)
+func (s *SteamGCClient) SendToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error {
+	return s.sendToGC(ctx, appID, emsg, body, false)
 }
 
-func (s *SteamGCClient) SendProtoToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
-	return s.sendToGC(appID, emsg, body, true)
+func (s *SteamGCClient) SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error {
+	return s.sendToGC(ctx, appID, emsg, body, true)
 }
 
-func (s *SteamGCClient) sendToGC(appID uint32, emsg uint32, body []byte, protobufPayload bool) error {
+func (s *SteamGCClient) sendToGC(ctx context.Context, appID uint32, emsg uint32, body []byte, protobufPayload bool) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	s.mu.Lock()
 	conn := s.conn
 	s.mu.Unlock()
@@ -291,7 +322,13 @@ func (s *SteamGCClient) sendToGC(appID uint32, emsg uint32, body []byte, protobu
 	if protobufPayload {
 		diagnosticEMsg = emsg | protoMask
 	}
-	s.events <- GCEvent{Type: "gc.sent", Payload: GCMessage{AppID: appID, EMsg: diagnosticEMsg, Body: append([]byte(nil), packetBodyForDiagnostics(emsg, body, protobufPayload)...)}}
+	diagnostic := GCEvent{Type: "gc.sent", Payload: GCMessage{AppID: appID, EMsg: diagnosticEMsg, Body: append([]byte(nil), packetBodyForDiagnostics(emsg, body, protobufPayload)...)}}
+	select {
+	case s.events <- diagnostic:
+	default:
+		// ProtocolTrace already recorded the send. A full diagnostic queue must
+		// never block or change the outcome of the real GC operation.
+	}
 	return nil
 }
 
@@ -310,7 +347,10 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 	s.requestMu.Lock()
 	defer s.requestMu.Unlock()
 	trace := newDiagnosticTrace("cs2 gc inventory request started")
-	if err := s.SendGamesPlayed(ctx, protocol.AppIDCS2); err != nil {
+	if err := s.ensureSteamSession(ctx); err != nil {
+		return nil, trace.Error(fmt.Errorf("steam session recovery failed: %w", err))
+	}
+	if err := s.ensureGamesPlayedIncludes(protocol.AppIDCS2); err != nil {
 		wrapped := fmt.Errorf("cs2 games played presence failed: %w", err)
 		return nil, trace.Error(wrapped)
 	}

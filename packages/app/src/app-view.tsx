@@ -84,8 +84,10 @@ export function App(props: AppProps) {
       onToast={controller.pushToast}
       onInventoryRefresh={() => void controller.refreshInventoryState()}
       onGameInventoryRefresh={(game) => void props.backend.refreshGameInventory(game).andThen(() => fromAppPromise(Promise.resolve(game === "steam" ? controller.refetchSteamInventory() : game === "tf2" ? controller.refetchTF2Inventory() : controller.refetchDota2Inventory()), `${game} inventory reload failed`)).match(() => undefined, (error: any) => controller.pushToast({ title: "Inventory refresh failed", description: error.message ?? `Unable to refresh ${game} inventory`, variant: "danger" }))}
+	  onGameOperation={(type, input) => controller.settleOperation(props.backend.submitOperation(type, input))}
       onArmoryRefresh={controller.refreshArmoryState}
       onMarketPreview={controller.requestMarketPreview}
+      onScanPrices={(marketNames) => props.backend.scanPrices({ marketNames, currency: "USD" }).match((result) => result, (error) => { controller.pushToast({ title: "Steam prices unavailable", description: error.message, variant: "warning" }); return undefined; })}
       onArmoryRedeem={(input) => controller.settleOperation(props.backend.redeemArmory(input)).then(async (receipt) => { await controller.refetchArmory(); return receipt; })}
       onStoreRefresh={controller.refreshStoreState}
       onStorePurchase={(input) => props.backend.initializeStorePurchase(input).match((session) => session, (error) => ({ id: "failed", status: "failed" as const, offerId: input.offerId, defIndex: 0, name: "Store purchase", quantity: input.quantity, currency: "", amountMinor: 0, formattedAmount: "", createdAt: new Date().toISOString(), message: error.message ?? "Purchase initialization failed" }))}

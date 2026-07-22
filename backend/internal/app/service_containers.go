@@ -53,6 +53,7 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	}
 	s.mu.Lock()
 	beforeInventory := cloneInventory(s.inventory)
+	requestKey, accountCtx, _ := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 	s.mu.Unlock()
 	result.BeforeItemCount = len(beforeInventory.Items)
 	var found *domain.InventoryItem
@@ -113,8 +114,11 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 		return false, "encode container open request failed: " + err.Error(), result
 	}
 	result.RequestBodyHex = hex.EncodeToString(body)
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(accountCtx, 8*time.Second)
 	defer cancel()
+	if err := s.ensureGCSession(ctx, protocol.AppIDCS2); err != nil {
+		return false, "CS2 GC session is not ready; container open was not sent: " + err.Error(), result
+	}
 	if err := s.gcClient.SendProtoToGC(ctx, protocol.AppIDCS2, protocol.EMsgOpenCrate, body); err != nil {
 		return false, "send container open request failed: " + err.Error(), result
 	}
@@ -126,11 +130,16 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	if confirmation.Err != nil {
 		return false, confirmation.Err.Error(), result
 	}
-	if snapshot, openedItem, err := s.reconcileContainerOpenOnce(beforeInventory); err == nil && openedItem != nil {
+	if snapshot, openedItem, err := s.reconcileNewInventoryItemOnce(accountCtx, beforeInventory); err == nil && openedItem != nil {
 		result.AfterItemCount = len(snapshot.Items)
 		result.OpenedItem = openedItem
 		snapshot.Message = fmt.Sprintf("Container opened: %s", openedInventoryItemName(openedItem))
 		s.mu.Lock()
+		currentKey, _, keyErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
+		if keyErr != nil || currentKey != requestKey {
+			s.mu.Unlock()
+			return false, "container result superseded by an account change", result
+		}
 		s.inventory = snapshot
 		s.mu.Unlock()
 		return true, snapshot.Message, result
@@ -148,21 +157,28 @@ func openCrateMessage(subjectItemID uint64, toolItemID uint64) *cs2pb.CMsgOpenCr
 	return message
 }
 
-func (s *Service) reconcileContainerOpenOnce(before domain.InventorySnapshot) (domain.InventorySnapshot, *domain.InventoryItem, error) {
+func (s *Service) reconcileNewInventoryItemOnce(ctx context.Context, before domain.InventorySnapshot) (domain.InventorySnapshot, *domain.InventoryItem, error) {
+	snapshot, err := s.fetchInventory(ctx, nil)
+	if err != nil {
+		return domain.InventorySnapshot{}, nil, fmt.Errorf("post-open inventory refresh failed: %w", err)
+	}
+	if openedItem := firstNewInventoryItem(before, snapshot); openedItem != nil {
+		return snapshot, openedItem, nil
+	}
+	return snapshot, nil, fmt.Errorf("post-open inventory refresh found no new item; before_count=%d after_count=%d", len(before.Items), len(snapshot.Items))
+}
+
+func firstNewInventoryItem(before domain.InventorySnapshot, after domain.InventorySnapshot) *domain.InventoryItem {
 	beforeIDs := make(map[string]struct{}, len(before.Items))
 	for _, item := range before.Items {
 		beforeIDs[item.ID] = struct{}{}
 	}
-	snapshot, err := s.fetchInventory(nil)
-	if err != nil {
-		return domain.InventorySnapshot{}, nil, fmt.Errorf("post-open inventory refresh failed: %w", err)
-	}
-	for i := range snapshot.Items {
-		if _, existed := beforeIDs[snapshot.Items[i].ID]; !existed {
-			return snapshot, &snapshot.Items[i], nil
+	for i := range after.Items {
+		if _, existed := beforeIDs[after.Items[i].ID]; !existed {
+			return &after.Items[i]
 		}
 	}
-	return snapshot, nil, fmt.Errorf("post-open inventory refresh found no new item; before_count=%d after_count=%d", len(before.Items), len(snapshot.Items))
+	return nil
 }
 
 func openedInventoryItemName(item *domain.InventoryItem) string {

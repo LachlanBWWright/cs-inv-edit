@@ -38,6 +38,13 @@ export interface InventoryViewContentProps {
   onRenameSubmit: () => Promise<void> | void;
   onRemoveName: () => Promise<void> | void;
   onOpenContainer: () => Promise<void> | void;
+  onLoadStorageContents: (casketId: string) => Promise<boolean>;
+  browsingStorageUnit: InventoryItemDto | undefined;
+  removeFromStorageMode: boolean;
+  storageSelectedItemIds: string[];
+  onBackFromStorage: () => void;
+  onToggleRemoveFromStorageMode: () => void;
+  onRetrieveFromStorage: () => Promise<void> | void;
   onCloseRename: () => void;
   onDraftNameChange: (value: string) => void;
   onSelectedToolChange: (value: string) => void;
@@ -130,6 +137,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
   const detailsPanel = (
     <InventoryDetailsPanel
       selectedItem={props.selectedItem}
+      settings={props.settings}
       pending={props.pending}
       renameOpen={props.renameOpen}
       draftName={props.draftName}
@@ -146,6 +154,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
       onRenameSubmit={props.onRenameSubmit}
       onRemoveName={props.onRemoveName}
       onOpenContainer={props.onOpenContainer}
+      onLoadStorageContents={props.onLoadStorageContents}
       onMarketPreview={props.onMarketPreview}
       onCloseRename={props.onCloseRename}
       onDraftNameChange={props.onDraftNameChange}
@@ -157,7 +166,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       <InventoryAlerts inventory={props.inventory} inventoryDiagnostics={props.inventoryDiagnostics} inventoryError={props.inventoryError} selectionMode={props.selectionMode} selectedItemIds={props.selectedItemIds} statusMessage={props.statusMessage} connected={props.connected} />
-      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} onSelectItem={props.onSelectItem} onRefresh={props.onRefresh} detailsPanel={detailsPanel} />
+      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} onSelectItem={props.onSelectItem} onRefresh={props.onRefresh} detailsPanel={detailsPanel} browsingStorageUnit={props.browsingStorageUnit} removeFromStorageMode={props.removeFromStorageMode} storageSelectedItemIds={props.storageSelectedItemIds} onBackFromStorage={props.onBackFromStorage} onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode} onRetrieveFromStorage={props.onRetrieveFromStorage} />
     </div>
   );
 }

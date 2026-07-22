@@ -9,3 +9,8 @@
 - Do not fabricate image URLs from `items_game.txt` `image_inventory` keys. Use live Steam description `icon_url` / `icon_url_large` tokens when available, or omit images with explicit diagnostics.
 - Keep repository documentation for CS2 item schema sources in `docs/cs2-items-game.md`, and update that document whenever item metadata, localization, image, market-overlay, or protobuf source locations change.
 - This is a `neverthrow` project. Do not use `try`/`catch` for TypeScript error handling. Wrap every external dependency or boundary that can throw or reject—including `fetch`, Electron IPC, Node APIs, JSON parsing, and backend client calls—with `Result`, `ResultAsync`, `fromThrowable`, `fromPromise`, or an equivalent typed result. Handle error cases through result combinators such as `mapErr`, `andThen`, and `match`; do not unwrap a result into a rejecting promise and then recover with exceptions.
+- Prefer small, single-purpose functions and modules. When approaching the configured limits of 400 lines or three levels of nesting, extract behavior by responsibility rather than suppressing the lint rule.
+- Do not disable lint or TypeScript rules without a narrowly scoped comment explaining why the invariant is safe. Fix the underlying type or design issue where practical.
+- Do not hand-edit generated files, build output, vendored code, or submodule contents. Change the source definition and regenerate using the repository workflow.
+- Prefer discriminated unions, schema-derived types, and exhaustive matching over stringly typed objects and unchecked casts.
+- Reserve `panic` and `log.Fatal` for impossible initialization failures or process entry points. Runtime and request-path failures must be returned and handled.

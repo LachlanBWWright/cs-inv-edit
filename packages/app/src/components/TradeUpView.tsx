@@ -86,7 +86,7 @@ function OutcomeCard(props: { outcome: ReturnType<typeof calculateTradeUpOutcome
 
 export function TradeUpView(props: TradeUpViewProps) {
   const [selectedIds, setSelectedIds] = createSignal<string[]>([]);
-  const [preview, setPreview] = createSignal<{ result: RevealItem; candidates: RevealItem[] }>();
+  const [preview, setPreview] = createSignal<{ result: RevealItem; ready: boolean; candidates: RevealItem[] }>();
   const [previewStatus, setPreviewStatus] = createSignal("");
   const inventoryItems = createMemo(() => props.inventory?.items ?? []);
   const selectedItems = createMemo(() => selectedIds().flatMap((id) => {
@@ -105,13 +105,18 @@ export function TradeUpView(props: TradeUpViewProps) {
     const request = { itemIds: selectedIds(), outcomes: available };
     const resolver: TradeUpResolver = props.resolveTradeUp ?? ((next) => Promise.resolve(resolveTradeUpLocally(next)!));
     setPreviewStatus("Resolving contract…");
+    const mode = props.settings?.animations?.tradeUp ?? "slot-machine";
+    const toRevealItem = (outcome: (typeof available)[number]): RevealItem => ({ name: displayName(outcome), imageUrl: outcome.imageUrl, rarity: outcome.rarity, kind: outcome.kind, wear: outcome.predictedWear, wearMin: outcome.wearMin, wearMax: outcome.wearMax });
+    const candidates = available.map(toRevealItem);
+    if (mode !== "none" && mode !== "contract-none") setPreview({ result: candidates[0]!, ready: false, candidates });
     await fromAppPromise(resolver(request), "Trade-up resolution failed").match((picked) => {
       setPreviewStatus("");
-      const mode = props.settings?.animations?.tradeUp ?? "slot-machine";
       if (mode === "none") return;
-      const toRevealItem = (outcome: typeof picked): RevealItem => ({ name: displayName(outcome), imageUrl: outcome.imageUrl, rarity: outcome.rarity, kind: outcome.kind, wear: outcome.predictedWear, wearMin: outcome.wearMin, wearMax: outcome.wearMax });
-      setPreview({ result: toRevealItem(picked), candidates: available.map(toRevealItem) });
-    }, (error) => setPreviewStatus(appErrorMessage(error, "Trade-up resolution failed")));
+      setPreview({ result: toRevealItem(picked), ready: true, candidates });
+    }, (error) => {
+      setPreview(undefined);
+      setPreviewStatus(appErrorMessage(error, "Trade-up resolution failed"));
+    });
   };
 
   const canSelect = (item: InventoryItemDto) => {
@@ -126,8 +131,8 @@ export function TradeUpView(props: TradeUpViewProps) {
 
   return (
     <div class="space-y-5">
-      <Show when={(props.settings?.animations?.tradeUp ?? "slot-machine").startsWith("contract-")} fallback={<RevealAnimation open={!!preview()} mode={(props.settings?.animations?.tradeUp ?? "slot-machine") as "none" | "countdown" | "slot-machine"} title="Trade-up preview" candidates={preview()?.candidates ?? []} result={preview()?.result ?? { name: "Trade-up result" }} onComplete={() => setPreview(undefined)} />}>
-        <TradeUpContractReveal open={!!preview()} mode={props.settings?.animations?.tradeUp ?? "contract-slot-machine"} candidates={preview()?.candidates ?? []} result={preview()?.result ?? { name: "Trade-up result" }} onComplete={() => setPreview(undefined)} />
+      <Show when={(props.settings?.animations?.tradeUp ?? "slot-machine").startsWith("contract-")} fallback={<RevealAnimation open={!!preview()} ready={preview()?.ready} mode={(props.settings?.animations?.tradeUp ?? "slot-machine") as "none" | "countdown" | "slot-machine"} title="Trade-up preview" candidates={preview()?.candidates ?? []} result={preview()?.result ?? { name: "Trade-up result" }} onComplete={() => setPreview(undefined)} />}>
+        <TradeUpContractReveal open={!!preview()} ready={preview()?.ready} mode={props.settings?.animations?.tradeUp ?? "contract-slot-machine"} candidates={preview()?.candidates ?? []} result={preview()?.result ?? { name: "Trade-up result" }} onComplete={() => setPreview(undefined)} />
       </Show>
       <header>
         <h2 class="text-3xl font-semibold text-slate-100">Trade-up planner</h2>
