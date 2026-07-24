@@ -36,6 +36,9 @@ export interface SidebarProps {
   collectionOptions: string[];
   compactMode: "icons" | "concise" | "detailed";
   setCompactMode: (value: "icons" | "concise" | "detailed") => void;
+  economyTagFilter: string;
+  setEconomyTagFilter: (value: string) => void;
+  economyCategoryOptions: [string, string][];
   onAddAccount: () => void;
   onSignInAccount: (account: SteamAccountProfile) => void;
   onSignOutAccount: (account: SteamAccountProfile) => void;
@@ -46,16 +49,16 @@ export interface SidebarProps {
   onSaveSettings: (next: SettingsData) => Promise<void>;
 }
 
-const modeDetails: Record<AppMode, { label: string; description: string; mark: string }> = {
-  inventory: { label: "Inventory", description: "Browse and edit CS2 items", mark: "CS" },
-  "inventory-storage": { label: "Storage units", description: "Move items in or out", mark: "CS" },
-  "inventory-tradeup": { label: "Trade-up", description: "Build a contract", mark: "CS" },
-  armory: { label: "Armory", description: "View passes and rewards", mark: "CS" },
-  store: { label: "Store", description: "Browse in-game offers", mark: "CS" },
-  trades: { label: "Trades", description: "Review Steam trade offers", mark: "S" },
-  "steam-inventory": { label: "Steam inventory", description: "Items across Steam", mark: "S" },
-  "tf2-inventory": { label: "Team Fortress 2", description: "View your TF2 inventory", mark: "TF" },
-  "dota2-inventory": { label: "Dota 2", description: "View your Dota inventory", mark: "D2" },
+const modeDetails: Record<AppMode, { label: string; description: string }> = {
+  inventory: { label: "Inventory", description: "Browse and edit CS2 items" },
+  "inventory-storage": { label: "Storage units", description: "Move items in or out" },
+  "inventory-tradeup": { label: "Trade-up", description: "Build a contract" },
+  armory: { label: "Armory", description: "View passes and rewards" },
+  store: { label: "Store", description: "Browse in-game offers" },
+  trades: { label: "Trades", description: "Review Steam trade offers" },
+  "steam-inventory": { label: "Steam inventory", description: "Items across Steam" },
+  "tf2-inventory": { label: "Team Fortress 2", description: "View your TF2 inventory" },
+  "dota2-inventory": { label: "Dota 2", description: "View your Dota inventory" },
 };
 
 const modeGroups: { label: string; accent: string; modes: AppMode[] }[] = [
@@ -101,7 +104,6 @@ export function Sidebar(props: SidebarProps) {
             aria-expanded={modeMenuOpen()}
             onClick={() => { setModeMenuOpen((value) => !value); setKindMenuOpen(false); setCompactMenuOpen(false); setSettingsOpen(false); }}
           >
-            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-cyan-400/10 text-[9px] font-bold tracking-wide text-cyan-200">{modeDetails[currentMode()].mark}</span>
             <span class="min-w-0 flex-1 leading-tight">
               <span class="block text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">{currentGroup()}</span>
               <span class="block truncate text-sm font-semibold text-slate-100">{modeDetails[currentMode()].label}</span>
@@ -127,7 +129,6 @@ export function Sidebar(props: SidebarProps) {
                           aria-checked={selected()}
                           onClick={() => chooseMode(mode)}
                         >
-                          <span class={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold tracking-wide ${selected() ? "bg-cyan-400 text-slate-950" : "border border-slate-700 bg-slate-900 text-slate-300"}`}>{modeDetails[mode].mark}</span>
                           <span class="min-w-0 flex-1">
                             <span class={`block text-sm font-semibold ${selected() ? "text-cyan-100" : "text-slate-100"}`}>{modeDetails[mode].label}</span>
                             <span class="block truncate text-xs text-slate-500">{modeDetails[mode].description}</span>
@@ -169,6 +170,7 @@ export function Sidebar(props: SidebarProps) {
               </div>
             </Show>
           </Popover></Show>
+          <Show when={isEconomyInventoryScreen(props.view) && props.economyCategoryOptions.length > 0}><label><span class="sr-only">Inventory item category</span><select class="h-9 max-w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200" value={props.economyTagFilter} onInput={(event) => props.setEconomyTagFilter(event.currentTarget.value)}><option value="">All item categories</option><For each={props.economyCategoryOptions}>{([value, label]) => <option value={value}>{label}</option>}</For></select></label></Show>
           <Show when={isInventoryScreen(props.view)}><Popover class="relative" open={sortMenuOpen()} onOpenChange={setSortMenuOpen}>
             <button class="flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 text-sm font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-cyan-100" aria-label="Sort inventory" aria-haspopup="menu" aria-expanded={sortMenuOpen()} onClick={() => { setSortMenuOpen((value) => !value); setKindMenuOpen(false); setCompactMenuOpen(false); setSettingsOpen(false); }}>
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h11" /><path d="M8 12h8" /><path d="M8 18h5" /><path d="m3 16 2 2 2-2" /><path d="M5 18V5" /></svg>

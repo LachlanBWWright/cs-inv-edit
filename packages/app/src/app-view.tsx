@@ -24,9 +24,15 @@ export function App(props: AppProps) {
       steamInventory={controller.steamInventory()}
       tf2Inventory={controller.tf2Inventory()}
       dota2Inventory={controller.dota2Inventory()}
+      gameInventoryLoading={{
+        steam: controller.steamInventory.loading,
+        tf2: controller.tf2Inventory.loading,
+        dota2: controller.dota2Inventory.loading,
+      }}
       armory={controller.armory()}
       store={controller.store()}
       trades={controller.trades()}
+      tradeAccounts={controller.tradeAccounts()}
       settings={controller.settings()}
       query={controller.query()}
       setQuery={controller.setQuery}
@@ -87,15 +93,16 @@ export function App(props: AppProps) {
 	  onGameOperation={(type, input) => controller.settleOperation(props.backend.submitOperation(type, input))}
       onArmoryRefresh={controller.refreshArmoryState}
       onMarketPreview={controller.requestMarketPreview}
-      onScanPrices={(marketNames) => props.backend.scanPrices({ marketNames, currency: "USD" }).match((result) => result, (error) => { controller.pushToast({ title: "Steam prices unavailable", description: error.message, variant: "warning" }); return undefined; })}
+      onScanPrices={(marketNames, appId) => props.data.queryPrices({ marketNames, currency: "USD", appId }).match((result) => result, (error) => { controller.pushToast({ title: "Vendor prices unavailable", description: error.message, variant: "warning" }); return undefined; })}
       onArmoryRedeem={(input) => controller.settleOperation(props.backend.redeemArmory(input)).then(async (receipt) => { await controller.refetchArmory(); return receipt; })}
       onStoreRefresh={controller.refreshStoreState}
       onStorePurchase={(input) => props.backend.initializeStorePurchase(input).match((session) => session, (error) => ({ id: "failed", status: "failed" as const, offerId: input.offerId, defIndex: 0, name: "Store purchase", quantity: input.quantity, currency: "", amountMinor: 0, formattedAmount: "", createdAt: new Date().toISOString(), message: error.message ?? "Purchase initialization failed" }))}
       onStoreReconcile={(id) => props.backend.reconcileStorePurchase(id).match((session) => session, (error) => ({ ...(controller.store() ? { offerId: "", defIndex: 0, name: "Store purchase", currency: controller.store()?.currency ?? "" } : { offerId: "", defIndex: 0, name: "Store purchase", currency: "" }), id, status: "failed" as const, quantity: 1, amountMinor: 0, formattedAmount: "", createdAt: new Date().toISOString(), message: error.message ?? "Purchase reconciliation failed" }))}
-      onTradesRefresh={controller.refreshTradesState}
+      onTradesRefresh={controller.refreshTradeAccountsState}
       onInventoryRename={(input) => controller.settleOperation(createOperationApi(props.backend).applyNameTag(input))}
       onRemoveName={(input) => controller.settleOperation(createOperationApi(props.backend).removeNameTag(input))}
-      onOpenContainer={(input) => controller.settleOperation(props.backend.submitOperation("containers.open", input))}
+      onOpenContainer={(input, suppressToast) => controller.settleOperation(props.backend.submitOperation("containers.open", input), { suppressToast })}
+      onTerminalSubmit={(type, input) => controller.settleOperation(props.backend.submitOperation(type, input), { suppressToast: true })}
       onStorageSubmit={(type, input) => controller.settleOperation(props.backend.submitOperation(type, input))}
       onTradeUpSubmit={(type, input) => controller.settleOperation(props.backend.submitOperation(type, input))}
       onStickerSubmit={(type, input) => controller.settleOperation(props.backend.submitOperation(type, input))}

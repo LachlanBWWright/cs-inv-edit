@@ -1,11 +1,38 @@
 package econ
 
 import (
+	"context"
 	"errors"
+	"io"
 	"math"
+	"net/http"
 	"strings"
 	"testing"
 )
+
+type marketRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn marketRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+func TestMarketDescriptionLookupUsesRequestedAppIDAndSteamImageToken(t *testing.T) {
+	provider := NewProvider()
+	provider.client = &http.Client{Transport: marketRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if got := request.URL.Query().Get("appid"); got != "440" {
+			t.Fatalf("appid = %q, want 440", got)
+		}
+		body := `{"success":true,"results":[{"name":"Demo Hat","hash_name":"Demo Hat","sell_price":1,"sell_price_text":"$0.01","asset_description":{"name":"Demo Hat","market_name":"Demo Hat","market_hash_name":"Demo Hat","icon_url":"steam-token"}}]}`
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	descriptions, err := provider.LoadMarketDescriptionsForApp(context.Background(), 440, []string{"Demo Hat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := descriptions["Demo Hat"].IconURL; got != "https://community.fastly.steamstatic.com/economy/image/steam-token" {
+		t.Fatalf("image URL = %q", got)
+	}
+}
 
 func TestSchemaParsesPaintKitWearCaps(t *testing.T) {
 	root, err := parseKeyValues(`"items_game" { "paint_kits" { "101" { "name" "test_finish" "wear_remap_min" "0.06" "wear_remap_max" "0.80" } } }`)
@@ -17,6 +44,57 @@ func TestSchemaParsesPaintKitWearCaps(t *testing.T) {
 	paint := schema.paintKits[101]
 	if paint.WearMin == nil || *paint.WearMin != 0.06 || paint.WearMax == nil || *paint.WearMax != 0.80 {
 		t.Fatalf("wear caps = %#v, %#v", paint.WearMin, paint.WearMax)
+	}
+}
+
+func TestCS2AttributesDecodeSchemaNamesDatesAndReferencedKits(t *testing.T) {
+	root, err := parseKeyValues(`"items_game" {
+		"attributes" {
+			"75" { "name" "tradable after date" "attribute_class" "tradable_after_date" "description_format" "value_is_date" "stored_as_integer" "1" }
+			"113" { "name" "sticker slot 0 id" "attribute_class" "sticker_slot_0_id" "stored_as_integer" "1" }
+		}
+		"sticker_kits" { "9461" { "name" "community_2025_paper_skellystab" "item_name" "#Sticker_SkellyStabby" } }
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := &Schema{items: map[uint32]itemDefinition{}, stickerKits: map[uint32]stickerKitDefinition{}, tokens: map[string]string{"sticker_skellystabby": "Skelly Stabby"}}
+	schema.parseItems(root)
+	decoded := schema.decodeAttributes(map[uint32]uint32{75: 1785330000, 113: 9461})
+	if len(decoded) != 2 || decoded[0].Name != "tradable after date" || decoded[0].Value != "29 Jul 2026, 13:00 UTC" {
+		t.Fatalf("date attribute = %#v", decoded)
+	}
+	if decoded[1].Name != "sticker slot 0 id" || decoded[1].Value != "Skelly Stabby (kit #9461)" {
+		t.Fatalf("sticker attribute = %#v", decoded[1])
+	}
+}
+
+func TestCS2TradableAfterAttributeResolvesTransferCapability(t *testing.T) {
+	root, err := parseKeyValues(`"items_game" { "attributes" { "75" { "name" "tradable after date" "attribute_class" "tradable_after_date" "description_format" "value_is_date" "stored_as_integer" "1" } } "items" { "1209" { "name" "sticker" "item_name" "#Sticker" "item_class" "sticker" } } }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := &Schema{items: map[uint32]itemDefinition{}, stickerKits: map[uint32]stickerKitDefinition{}, paintKits: map[uint32]paintKitDefinition{}, tokens: map[string]string{"sticker": "Sticker"}}
+	schema.parseItems(root)
+	metadata := schema.Metadata(1209, 0, map[uint32]uint32{75: 1785330000})
+	if metadata.TradableAfter != "2026-07-29T13:00:00Z" {
+		t.Fatalf("tradable after = %q", metadata.TradableAfter)
+	}
+	if metadata.Tradable == nil || !*metadata.Tradable || metadata.Marketable == nil || !*metadata.Marketable {
+		t.Fatalf("transfer capability = tradable %#v marketable %#v", metadata.Tradable, metadata.Marketable)
+	}
+}
+
+func TestCS2TransferFlagsAlwaysConverge(t *testing.T) {
+	tradable := true
+	marketable := false
+	metadata := (Metadata{Tradable: &tradable, Marketable: &marketable}).NormalizeCS2TransferState()
+	if *metadata.Tradable || *metadata.Marketable {
+		t.Fatalf("conflicting restriction must win: %#v", metadata)
+	}
+	metadata = (Metadata{Tradable: &tradable}).NormalizeCS2TransferState()
+	if metadata.Marketable == nil || !*metadata.Marketable {
+		t.Fatalf("positive tradability did not imply marketability: %#v", metadata)
 	}
 }
 
@@ -163,6 +241,13 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 			}
 			"inv_graphic_art" "graffiti"
 		}
+		"1349"
+		{
+			"name" "spraypaint"
+			"item_name" "#CSGO_Tool_Spray"
+			"tool" { "type" "spraypaint" }
+			"inv_graphic_art" "graffiti"
+		}
 		"4599"
 		{
 			"name" "crate_sticker_pack_feral_predators_capsule"
@@ -241,6 +326,7 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		{
 			"name" "kc_missinglink_howl"
 			"loc_name" "#keychain_kc_missinglink_howl"
+			"item_rarity" "legendary"
 		}
 		"37"
 		{
@@ -341,12 +427,14 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		attributes map[uint32]uint32
 		wantName   string
 		wantMarket string
+		wantRarity string
 	}{
 		{name: "sticker", defIndex: 1209, attributes: map[uint32]uint32{113: 42}, wantName: "Kawaii Killer CT", wantMarket: "Sticker | Kawaii Killer CT"},
 		{name: "patch", defIndex: 4609, attributes: map[uint32]uint32{113: 4550}, wantName: "Banana", wantMarket: "Patch | Banana"},
 		{name: "graffiti", defIndex: 1348, attributes: map[uint32]uint32{113: 43}, wantName: "GG", wantMarket: "Sealed Graffiti | GG"},
+		{name: "unsealed graffiti", defIndex: 1349, attributes: map[uint32]uint32{113: 43, 232: 48}, wantName: "GG", wantMarket: "Graffiti | GG"},
 		{name: "music", defIndex: 1314, attributes: map[uint32]uint32{166: 7}, wantName: "Feed Me, High Noon", wantMarket: "Music Kit | Feed Me, High Noon"},
-		{name: "keychain", defIndex: 1355, attributes: map[uint32]uint32{299: 11}, wantName: "Lil' Howl", wantMarket: "Charm | Lil' Howl"},
+		{name: "keychain", defIndex: 1355, attributes: map[uint32]uint32{299: 11}, wantName: "Lil' Howl", wantMarket: "Charm | Lil' Howl", wantRarity: "legendary"},
 		{name: "sticker slab", defIndex: 1355, attributes: map[uint32]uint32{299: 37, 321: 377}, wantName: "Sticker Slab", wantMarket: "Sticker Slab | Kawaii Killer Terrorist"},
 	}
 	for _, tt := range enriched {
@@ -354,8 +442,14 @@ func TestSchemaMetadataMergesRepeatedItemsSections(t *testing.T) {
 		if got.Name != tt.wantName || got.MarketName != tt.wantMarket {
 			t.Fatalf("%s metadata = %#v, want name=%q market=%q", tt.name, got, tt.wantName, tt.wantMarket)
 		}
+		if tt.wantRarity != "" && got.Rarity != tt.wantRarity {
+			t.Fatalf("%s rarity = %q, want %q", tt.name, got.Rarity, tt.wantRarity)
+		}
 		if tt.name == "sticker" && got.Rarity != "rare" {
 			t.Fatalf("sticker rarity = %q, want rare (High Grade/blue)", got.Rarity)
+		}
+		if tt.name == "unsealed graffiti" && (got.Tradable == nil || *got.Tradable || got.Marketable == nil || *got.Marketable) {
+			t.Fatalf("unsealed graffiti transfer state = tradable %#v marketable %#v, want explicit false", got.Tradable, got.Marketable)
 		}
 	}
 	if got := schema.AppliedItems(1209, map[uint32]uint32{113: 42}); len(got) != 0 {

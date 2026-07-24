@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import type { SteamTradeDto, SteamTradeItemDto, SteamTradesSnapshot } from "@cs-inv-edit/contracts";
+import type { SteamAccountTradesCollection, SteamTradeDto, SteamTradeItemDto, SteamTradesSnapshot } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 import { Card } from "./ui/Card.js";
@@ -23,7 +23,7 @@ function TradeSide(props: { title: string; items: SteamTradeItemDto[]; tone: "gi
   </div>;
 }
 
-function TradeCard(props: { trade: SteamTradeDto; historical?: boolean }) {
+function TradeCard(props: { trade: SteamTradeDto; historical?: boolean; accountName?: string }) {
   const active = () => props.trade.state === "active" || props.trade.state === "confirmation_required";
   const profileURL = () => props.trade.partnerProfileUrl || `https://steamcommunity.com/profiles/${props.trade.partnerSteamId}`;
   return <Card class="overflow-hidden p-0">
@@ -32,7 +32,7 @@ function TradeCard(props: { trade: SteamTradeDto; historical?: boolean }) {
         <a class="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900 text-sm font-semibold text-slate-400 transition hover:border-cyan-400/60" href={profileURL()} target="_blank" rel="noopener noreferrer" aria-label={`Open ${props.trade.partnerName || props.trade.partnerSteamId} on Steam`}>
           <Show when={props.trade.partnerAvatarUrl} fallback={(props.trade.partnerName || "?").slice(0, 1).toUpperCase()}><img class="h-full w-full object-cover" src={props.trade.partnerAvatarUrl} alt="" loading="lazy" /></Show>
         </a>
-        <div class="min-w-0"><a class="block truncate font-semibold text-cyan-200 hover:text-cyan-100 hover:underline" href={profileURL()} target="_blank" rel="noopener noreferrer">{props.trade.partnerName || "Steam user"}</a><p class="truncate font-mono text-[11px] text-slate-500">{props.trade.partnerSteamId}</p><div class="mt-1 flex flex-wrap items-center gap-2"><span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${active() ? "bg-cyan-400/15 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-400/15 text-emerald-200" : "bg-slate-800 text-slate-300"}`}>{stateLabel(props.trade.state || "unknown")}</span><span class="font-mono text-xs text-slate-500">Trade #{props.trade.id}</span></div></div>
+        <div class="min-w-0"><a class="block truncate font-semibold text-cyan-200 hover:text-cyan-100 hover:underline" href={profileURL()} target="_blank" rel="noopener noreferrer">{props.trade.partnerName || "Steam user"}</a><p class="truncate font-mono text-[11px] text-slate-500">{props.trade.partnerSteamId}</p><div class="mt-1 flex flex-wrap items-center gap-2"><Show when={props.accountName}><span class="rounded-full bg-violet-400/15 px-2.5 py-1 text-xs font-semibold text-violet-200">{props.accountName}</span></Show><span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${active() ? "bg-cyan-400/15 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-400/15 text-emerald-200" : "bg-slate-800 text-slate-300"}`}>{stateLabel(props.trade.state || "unknown")}</span><span class="font-mono text-xs text-slate-500">Trade #{props.trade.id}</span></div></div>
       </div>
       <div class="text-right text-xs text-slate-500"><p>{dateLabel(props.trade.updatedAt || props.trade.createdAt)}</p><Show when={active() && props.trade.expiresAt}><p class="mt-1 text-amber-300">Expires {dateLabel(props.trade.expiresAt)}</p></Show></div>
     </div>
@@ -42,18 +42,20 @@ function TradeCard(props: { trade: SteamTradeDto; historical?: boolean }) {
   </Card>;
 }
 
-export function TradesView(props: { snapshot?: SteamTradesSnapshot; onRefresh: () => Promise<unknown>; onReconnect: () => void }) {
+export function TradesView(props: { snapshot?: SteamTradesSnapshot; accounts?: SteamAccountTradesCollection; activeSteamId?: string; onRefresh: (steamId?: string) => Promise<unknown>; onReconnect: () => void }) {
   const [tab, setTab] = createSignal<"received" | "sent" | "history">("received");
+  const [accountScope, setAccountScope] = createSignal("all");
   const [busy, setBusy] = createSignal(false);
-  const trades = createMemo(() => props.snapshot?.[tab()] ?? []);
-  const refresh = async () => { setBusy(true); await props.onRefresh(); setBusy(false); };
-  const tabs = [{ id: "received", label: "Incoming", count: () => props.snapshot?.received.length ?? 0 }, { id: "sent", label: "Outgoing", count: () => props.snapshot?.sent.length ?? 0 }, { id: "history", label: "History", count: () => props.snapshot?.history.length ?? 0 }] as const;
+  const history = createMemo(() => (props.accounts?.accounts ?? []).filter((account) => accountScope() === "all" || account.steamId === accountScope()).flatMap((account) => account.snapshot.history.map((trade) => ({ trade, accountName: account.accountName }))));
+  const trades = createMemo(() => tab() === "history" ? history() : (props.snapshot?.[tab()] ?? []).map((trade) => ({ trade, accountName: undefined })));
+  const refresh = async () => { setBusy(true); await props.onRefresh(tab() === "history" && accountScope() !== "all" ? accountScope() : undefined); setBusy(false); };
+  const tabs = [{ id: "received", label: "Incoming", count: () => props.snapshot?.received.length ?? 0 }, { id: "sent", label: "Outgoing", count: () => props.snapshot?.sent.length ?? 0 }, { id: "history", label: "History", count: () => history().length }] as const;
   return <div class="flex h-full min-h-0 w-full flex-col">
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><h1 class="text-2xl font-semibold text-white">Trades</h1><Button disabled={busy()} onClick={() => void refresh()}>{busy() ? "Refreshing…" : "Refresh trades"}</Button></div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><h1 class="text-2xl font-semibold text-white">Trades</h1><div class="flex items-center gap-2"><Show when={tab() === "history"}><label class="text-sm text-slate-400">Account <select class="ml-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100" value={accountScope()} onChange={(event) => setAccountScope(event.currentTarget.value)}><option value="all">All available accounts</option><For each={props.accounts?.accounts ?? []}>{(account) => <option value={account.steamId}>{account.accountName}</option>}</For></select></label></Show><Button disabled={busy()} onClick={() => void refresh()}>{busy() ? "Refreshing…" : "Refresh trades"}</Button></div></div>
     <Show when={props.snapshot?.status === "requires_connection"}><Alert><p>Connect a Steam account to view its trade offers.</p><Button class="mt-3" onClick={props.onReconnect}>Connect account</Button></Alert></Show>
     <Show when={props.snapshot?.status === "requires_reauthentication"}><Alert variant="warning"><p>{props.snapshot?.message}</p><Button class="mt-3" onClick={props.onReconnect}>Sign in again</Button></Alert></Show>
     <Show when={props.snapshot?.status === "error"}><Alert variant="danger">{props.snapshot?.message || "Steam could not load trades."}</Alert></Show>
     <div class="mt-4 flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60 p-1"><For each={tabs}>{(entry) => <button class={`flex min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${tab() === entry.id ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-200"}`} onClick={() => setTab(entry.id)}>{entry.label}<span class="rounded-full bg-slate-950/70 px-2 py-0.5 text-xs">{entry.count()}</span></button>}</For></div>
-    <div class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1"><Show when={trades().length} fallback={<div class="rounded-2xl border border-dashed border-slate-700/80 px-6 py-14 text-center"><p class="text-lg font-medium text-slate-300">No {tab() === "history" ? "trade history" : `${tab()} offers`}</p><p class="mt-2 text-sm text-slate-500">{tab() === "history" ? "Recent completed and failed trades will appear here." : "There are no active offers in this direction."}</p></div>}><div class="space-y-4 pb-4"><For each={trades()}>{(trade) => <TradeCard trade={trade} historical={tab() === "history"} />}</For></div></Show></div>
+    <div class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1"><Show when={trades().length} fallback={<div class="rounded-2xl border border-dashed border-slate-700/80 px-6 py-14 text-center"><p class="text-lg font-medium text-slate-300">No {tab() === "history" ? "trade history" : `${tab()} offers`}</p><p class="mt-2 text-sm text-slate-500">{tab() === "history" ? "Recent completed and failed trades will appear here." : "There are no active offers in this direction."}</p></div>}><div class="space-y-4 pb-4"><For each={trades()}>{(entry) => <TradeCard trade={entry.trade} accountName={entry.accountName} historical={tab() === "history"} />}</For></div></Show></div>
   </div>;
 }

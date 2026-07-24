@@ -81,6 +81,24 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			s.settings.SacrificialAccountMode = next
 			s.mu.Unlock()
 		}
+		if next, ok := input["animations"].(map[string]any); ok {
+			s.mu.Lock()
+			animations := s.settings.Animations
+			if value, ok := revealAnimationInput(next["container"]); ok {
+				animations.Container = value
+			}
+			if value, ok := tradeUpAnimationInput(next["tradeUp"]); ok {
+				animations.TradeUp = value
+			}
+			if value, ok := revealAnimationInput(next["armory"]); ok {
+				animations.Armory = value
+			}
+			if value, ok := revealAnimationInput(next["terminal"]); ok {
+				animations.Terminal = value
+			}
+			s.settings.Animations = animations
+			s.mu.Unlock()
+		}
 		if next, ok := input["featureFlags"].(map[string]any); ok {
 			s.mu.Lock()
 			oldFlags := s.settings.FeatureFlags
@@ -254,6 +272,36 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			receipt.State, receipt.Message = "failed", "storage unit id must be a valid Steam item id"
 		default:
 			receipt.State, receipt.Message = "completed", "storage unit selected for contents loading"
+		}
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	if opType == "terminal.load-offer" {
+		terminalIDText, _ := input["terminalId"].(string)
+		terminalID, parseErr := strconv.ParseUint(terminalIDText, 10, 64)
+		s.mu.Lock()
+		connected := s.connection.State == "connected"
+		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
+		s.mu.Unlock()
+		switch {
+		case !connected || sessionErr != nil:
+			receipt.State, receipt.Message = "failed", "connect a Steam account before loading a terminal offer"
+		case parseErr != nil || terminalID == 0:
+			receipt.State, receipt.Message = "failed", "terminal id must be a valid Steam item id"
+		default:
+			body, encodeErr := cs2pb.EncodeCasketItem(terminalID, terminalID)
+			if encodeErr != nil {
+				receipt.State, receipt.Message = "failed", "encode terminal offer request: "+encodeErr.Error()
+			} else if sendErr := s.gcClient.SendProtoToGC(accountCtx, protocol.AppIDCS2, protocol.EMsgVolatileItemLoadContents, body); sendErr != nil {
+				receipt.State, receipt.Message = "failed", "send terminal offer request: "+sendErr.Error()
+			} else {
+				receipt.State, receipt.Message = "awaiting_gc_confirmation", "terminal offer requested from CS2"
+				receipt.Result = map[string]any{
+					"terminalId":    terminalIDText,
+					"requestEMsg":   protocol.EMsgVolatileItemLoadContents,
+					"requestMethod": "terminal_offer_load",
+				}
+			}
 		}
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
@@ -437,6 +485,32 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	s.lastOperation = receipt
 	s.mu.Unlock()
 	return receipt
+}
+
+func revealAnimationInput(value any) (string, bool) {
+	mode, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	switch mode {
+	case "none", "countdown", "slot-machine":
+		return mode, true
+	default:
+		return "", false
+	}
+}
+
+func tradeUpAnimationInput(value any) (string, bool) {
+	mode, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	switch mode {
+	case "none", "countdown", "slot-machine", "contract-none", "contract-countdown", "contract-slot-machine":
+		return mode, true
+	default:
+		return "", false
+	}
 }
 
 func (s *Service) Operations() []operations.Receipt {

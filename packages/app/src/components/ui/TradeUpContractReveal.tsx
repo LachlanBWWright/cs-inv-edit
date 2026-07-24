@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { RevealAnimationMode, TradeUpAnimationMode } from "@cs-inv-edit/contracts";
 import { RevealAnimation, type RevealItem } from "./RevealAnimation.js";
+import type { ReturnEstimate } from "../roi-utils.js";
 
 interface TradeUpContractRevealProps {
   open: boolean;
@@ -10,6 +11,8 @@ interface TradeUpContractRevealProps {
   candidates: RevealItem[];
   result: RevealItem;
   onComplete: () => void;
+  returnEstimate?: ReturnEstimate;
+  returnEstimateLoading?: boolean;
 }
 
 const underlyingMode = (mode: TradeUpAnimationMode): RevealAnimationMode => {
@@ -84,7 +87,7 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
               <p class="contract-kicker">Arms Replacement Agreement</p>
               <h2>Trade Up Contract</h2>
               <Show when={phase() === "contract"} fallback={
-                <div class="contract-result"><p>Contract accepted</p><strong>{props.result.name}</strong><Show when={props.result.imageUrl}><img src={props.result.imageUrl} alt="" /></Show><button type="button" onClick={props.onComplete}>Done</button></div>
+                <div class="contract-result"><p>Contract accepted</p><strong>{props.result.name}</strong><Show when={props.result.price}><span class="font-semibold text-emerald-700">{props.result.price}</span></Show><Show when={props.result.imageUrl}><img src={props.result.imageUrl} alt="" /></Show><button type="button" onClick={props.onComplete}>Done</button></div>
         }>
                 <p class="contract-copy">I hereby relinquish the submitted items in exchange for one item of superior grade. Sign within the field below to authorize this contract.</p>
                 <div class="contract-rule" />
@@ -97,6 +100,6 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
         </div>
       </Show>
     </Portal>
-    <RevealAnimation open={props.open && phase() === "reveal"} ready={props.ready} mode={underlyingMode(props.mode)} title="Trade-up contract" candidates={props.candidates} result={props.result} onComplete={props.onComplete} />
+    <RevealAnimation open={props.open && phase() === "reveal"} ready={props.ready} mode={underlyingMode(props.mode)} title="Trade-up contract" candidates={props.candidates} result={props.result} onComplete={props.onComplete} returnEstimate={props.returnEstimate} returnEstimateLoading={props.returnEstimateLoading} returnEstimateCostLabel="Estimated inputs" />
   </>;
 }

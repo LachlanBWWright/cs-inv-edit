@@ -16,7 +16,7 @@ func defaultSettings() domain.Settings {
 		BackendURL:                  "http://127.0.0.1:7331",
 		ValidationMode:              true,
 		SacrificialAccountMode:      true,
-		Animations:                  domain.AnimationSettings{Container: "slot-machine", TradeUp: "slot-machine", Armory: "slot-machine"},
+		Animations:                  domain.AnimationSettings{Container: "slot-machine", TradeUp: "slot-machine", Armory: "slot-machine", Terminal: "slot-machine"},
 		ArmoryPurchasePacingSeconds: 5,
 		FeatureFlags: domain.FeatureFlags{
 			EnableStorageMutations: true,

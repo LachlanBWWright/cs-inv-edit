@@ -13,25 +13,25 @@
 }
 
 /* TF2 backend Quality labels from Steam description tags. */
-.economy-outline--tf2-normal { border-color: #b2b2b2; }
-.economy-outline--tf2-unique { border-color: #ffd700; }
-.economy-outline--tf2-vintage { border-color: #476291; }
-.economy-outline--tf2-genuine { border-color: #4d7455; }
-.economy-outline--tf2-strange { border-color: #cf6a32; }
-.economy-outline--tf2-unusual { border-color: #8650ac; }
-.economy-outline--tf2-haunted { border-color: #38f3ab; }
-.economy-outline--tf2-collectors { border-color: #aa0000; }
-.economy-outline--tf2-community, .economy-outline--tf2-selfmade { border-color: #70b04a; }
+.economy-outline--tf2-normal { --rarity-color: 178 178 178; }
+.economy-outline--tf2-unique { --rarity-color: 255 215 0; }
+.economy-outline--tf2-vintage { --rarity-color: 71 98 145; }
+.economy-outline--tf2-genuine { --rarity-color: 77 116 85; }
+.economy-outline--tf2-strange { --rarity-color: 207 106 50; }
+.economy-outline--tf2-unusual { --rarity-color: 134 80 172; }
+.economy-outline--tf2-haunted { --rarity-color: 56 243 171; }
+.economy-outline--tf2-collectors { --rarity-color: 170 0 0; }
+.economy-outline--tf2-community, .economy-outline--tf2-selfmade { --rarity-color: 112 176 74; }
 
 /* Dota 2 backend Rarity labels from Steam description tags. */
-.economy-outline--dota-common { border-color: #b0c3d9; }
-.economy-outline--dota-uncommon { border-color: #5e98d9; }
-.economy-outline--dota-rare { border-color: #4b69ff; }
-.economy-outline--dota-mythical { border-color: #8847ff; }
-.economy-outline--dota-legendary { border-color: #d32ce6; }
-.economy-outline--dota-immortal { border-color: #e4ae39; }
-.economy-outline--dota-arcana { border-color: #ade55c; }
-.economy-outline--dota-ancient { border-color: #eb4b4b; }
+.economy-outline--dota-common { --rarity-color: 176 195 217; }
+.economy-outline--dota-uncommon { --rarity-color: 94 152 217; }
+.economy-outline--dota-rare { --rarity-color: 75 105 255; }
+.economy-outline--dota-mythical { --rarity-color: 136 71 255; }
+.economy-outline--dota-legendary { --rarity-color: 211 44 230; }
+.economy-outline--dota-immortal { --rarity-color: 228 174 57; }
+.economy-outline--dota-arcana { --rarity-color: 173 229 92; }
+.economy-outline--dota-ancient { --rarity-color: 235 75 75; }
 
 body {
   margin: 0;

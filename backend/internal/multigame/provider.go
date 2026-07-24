@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,8 +43,10 @@ type Provider struct {
 	tf2EnglishURL     string
 	tf2Mu             sync.Mutex
 	tf2Definitions    map[uint32]econ.TF2Definition
+	tf2Attributes     map[uint32]econ.TF2AttributeDefinition
 	tf2SchemaRevision string
 	tf2SchemaLoaded   bool
+	tf2Images         *econ.Provider
 	overlayMu         sync.Mutex
 	overlays          map[string]overlayCacheEntry
 }
@@ -79,6 +82,7 @@ func NewProvider() *Provider {
 		tf2ItemsURL:   "https://raw.githubusercontent.com/SteamTracking/GameTracking-TF2/master/tf/scripts/items/items_game.txt",
 		tf2EnglishURL: "https://raw.githubusercontent.com/SteamTracking/GameTracking-TF2/master/tf/resource/tf_english.txt",
 		overlays:      make(map[string]overlayCacheEntry),
+		tf2Images:     econ.NewProvider(),
 	}
 }
 
@@ -100,19 +104,19 @@ type asset struct {
 }
 
 type description struct {
-	AppID          int64             `json:"appid"`
-	ClassID        string            `json:"classid"`
-	InstanceID     string            `json:"instanceid"`
-	Name           string            `json:"name"`
-	MarketName     string            `json:"market_name"`
-	MarketHashName string            `json:"market_hash_name"`
-	IconURL        string            `json:"icon_url"`
-	IconURLLarge   string            `json:"icon_url_large"`
-	Type           string            `json:"type"`
-	Tradable       int               `json:"tradable"`
-	Marketable     int               `json:"marketable"`
-	Tags           []tag             `json:"tags"`
-	Descriptions   []descriptionLine `json:"descriptions"`
+	AppID             int64             `json:"appid"`
+	ClassID           string            `json:"classid"`
+	InstanceID        string            `json:"instanceid"`
+	Name              string            `json:"name"`
+	MarketName        string            `json:"market_name"`
+	MarketHashName    string            `json:"market_hash_name"`
+	IconURL           string            `json:"icon_url"`
+	IconURLLarge      string            `json:"icon_url_large"`
+	Type              string            `json:"type"`
+	Tradable          int               `json:"tradable"`
+	Marketable        int               `json:"marketable"`
+	Tags              []tag             `json:"tags"`
+	Descriptions      []descriptionLine `json:"descriptions"`
 	OwnerDescriptions []descriptionLine `json:"owner_descriptions"`
 }
 
@@ -281,6 +285,7 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 	if game.ID == "tf2" {
 		tf2Definitions, schemaRevision, schemaErr = p.loadTF2Definitions(ctx)
 	}
+	tf2Images, tf2ImageErr, omittedTF2Images := p.loadTF2ContainerImages(ctx, owned, tf2Definitions)
 	overlay, overlayErr := p.Load(ctx, steamID, game)
 	byID := make(map[string]domain.EconomyInventoryItem, len(overlay.Items))
 	for _, item := range overlay.Items {
@@ -310,7 +315,7 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 			item.Details.AttributeBytes = map[string]string{}
 		}
 		if definition, present := tf2Definitions[source.DefIndex]; present {
-			if item.Name == "" || strings.HasPrefix(item.Name, "Definition ") {
+			if definition.Name != "" {
 				item.Name = definition.Name
 			}
 			if item.Type == "" {
@@ -341,6 +346,18 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 			for name, value := range definition.StaticAttributes {
 				item.Details.StaticAttributes[name] = value
 			}
+			item.Details.Rarity = definition.Rarity
+			item.Details.EquipConflicts = append([]string(nil), definition.EquipConflicts...)
+			item.Details.LoadoutSlots = copyMap(definition.LoadoutSlots)
+			item.Details.PrefabChain = append([]string(nil), definition.PrefabChain...)
+			item.Details.ContainerItems = make([]domain.TF2RelatedItem, len(definition.ContainerItems))
+			for index, related := range definition.ContainerItems {
+				imageURL := related.ImageURL
+				if description, ok := tf2Images[related.Name]; ok {
+					imageURL = firstNonEmpty(description.IconURLLarge, description.IconURL)
+				}
+				item.Details.ContainerItems[index] = domain.TF2RelatedItem{DefIndex: related.DefIndex, Name: related.Name, Rarity: related.Rarity, PoolKind: related.PoolKind, ImageURL: imageURL}
+			}
 		}
 		definitionID := source.DefIndex
 		item.Game, item.AppID, item.AssetID, item.DefinitionID = game.ID, game.AppID, assetID, &definitionID
@@ -361,6 +378,9 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 		}
 		for id, value := range source.AttributeBytes {
 			item.Details.AttributeBytes[strconv.FormatUint(uint64(id), 10)] = fmt.Sprintf("%x", value)
+		}
+		for _, decoded := range econ.DecodeTF2Attributes(source.Attributes, source.AttributeBytes, p.tf2Attributes) {
+			item.Details.DecodedAttributes = append(item.Details.DecodedAttributes, domain.TF2Attribute{DefIndex: decoded.DefIndex, Name: decoded.Name, Value: decoded.Value, EffectType: decoded.EffectType, Hidden: decoded.Hidden, AttributeClass: decoded.AttributeClass})
 		}
 		item.Details.EquippedStates = append([]domain.EquippedState(nil), source.EquippedStates...)
 		if source.InteriorItemID != 0 {
@@ -391,10 +411,43 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 		} else {
 			diagnostics = append(diagnostics, fmt.Sprintf("Live TF2 items_game resolved %d definitions.", len(tf2Definitions)))
 		}
+		if tf2ImageErr != nil {
+			diagnostics = append(diagnostics, "Some TF2 preview images were unavailable from exact Steam market descriptions: "+tf2ImageErr.Error())
+		}
+		if omittedTF2Images > 0 {
+			diagnostics = append(diagnostics, fmt.Sprintf("TF2 preview image lookup was bounded; %d candidate names were left for a later refresh.", omittedTF2Images))
+		}
 	} else {
 		diagnostics = append(diagnostics, "Dota 2 definition names currently require the exact Steam description overlay; Valve's schema URL endpoint requires credentials and the tracked client files do not contain a cosmetic items_game schema.")
 	}
 	return domain.GameInventorySnapshot{Game: game.ID, AppID: game.AppID, Items: items, RefreshedAt: time.Now().UTC().Format(time.RFC3339Nano), Status: "ready", SchemaRevision: schemaRevision, Diagnostics: diagnostics}
+}
+
+const maxTF2ContainerImageLookups = 48
+
+func (p *Provider) loadTF2ContainerImages(ctx context.Context, owned []OwnedItem, definitions map[uint32]econ.TF2Definition) (map[string]econ.MarketDescription, error, int) {
+	if len(definitions) == 0 || p.tf2Images == nil {
+		return nil, nil, 0
+	}
+	seen := make(map[string]bool)
+	var names []string
+	for _, item := range owned {
+		for _, related := range definitions[item.DefIndex].ContainerItems {
+			if related.PoolKind == "unresolved" || related.Name == "" || seen[related.Name] {
+				continue
+			}
+			seen[related.Name] = true
+			names = append(names, related.Name)
+		}
+	}
+	sort.Strings(names)
+	omitted := 0
+	if len(names) > maxTF2ContainerImageLookups {
+		omitted = len(names) - maxTF2ContainerImageLookups
+		names = names[:maxTF2ContainerImageLookups]
+	}
+	images, err := p.tf2Images.LoadMarketDescriptionsForApp(ctx, 440, names)
+	return images, err, omitted
 }
 
 func (p *Provider) loadTF2Definitions(ctx context.Context) (map[uint32]econ.TF2Definition, string, error) {
@@ -415,8 +468,12 @@ func (p *Provider) loadTF2Definitions(ctx context.Context) (map[uint32]econ.TF2D
 	if err != nil {
 		return nil, "", err
 	}
+	attributes, err := econ.ParseTF2AttributeDefinitions(items)
+	if err != nil {
+		return nil, "", err
+	}
 	digest := sha256.Sum256([]byte(items + "\x00" + english))
-	p.tf2Definitions, p.tf2SchemaRevision, p.tf2SchemaLoaded = definitions, fmt.Sprintf("gametracking-tf2-sha256:%x", digest[:8]), true
+	p.tf2Definitions, p.tf2Attributes, p.tf2SchemaRevision, p.tf2SchemaLoaded = definitions, attributes, fmt.Sprintf("gametracking-tf2-sha256:%x", digest[:8]), true
 	return definitions, p.tf2SchemaRevision, nil
 }
 
@@ -526,6 +583,11 @@ func cloneGameSnapshot(snapshot domain.GameInventorySnapshot) domain.GameInvento
 		clone.Items[index].Details.Capabilities = copyMap(item.Details.Capabilities)
 		clone.Items[index].Details.UsableClasses = append([]string(nil), item.Details.UsableClasses...)
 		clone.Items[index].Details.EquippedStates = append([]domain.EquippedState(nil), item.Details.EquippedStates...)
+		clone.Items[index].Details.EquipConflicts = append([]string(nil), item.Details.EquipConflicts...)
+		clone.Items[index].Details.LoadoutSlots = copyMap(item.Details.LoadoutSlots)
+		clone.Items[index].Details.PrefabChain = append([]string(nil), item.Details.PrefabChain...)
+		clone.Items[index].Details.ContainerItems = append([]domain.TF2RelatedItem(nil), item.Details.ContainerItems...)
+		clone.Items[index].Details.DecodedAttributes = append([]domain.TF2Attribute(nil), item.Details.DecodedAttributes...)
 	}
 	return clone
 }

@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
-import type { ConnectionStatus, InventoryItemDto, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
+import type { ConnectionStatus, InitializeStorePurchaseRequest, InventoryItemDto, InventorySnapshot, PriceScanResult, PurchaseSession, SettingsData } from "@cs-inv-edit/contracts";
 import { InventoryDetailsPanel } from "./InventoryDetailsPanel.js";
 import { Alert } from "./ui/Alert.js";
 import { InventoryGrid } from "./inventory-view-content-sections.js";
@@ -16,6 +16,7 @@ export interface InventoryViewContentProps {
   selectedItem: InventoryItemDto | undefined;
   selectedItemKey: string | undefined;
   statusMessage: string;
+  terminalOfferState: { terminalId: string; state: "loading" | "error"; message: string } | undefined;
   containerStatusMessage: string;
   renameOpen: boolean;
   draftName: string;
@@ -32,19 +33,24 @@ export interface InventoryViewContentProps {
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
   compactMode: "icons" | "concise" | "detailed";
+  marketPrices: ReadonlyMap<string, number>;
   onMarketPreview: (marketName: string) => Promise<import("@cs-inv-edit/contracts").RelatedItemDto | undefined>;
-  onSelectItem: (item: InventoryItemDto) => void;
+  onScanPrices: (marketNames: string[], appId?: number) => Promise<PriceScanResult | undefined>;
+  onSelectItem: (item: InventoryItemDto, options?: { range: boolean }) => void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRenameSubmit: () => Promise<void> | void;
   onRemoveName: () => Promise<void> | void;
-  onOpenContainer: () => Promise<void> | void;
+  onOpenContainer: (terminalSelection?: { pointsRemaining?: number; volatileLimit?: number }) => Promise<void> | void;
+  onTerminalPurchase: (input: InitializeStorePurchaseRequest) => Promise<PurchaseSession>;
   onLoadStorageContents: (casketId: string) => Promise<boolean>;
   browsingStorageUnit: InventoryItemDto | undefined;
   removeFromStorageMode: boolean;
   storageSelectedItemIds: string[];
+  storageRetrieval: { completed: number; total: number } | undefined;
   onBackFromStorage: () => void;
   onToggleRemoveFromStorageMode: () => void;
   onRetrieveFromStorage: () => Promise<void> | void;
+  onRetrieveAllFromStorage: () => Promise<void> | void;
   onCloseRename: () => void;
   onDraftNameChange: (value: string) => void;
   onSelectedToolChange: (value: string) => void;
@@ -137,6 +143,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
   const detailsPanel = (
     <InventoryDetailsPanel
       selectedItem={props.selectedItem}
+      steamId={props.connection?.state === "connected" ? props.connection.steamId : undefined}
       settings={props.settings}
       pending={props.pending}
       renameOpen={props.renameOpen}
@@ -150,12 +157,15 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
       canOpenContainer={props.canOpenContainer}
       canUseNameTagOn={props.canUseNameTagOn}
       containerStatusMessage={props.containerStatusMessage}
+      terminalOfferState={props.terminalOfferState}
       onOpenRenameEditor={props.onOpenRenameEditor}
       onRenameSubmit={props.onRenameSubmit}
       onRemoveName={props.onRemoveName}
       onOpenContainer={props.onOpenContainer}
+      onTerminalPurchase={props.onTerminalPurchase}
       onLoadStorageContents={props.onLoadStorageContents}
       onMarketPreview={props.onMarketPreview}
+      onScanPrices={props.onScanPrices}
       onCloseRename={props.onCloseRename}
       onDraftNameChange={props.onDraftNameChange}
       onSelectedToolChange={props.onSelectedToolChange}
@@ -166,7 +176,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
       <InventoryAlerts inventory={props.inventory} inventoryDiagnostics={props.inventoryDiagnostics} inventoryError={props.inventoryError} selectionMode={props.selectionMode} selectedItemIds={props.selectedItemIds} statusMessage={props.statusMessage} connected={props.connected} />
-      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} onSelectItem={props.onSelectItem} onRefresh={props.onRefresh} detailsPanel={detailsPanel} browsingStorageUnit={props.browsingStorageUnit} removeFromStorageMode={props.removeFromStorageMode} storageSelectedItemIds={props.storageSelectedItemIds} onBackFromStorage={props.onBackFromStorage} onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode} onRetrieveFromStorage={props.onRetrieveFromStorage} />
+      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} marketPrices={props.marketPrices} onSelectItem={props.onSelectItem} onRefresh={props.onRefresh} detailsPanel={detailsPanel} browsingStorageUnit={props.browsingStorageUnit} removeFromStorageMode={props.removeFromStorageMode} storageSelectedItemIds={props.storageSelectedItemIds} storageRetrieval={props.storageRetrieval} onBackFromStorage={props.onBackFromStorage} onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode} onRetrieveFromStorage={props.onRetrieveFromStorage} onRetrieveAllFromStorage={props.onRetrieveAllFromStorage} />
     </div>
   );
 }

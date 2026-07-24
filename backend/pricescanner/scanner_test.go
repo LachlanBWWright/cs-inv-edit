@@ -3,6 +3,7 @@ package pricescanner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -37,6 +38,18 @@ func TestScannerAggregatesAndSortsWhileRetainingProviderFailures(t *testing.T) {
 	}
 	if len(result.Errors) != 1 || result.Errors[0].Source != "offline" {
 		t.Fatalf("provider failure missing: %#v", result.Errors)
+	}
+}
+
+func TestScannerRetainsPartialQuotesAlongsideProviderFailure(t *testing.T) {
+	amount := int64(42)
+	scanner := New(stubProvider{id: "steam", quotes: []Quote{{Source: "steam", MarketName: "Item", Currency: "USD", AmountMinor: &amount, DisplayPrice: "$0.42"}}, err: fmt.Errorf("second item failed")})
+	result, err := scanner.Scan(context.Background(), Query{MarketNames: []string{"Item"}, Currency: "USD", AppID: 753})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items[0].Quotes) != 1 || len(result.Errors) != 1 {
+		t.Fatalf("result=%#v", result)
 	}
 }
 

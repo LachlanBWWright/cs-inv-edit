@@ -5,11 +5,12 @@ import { Alert } from "./ui/Alert.js";
 import { compactItemMeta, compactItemName, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
-import { TradeLockIndicator } from "./TradeLockIndicator.js";
+import { ItemMarketBadges } from "./ItemMarketBadges.js";
 import { WearRangeBar } from "./ui/WearRangeBar.js";
 import type { LoadingStage } from "./ui/LoadingProgress.js";
 import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
+import { ItemPreviewMedia } from "./ItemPreviewMedia.js";
 
 const inventoryLoadingStages: readonly LoadingStage[] = [
   { afterSeconds: 0, label: "Contacting the CS2 Game Coordinator", detail: "Requesting the authoritative owned-item SOCache for this Steam account." },
@@ -54,15 +55,18 @@ export interface InventoryGridProps {
   selectedItem: InventoryItemDto | undefined;
   selectedItemIds: string[];
   compactMode: "icons" | "concise" | "detailed";
-  onSelectItem: (item: InventoryItemDto) => void;
+  marketPrices: ReadonlyMap<string, number>;
+  onSelectItem: (item: InventoryItemDto, options?: { range: boolean }) => void;
   onRefresh: () => void;
   detailsPanel: JSX.Element;
   browsingStorageUnit: InventoryItemDto | undefined;
   removeFromStorageMode: boolean;
   storageSelectedItemIds: string[];
+  storageRetrieval: { completed: number; total: number } | undefined;
   onBackFromStorage: () => void;
   onToggleRemoveFromStorageMode: () => void;
   onRetrieveFromStorage: () => Promise<void> | void;
+  onRetrieveAllFromStorage: () => Promise<void> | void;
 }
 
 export function InventoryGrid(props: InventoryGridProps) {
@@ -122,27 +126,34 @@ export function InventoryGrid(props: InventoryGridProps) {
 
   return (
     <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
-      <PullToRefresh class="min-h-0 overflow-y-auto pr-1" onRefresh={props.onRefresh}>
+      <div class="flex min-h-0 flex-col">
         <Show when={props.browsingStorageUnit}>
-          <div class="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/95 p-2 shadow-lg backdrop-blur">
-            <button type="button" class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:border-cyan-400/50" onClick={props.onBackFromStorage}>← Back</button>
-            <button type="button" aria-pressed={props.removeFromStorageMode} class={`rounded-lg border px-3 py-2 text-sm font-medium ${props.removeFromStorageMode ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-slate-700 text-slate-200 hover:border-amber-400/50"}`} onClick={props.onToggleRemoveFromStorageMode}>Remove item mode</button>
-            <button type="button" class="rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40" disabled={!props.removeFromStorageMode || props.storageSelectedItemIds.length === 0} onClick={() => void props.onRetrieveFromStorage()}>Retrieve from unit ({props.storageSelectedItemIds.length})</button>
+          <div class="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 p-2.5">
+            <button type="button" class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-40" disabled={!!props.storageRetrieval} onClick={props.onBackFromStorage}>← Back</button>
+            <button type="button" role="switch" aria-checked={props.removeFromStorageMode} class="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-200 disabled:cursor-not-allowed disabled:opacity-40" disabled={!!props.storageRetrieval} onClick={props.onToggleRemoveFromStorageMode}>
+              <span class={`relative h-6 w-11 rounded-full transition ${props.removeFromStorageMode ? "bg-amber-400" : "bg-slate-700"}`} aria-hidden="true"><span class={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${props.removeFromStorageMode ? "translate-x-6" : "translate-x-1"}`} /></span>
+              Remove item mode
+            </button>
+            <button type="button" class="rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40" disabled={!props.removeFromStorageMode || props.storageSelectedItemIds.length === 0 || !!props.storageRetrieval} onClick={() => void props.onRetrieveFromStorage()}>Retrieve from unit ({props.storageSelectedItemIds.length})</button>
+            <button type="button" class="rounded-lg border border-cyan-500/60 px-3 py-2 text-sm font-semibold text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40" disabled={props.filteredItems.length === 0 || !!props.storageRetrieval} onClick={() => void props.onRetrieveAllFromStorage()}>Retrieve all items</button>
             <span class="ml-auto truncate text-sm text-slate-400">{itemDisplayName(props.browsingStorageUnit!)}</span>
           </div>
         </Show>
-        <Show when={props.filteredItems.length > 0} fallback={<InventoryEmptyState inventory={props.inventory} inventoryLoading={props.inventoryLoading} />}>
-          <div class="grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))" }}>
+        <PullToRefresh class="relative min-h-0 flex-1 overflow-y-auto pr-1" onRefresh={props.onRefresh}>
+          <Show when={props.filteredItems.length > 0} fallback={<InventoryEmptyState inventory={props.inventory} inventoryLoading={props.inventoryLoading} />}>
+            <div class="grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))" }}>
             <For each={props.filteredItems}>{(item) => (
-              <button type="button" class={`focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`} aria-pressed={props.removeFromStorageMode ? props.storageSelectedItemIds.includes(item.id) : props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id)} onClick={(event) => { event.stopPropagation(); props.onSelectItem(item); }}>
-                <TradeLockIndicator item={item} />
+              <button type="button" class={`focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`} aria-pressed={props.removeFromStorageMode ? props.storageSelectedItemIds.includes(item.id) : props.selectionMode === "inventory" ? props.selectedItem?.id === item.id : props.selectedItemIds.includes(item.id)} onClick={(event) => { event.stopPropagation(); props.onSelectItem(item, { range: event.shiftKey }); }}>
+                <ItemMarketBadges item={item} priceMinor={props.marketPrices.get(item.marketName ?? "")} />
                 <ItemIcon item={item} large />
                 <div class={compactLayout()}>{compactSummary(item)}</div>
               </button>
         )}</For>
-          </div>
-        </Show>
-      </PullToRefresh>
+            </div>
+          </Show>
+          <Show when={props.storageRetrieval}>{(retrieval) => <div class="absolute inset-0 z-10 flex items-start justify-center bg-slate-950/75 px-4 pt-10 backdrop-blur-sm" role="status" aria-live="polite"><div class="flex w-full max-w-sm items-center gap-4 rounded-2xl border border-cyan-400/30 bg-slate-900 p-5 shadow-2xl"><span class="h-9 w-9 shrink-0 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-300" aria-hidden="true" /><div><strong class="text-slate-50">Retrieving items</strong><p class="mt-1 text-sm text-slate-400">{retrieval().completed} of {retrieval().total} items retrieved from the storage unit.</p></div></div></div>}</Show>
+        </PullToRefresh>
+      </div>
       <div class="min-h-0 overflow-hidden">
         {props.detailsPanel}
       </div>
@@ -159,6 +170,7 @@ function InventoryEmptyState(props: { inventory: InventorySnapshot | undefined; 
 }
 
 function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
+	if (props.large) return <ItemPreviewMedia name={itemDisplayName(props.item)} imageUrl={props.item.imageUrl} variant="inventory-card" />;
   const boxClass = () => props.large ? "flex h-36 w-full items-center justify-center bg-transparent text-xl font-semibold text-slate-600" : "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
   const imageClass = () => props.large ? "h-36 w-full bg-transparent object-contain object-top" : "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain object-top";
   return (

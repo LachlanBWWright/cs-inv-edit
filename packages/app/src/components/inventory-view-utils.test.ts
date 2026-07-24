@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactItemMeta, compactItemName, isOpenableContainer, itemWeaponName, rarityBorderClass, resolveSelectedInventoryItem, sortInventoryItems, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
+import { compactItemMeta, compactItemName, isActiveTerminal, isOpenableContainer, isTerminal, itemWeaponName, rarityBorderClass, resolveSelectedInventoryItem, sortInventoryItems, sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 
 describe("rarityBorderClass", () => {
   it("maps common CS2 rarity tiers to distinct border colors", () => {
@@ -45,6 +45,11 @@ describe("rarityBorderClass", () => {
   it("falls back to a neutral border for unknown rarities", () => {
     expect(rarityBorderClass("Unknown")).toBe("rarity-outline");
   });
+
+  it("only treats the transformed item as active", () => {
+    expect(isActiveTerminal({ name: "Sealed Genesis Terminal" } as never)).toBe(false);
+    expect(isActiveTerminal({ name: "Active Genesis Terminal" } as never)).toBe(true);
+  });
 });
 
 describe("sortRelatedItemsByRarity", () => {
@@ -63,6 +68,14 @@ describe("isOpenableContainer", () => {
   it("recognizes keyless graffiti boxes by name", () => {
     const box = { id: "box", name: "Community Graffiti Box 1", kind: "tool_item" } as never;
     expect(isOpenableContainer(box)).toBe(true);
+  });
+});
+
+describe("isTerminal", () => {
+  it("recognizes sealed and uplink terminals by their live display names", () => {
+    expect(isTerminal({ name: "Sealed Genesis Terminal" } as never)).toBe(true);
+    expect(isTerminal({ name: "Dead Hand Uplink Terminal" } as never)).toBe(true);
+    expect(isTerminal({ name: "Kilowatt Case" } as never)).toBe(false);
   });
 });
 

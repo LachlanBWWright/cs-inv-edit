@@ -3,11 +3,15 @@ import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
 import { Button } from "./ui/Button.js";
 import { Input } from "./ui/Input.js";
 import { Select } from "./ui/Select.js";
-import { isOpenableContainer, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
+import { isActiveTerminal, isOpenableContainer, itemDisplayName, itemInitials, itemKindLabel, itemSubtitle, rarityBorderClass } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { formatFloat } from "./item-instance-utils.js";
+import { tradeStateDescription } from "./ItemMarketBadges.js";
 import { RelatedItemPreview, type RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
+import { ItemPreviewMedia } from "./ItemPreviewMedia.js";
+import type { ReturnEstimate } from "./roi-utils.js";
+import { ReturnEstimateCard } from "./ReturnEstimateCard.js";
 
 function steamMarketURL(marketName: string) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
@@ -36,14 +40,11 @@ export function ItemHeader(props: ItemHeaderProps) {
 }
 
 export function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
+	if (props.large) return <ItemPreviewMedia name={itemDisplayName(props.item)} imageUrl={props.item.imageUrl} variant="details" />;
   const boxClass = () =>
-    props.large
-      ? "mt-3 flex h-32 w-full items-center justify-center rounded bg-slate-950 text-xl font-semibold text-slate-600"
-      : "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
+    "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
   const imageClass = () =>
-    props.large
-      ? "mt-3 h-32 w-full rounded bg-slate-950 object-contain"
-      : "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain";
+    "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain";
 
   return (
     <Show when={props.item.imageUrl} fallback={<div class={boxClass()}>{itemInitials(props.item)}</div>}>
@@ -154,6 +155,9 @@ export function PropertyGrid(props: PropertyGridProps) {
           </PropertyField>
         </Show>
         <MarketField selected={props.selected} selectedMarketPreview={props.selectedMarketPreview} selectedMarketLoading={props.selectedMarketLoading} />
+        <PropertyField label="Trade state">
+          <p class="mt-1 font-medium text-slate-100">{tradeStateDescription(props.selected)}</p>
+        </PropertyField>
         <Show when={props.selected.marketSellListings}>
           <PropertyField label="Listings">
             <p class="mt-1 font-medium text-slate-100">{props.selected.marketSellListings}</p>
@@ -180,6 +184,8 @@ export function PropertyGrid(props: PropertyGridProps) {
 export interface TradeUpOutcomesProps {
   selected: InventoryItemDto;
   onPreview?: (item: InventoryItemDto) => void;
+  returnEstimate?: ReturnEstimate;
+  returnEstimateLoading?: boolean;
 }
 
 function TradeUpOutcomeCard(props: { outcome: RelatedItemDto }) {
@@ -213,6 +219,7 @@ export function TradeUpOutcomes(props: TradeUpOutcomesProps) {
           <button type="button" class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500" onClick={() => props.onPreview?.(props.selected)}>Preview trade-up animation</button>
         </div>
         <p class="mt-1 text-xs text-slate-400">Possible results from {tradeUpInputCount(props.selected)} identical copies. Wear uses normalized input float mapped into each output finish’s range. {props.selected.isSouvenir ? "Souvenir attributes are removed; results are normal items." : ""}</p>
+        <div class="mt-3"><ReturnEstimateCard estimate={props.returnEstimate} loading={props.returnEstimateLoading} costLabel="Identical-copy inputs" note="Expected value uses equal odds for this collection’s displayed outcomes and current market prices; Steam fees are excluded." /></div>
         <div class="mt-3 grid gap-3 sm:grid-cols-2">
           <For each={props.selected.tradeUpItems}>{(outcome) => <TradeUpOutcomeCard outcome={outcome} />}</For>
         </div>
@@ -230,7 +237,7 @@ export interface ActionBarProps {
   compatibleContainerKeys: InventoryItemDto[];
   selectedContainerKeyId: string;
   containerStatusMessage: string;
-  onOpenContainer: () => Promise<void> | void;
+  onOpenContainer: (terminalSelection?: { pointsRemaining?: number; volatileLimit?: number }) => Promise<void> | void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRemoveName: () => Promise<void> | void;
   onShowContents: () => void;
@@ -258,14 +265,11 @@ function ContainerKeyControl(props: Pick<ActionBarProps, "selected" | "compatibl
 }
 
 export function ActionBar(props: ActionBarProps) {
-  const showOpenContainer = () => props.canOpenContainer || isOpenableContainer(props.selected);
+  const showOpenContainer = () => !isActiveTerminal(props.selected) && (props.canOpenContainer || isOpenableContainer(props.selected));
   const requiresKeySelection = () => (props.selected.requiredKeyDefIndexes?.length ?? 0) > 0 && !props.compatibleContainerKey;
 
   return (
     <div class="flex flex-wrap gap-2">
-      <Show when={props.selected.inspectUrl}>
-        <a class="inline-flex h-10 items-center justify-center rounded-xl bg-cyan-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400" href={props.selected.inspectUrl} target="_blank" rel="noreferrer">Preview in game ↗</a>
-      </Show>
       <Show when={props.selected.containerItems?.length}>
         <Button variant="secondary" onClick={() => props.onShowContents()}>View possible contents ({props.selected.containerItems?.length})</Button>
       </Show>

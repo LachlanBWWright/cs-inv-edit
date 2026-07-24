@@ -58,9 +58,27 @@ type Metadata struct {
 	TradableAfter         string
 	PaintWearMin          *float64
 	PaintWearMax          *float64
+	DecodedAttributes     []DecodedEconAttribute
+}
+
+type econAttributeDefinition struct {
+	Name              string
+	AttributeClass    string
+	AttributeType     string
+	DescriptionFormat string
+	StoredAsInteger   bool
+}
+
+type DecodedEconAttribute struct {
+	DefIndex uint32
+	Name     string
+	Value    string
+	RawValue uint32
 }
 
 type RelatedItem struct {
+	DefIndex    uint32
+	PaintKit    uint32
 	Name        string
 	MarketName  string
 	ListingName string
@@ -131,6 +149,7 @@ type Schema struct {
 	revolvingLootLists map[string]string
 	imageURLs          map[string]string
 	armoryOffers       []ArmoryOffer
+	attributes         map[uint32]econAttributeDefinition
 }
 
 type ArmoryOffer struct {
@@ -144,8 +163,9 @@ type ArmoryOffer struct {
 }
 
 type collectionDefinition struct {
-	Name  string
-	Items []string
+	Name     string
+	Items    []string
+	Rarities map[string]string
 }
 
 type Collection struct {
@@ -159,7 +179,7 @@ func (s *Schema) Collections() []Collection {
 		if definition.Name == "" || len(definition.Items) == 0 {
 			continue
 		}
-		collections = append(collections, Collection{Name: definition.Name, Items: s.relatedItems(definition.Items)})
+		collections = append(collections, Collection{Name: definition.Name, Items: s.relatedItemsWithRarities(definition.Items, definition.Rarities)})
 	}
 	sort.Slice(collections, func(i, j int) bool { return collections[i].Name < collections[j].Name })
 	return collections
@@ -270,6 +290,7 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		lootLists:          make(map[string][]string),
 		revolvingLootLists: make(map[string]string),
 		imageURLs:          imageURLs,
+		attributes:         make(map[uint32]econAttributeDefinition),
 	}
 	schema.parseItems(itemsRoot)
 	schema.armoryOffers = parseArmoryOffers(itemsText, schema)

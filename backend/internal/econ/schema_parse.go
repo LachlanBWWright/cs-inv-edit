@@ -9,6 +9,17 @@ import (
 
 func (s *Schema) parseItems(root kvObject) {
 	itemsGame := root.object("items_game")
+	if s.attributes == nil {
+		s.attributes = make(map[uint32]econAttributeDefinition)
+	}
+	for key, node := range itemsGame.object("attributes") {
+		index, err := strconv.ParseUint(key, 10, 32)
+		if err != nil {
+			continue
+		}
+		attribute := node.objectValue()
+		s.attributes[uint32(index)] = econAttributeDefinition{Name: attribute.string("name"), AttributeClass: attribute.string("attribute_class"), AttributeType: attribute.string("attribute_type"), DescriptionFormat: attribute.string("description_format"), StoredAsInteger: schemaBool(attribute.string("stored_as_integer"))}
+	}
 	prefabs := itemsGame.object("prefabs")
 	for key, node := range itemsGame.object("items") {
 		defIndex, err := strconv.ParseUint(key, 10, 32)
@@ -151,6 +162,42 @@ func (s *Schema) parseCollections(itemsGame kvObject) {
 			s.revolvingLootLists[series] = node.value
 		}
 	}
+	s.applyCollectionLootListRarities()
+}
+
+// A paint kit can appear in multiple collections at different grades. Valve's
+// paint_kits_rarity is therefore not sufficient for a case collection preview;
+// the case's tiered client_loot_lists are authoritative for that context.
+func (s *Schema) applyCollectionLootListRarities() {
+	for setKey, definition := range s.collections {
+		members := make(map[string]bool, len(definition.Items))
+		for _, itemKey := range definition.Items {
+			members[itemKey] = true
+		}
+		rarities := make(map[string]string)
+		ambiguous := make(map[string]bool)
+		for parent, entries := range s.lootLists {
+			for _, child := range entries {
+				rarity := nestedLootListRarity(parent, child)
+				if rarity == "" {
+					continue
+				}
+				for _, itemKey := range s.lootLists[child] {
+					if !members[itemKey] || ambiguous[itemKey] {
+						continue
+					}
+					if existing := rarities[itemKey]; existing != "" && existing != rarity {
+						delete(rarities, itemKey)
+						ambiguous[itemKey] = true
+						continue
+					}
+					rarities[itemKey] = rarity
+				}
+			}
+		}
+		definition.Rarities = rarities
+		s.collections[setKey] = definition
+	}
 }
 
 func (s *Schema) armoryLootListName(itemName string) string {
@@ -194,7 +241,8 @@ func (s *Schema) collectionNameFor(itemName string, paintKit uint32) string {
 func (s *Schema) collectionItemsFor(itemName string, paintKit uint32) []RelatedItem {
 	key := schemaItemKey(itemName, paintKit, s.paintKits)
 	setKey := s.collectionByItem[key]
-	return s.relatedItems(s.collections[setKey].Items)
+	definition := s.collections[setKey]
+	return s.relatedItemsWithRarities(definition.Items, definition.Rarities)
 }
 
 func (s *Schema) tradeUpItemsFor(itemName string, paintKit uint32, rarity string) []RelatedItem {
@@ -265,6 +313,10 @@ func (s *Schema) lootListContains(name string, target string, seen map[string]bo
 }
 
 func (s *Schema) relatedItems(keys []string) []RelatedItem {
+	return s.relatedItemsWithRarities(keys, nil)
+}
+
+func (s *Schema) relatedItemsWithRarities(keys []string, rarities map[string]string) []RelatedItem {
 	items := make([]RelatedItem, 0, len(keys))
 	for _, key := range keys {
 		paintName, itemName := splitSchemaItemKey(key)
@@ -273,9 +325,11 @@ func (s *Schema) relatedItems(keys []string) []RelatedItem {
 			continue
 		}
 		var item itemDefinition
-		for _, candidate := range s.items {
+		var itemDefIndex uint32
+		for defIndex, candidate := range s.items {
 			if candidate.Name == itemName {
 				item = candidate
+				itemDefIndex = defIndex
 				break
 			}
 		}
@@ -283,9 +337,10 @@ func (s *Schema) relatedItems(keys []string) []RelatedItem {
 			continue
 		}
 		baseName := firstNonEmpty(s.localize(item.ItemName), item.Name)
-		related := RelatedItem{Name: baseName, MarketName: baseName, Kind: itemKind(item), Rarity: item.Rarity, ImageURL: s.itemImageURL(item, 0, nil)}
+		related := RelatedItem{DefIndex: itemDefIndex, Name: baseName, MarketName: baseName, Kind: itemKind(item), Rarity: item.Rarity, ImageURL: s.itemImageURL(item, 0, nil)}
 		for paintKit, paint := range s.paintKits {
 			if paint.Name == paintName {
+				related.PaintKit = paintKit
 				paintDisplay := firstNonEmpty(s.localize(paint.Description), paint.Name)
 				related.MarketName = baseName + " | " + paintDisplay
 				related.Rarity = firstNonEmpty(paint.Rarity, related.Rarity)
@@ -294,6 +349,9 @@ func (s *Schema) relatedItems(keys []string) []RelatedItem {
 				related.ImageURL = firstNonEmpty(s.itemImageURL(item, paintKit, nil), related.ImageURL)
 				break
 			}
+		}
+		if rarity := rarities[key]; rarity != "" {
+			related.Rarity = rarity
 		}
 		items = append(items, related)
 	}

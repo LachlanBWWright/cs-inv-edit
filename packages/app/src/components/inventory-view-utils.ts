@@ -48,6 +48,15 @@ export function isOpenableContainer(item: InventoryItemDto | undefined) {
   return /(?:container|capsule|case|graffiti box)/i.test(`${item.name} ${item.marketName ?? ""}`);
 }
 
+export function isTerminal(item: InventoryItemDto | undefined) {
+  if (!item) return false;
+  return /\bterminal\b/i.test(`${item.name} ${item.marketName ?? ""}`);
+}
+
+export function isActiveTerminal(item: InventoryItemDto | undefined) {
+  return isTerminal(item) && /\bactive\b/i.test(`${item?.name ?? ""} ${item?.marketName ?? ""}`);
+}
+
 export function itemWeaponName(item: InventoryItemDto) {
   if (item.kind !== "weapon_skin") return undefined;
   const displayName = item.marketName || item.name;

@@ -147,6 +147,21 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
+	// The app inventory may be older than the GC inventory. In particular, a
+	// Community Market purchase can already exist in the GC cache while still
+	// being absent from the last app snapshot. Include every item currently
+	// owned by the GC in the before-set so it cannot be misidentified as this
+	// Armory redemption's reward.
+	baselineCtx, cancelBaseline := context.WithTimeout(accountCtx, 15*time.Second)
+	baselineItems, baselineErr := s.gcClient.RequestInventory(baselineCtx)
+	cancelBaseline()
+	if baselineErr != nil {
+		receipt.State = "failed"
+		receipt.Message = fmt.Sprintf("Armory purchase was not sent because the current GC inventory baseline could not be captured: %v", baselineErr)
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
+	beforeInventory = includeGCInventoryIDs(beforeInventory, baselineItems)
 	var err error
 	for index := uint32(0); index < quantity; index++ {
 		prePurchaseBalance := balance - index*cost
@@ -196,6 +211,22 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 	}
 	s.addEvent(receipt, receipt.State, receipt.Message)
 	return receipt
+}
+
+func includeGCInventoryIDs(snapshot domain.InventorySnapshot, items []transport.GCInventoryItem) domain.InventorySnapshot {
+	known := make(map[string]struct{}, len(snapshot.Items)+len(items))
+	for _, item := range snapshot.Items {
+		known[item.ID] = struct{}{}
+	}
+	for _, item := range items {
+		id := fmt.Sprintf("%d", item.ID)
+		if _, exists := known[id]; exists {
+			continue
+		}
+		snapshot.Items = append(snapshot.Items, domain.InventoryItem{ID: id})
+		known[id] = struct{}{}
+	}
+	return snapshot
 }
 
 func (s *Service) applyConfirmedArmoryRedemptionLocked(cost uint32) {

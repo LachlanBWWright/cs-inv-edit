@@ -106,6 +106,10 @@ func sameInventoryDescription(a InventoryDescription, b InventoryDescription) bo
 }
 
 func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []string) (map[string]MarketDescription, error) {
+	return p.LoadMarketDescriptionsForApp(ctx, 730, marketNames)
+}
+
+func (p *Provider) LoadMarketDescriptionsForApp(ctx context.Context, appID uint32, marketNames []string) (map[string]MarketDescription, error) {
 	if len(marketNames) == 0 {
 		return nil, nil
 	}
@@ -122,8 +126,9 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 			continue
 		}
 		seen[marketName] = true
+		cacheKey := marketDescriptionCacheKey(appID, marketName)
 		p.previewMu.Lock()
-		cached, ok := p.previewCache[marketName]
+		cached, ok := p.previewCache[cacheKey]
 		p.previewMu.Unlock()
 		if ok {
 			addMarketDescription(out, marketName, cached)
@@ -144,7 +149,7 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 				return
 			}
 			defer func() { <-workers }()
-			desc, err := p.fetchMarketDescription(ctx, name, false)
+			desc, err := p.fetchMarketDescription(ctx, appID, name, false)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -156,7 +161,7 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 			if p.previewCache == nil {
 				p.previewCache = make(map[string]MarketDescription)
 			}
-			p.previewCache[name] = desc
+			p.previewCache[marketDescriptionCacheKey(appID, name)] = desc
 			p.previewMu.Unlock()
 		}(marketName)
 	}
@@ -168,6 +173,10 @@ func (p *Provider) LoadMarketDescriptions(ctx context.Context, marketNames []str
 		return out, fmt.Errorf("fetch Steam market descriptions: %s", strings.Join(errs, "; "))
 	}
 	return out, nil
+}
+
+func marketDescriptionCacheKey(appID uint32, marketName string) string {
+	return fmt.Sprintf("%d:%s", appID, marketName)
 }
 
 func addMarketDescription(out map[string]MarketDescription, requestedName string, desc MarketDescription) {
@@ -195,7 +204,7 @@ func (p *Provider) LoadPreviewDescriptions(ctx context.Context, marketNames []st
 		}
 		seen[marketName] = true
 		p.previewMu.Lock()
-		cached, ok := p.previewCache[marketName]
+		cached, ok := p.previewCache[marketDescriptionCacheKey(730, marketName)]
 		p.previewMu.Unlock()
 		if ok {
 			out[marketName] = cached
@@ -219,7 +228,7 @@ func (p *Provider) LoadPreviewDescriptions(ctx context.Context, marketNames []st
 				return
 			}
 			defer func() { <-workers }()
-			desc, err := p.fetchMarketDescription(ctx, name, true)
+			desc, err := p.fetchMarketDescription(ctx, 730, name, true)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -231,7 +240,7 @@ func (p *Provider) LoadPreviewDescriptions(ctx context.Context, marketNames []st
 			if p.previewCache == nil {
 				p.previewCache = make(map[string]MarketDescription)
 			}
-			p.previewCache[name] = desc
+			p.previewCache[marketDescriptionCacheKey(730, name)] = desc
 			p.previewMu.Unlock()
 		}(marketName)
 	}
@@ -242,10 +251,10 @@ func (p *Provider) LoadPreviewDescriptions(ctx context.Context, marketNames []st
 	return out, nil
 }
 
-func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string, allowExteriorVariant bool) (MarketDescription, error) {
+func (p *Provider) fetchMarketDescription(ctx context.Context, appID uint32, marketName string, allowExteriorVariant bool) (MarketDescription, error) {
 	var errs []string
 	for _, query := range marketSearchQueries(marketName) {
-		desc, err := p.fetchMarketDescriptionQuery(ctx, marketName, query, allowExteriorVariant)
+		desc, err := p.fetchMarketDescriptionQuery(ctx, appID, marketName, query, allowExteriorVariant)
 		if err == nil {
 			return desc, nil
 		}
@@ -254,7 +263,7 @@ func (p *Provider) fetchMarketDescription(ctx context.Context, marketName string
 	return MarketDescription{}, errors.New(strings.Join(errs, "; "))
 }
 
-func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName string, query string, allowExteriorVariant bool) (MarketDescription, error) {
+func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, appID uint32, marketName string, query string, allowExteriorVariant bool) (MarketDescription, error) {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -265,7 +274,7 @@ func (p *Provider) fetchMarketDescriptionQuery(ctx context.Context, marketName s
 				return MarketDescription{}, ctx.Err()
 			}
 		}
-		description, err := p.fetchMarketDescriptionQueryOnce(ctx, marketName, query, allowExteriorVariant)
+		description, err := p.fetchMarketDescriptionQueryOnce(ctx, appID, marketName, query, allowExteriorVariant)
 		if err == nil {
 			return description, nil
 		}
@@ -285,9 +294,9 @@ func isTransientSteamMarketError(err error) bool {
 	return strings.Contains(message, "http 429") || strings.Contains(message, "http 5") || strings.Contains(message, "timeout") || strings.Contains(message, "connection reset") || strings.Contains(message, "eof")
 }
 
-func (p *Provider) fetchMarketDescriptionQueryOnce(ctx context.Context, marketName string, query string, allowExteriorVariant bool) (MarketDescription, error) {
+func (p *Provider) fetchMarketDescriptionQueryOnce(ctx context.Context, appID uint32, marketName string, query string, allowExteriorVariant bool) (MarketDescription, error) {
 	values := url.Values{}
-	values.Set("appid", "730")
+	values.Set("appid", fmt.Sprintf("%d", appID))
 	values.Set("norender", "1")
 	values.Set("count", "10")
 	values.Set("query", query)

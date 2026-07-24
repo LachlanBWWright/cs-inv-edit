@@ -16,7 +16,7 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
 	"4003" { "name" "graffiti_capsule_test" "item_name" "#GraffitiCapsule" "item_class" "supply_crate" "attributes" { "set supply crate series" { "value" "502" } } }
   }
   "paint_kits" { "101" { "name" "cu_test" "description_tag" "#TestFinish" } }
-  "paint_kits_rarity" { "101" "mythical" }
+	"paint_kits_rarity" { "101" "uncommon" }
 	"sticker_kits"
 	{
 	  "201" { "name" "sticker_test" "item_name" "#StickerTest" "item_rarity" "rare" }
@@ -25,8 +25,8 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
   "item_sets" { "set_test" { "name" "#TestCollection" "items" { "[cu_test]weapon_ak47" "1" } } }
   "client_loot_lists"
   {
-    "crate_test_list" { "nested_test_list" "1" }
-    "nested_test_list" { "[cu_test]weapon_ak47" "1" }
+    "crate_test_list" { "crate_test_list_mythical" "1" }
+    "crate_test_list_mythical" { "[cu_test]weapon_ak47" "1" }
 	"sticker_capsule_list" { "[sticker_test]sticker" "1" }
 	"graffiti_capsule_list" { "[spray_test]spray" "1" }
   }
@@ -49,12 +49,19 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
 	if skin.Collection != "The Test Collection" || len(skin.CollectionItems) != 1 || skin.CollectionItems[0].MarketName != "AK-47 | Test Finish" {
 		t.Fatalf("skin collection metadata = %#v", skin)
 	}
-	if skin.Rarity != "mythical" || skin.CollectionItems[0].Rarity != "mythical" {
-		t.Fatalf("skin rarity = %q, collection item rarity = %q; want paint-kit rarity mythical", skin.Rarity, skin.CollectionItems[0].Rarity)
+	if skin.Rarity != "uncommon" || skin.CollectionItems[0].Rarity != "mythical" {
+		t.Fatalf("skin rarity = %q, collection item rarity = %q; want global paint rarity uncommon and case tier mythical", skin.Rarity, skin.CollectionItems[0].Rarity)
 	}
 	container := schema.Metadata(4001, 0, nil)
 	if len(container.ContainerItems) != 1 || container.ContainerItems[0].MarketName != "AK-47 | Test Finish" {
 		t.Fatalf("container contents = %#v", container.ContainerItems)
+	}
+	if container.ContainerItems[0].Rarity != "mythical" {
+		t.Fatalf("container rarity = %q; want loot-list tier mythical", container.ContainerItems[0].Rarity)
+	}
+	collections := schema.Collections()
+	if len(collections) != 1 || len(collections[0].Items) != 1 || collections[0].Items[0].Rarity != "mythical" {
+		t.Fatalf("collection contents = %#v; want loot-list tier mythical", collections)
 	}
 	stickerCapsule := schema.Metadata(4002, 0, nil)
 	if len(stickerCapsule.ContainerItems) != 1 || stickerCapsule.ContainerItems[0].MarketName != "Sticker | Test Sticker" {

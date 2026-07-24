@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -41,5 +42,52 @@ func TestLoadMapsPendingOffersAndHistory(t *testing.T) {
 	}
 	if snapshot.Received[0].PartnerName != "Trade Partner" || snapshot.Received[0].PartnerAvatarURL == "" || snapshot.History[0].PartnerName != "History Partner" {
 		t.Fatalf("partner profiles were not resolved: %#v %#v", snapshot.Received[0], snapshot.History[0])
+	}
+}
+
+func TestCreateCounterofferUsesAuthenticatedCommunityContract(t *testing.T) {
+	client := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPost || req.URL.Path != "/tradeoffer/new/send" {
+			t.Fatalf("request=%s %s", req.Method, req.URL.Path)
+		}
+		if cookie, err := req.Cookie("steamLoginSecure"); err != nil || cookie.Value == "" {
+			t.Fatalf("login cookie=%#v err=%v", cookie, err)
+		}
+		body, _ := io.ReadAll(req.Body)
+		values, err := url.ParseQuery(string(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		trade := values.Get("json_tradeoffer")
+		if !strings.Contains(trade, `"tradeofferid_countered":"42"`) || !strings.Contains(trade, `"assetid":"7"`) {
+			t.Fatalf("trade payload=%s", trade)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"tradeofferid":"99","needs_mobile_confirmation":true}`)), Header: make(http.Header)}, nil
+	})
+	provider := NewProvider(client)
+	result, err := provider.Create(context.Background(), "76561198000000000", "secret", CreateRequest{PartnerSteamID: "76561198000000001", CounteredTradeOfferID: "42", ItemsToGive: []MutationAsset{{AppID: 730, ContextID: "2", AssetID: "7", Amount: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TradeOfferID != "99" || !result.NeedsMobileConfirmation {
+		t.Fatalf("result=%#v", result)
+	}
+}
+
+func TestAcceptUsesOfferSpecificEndpoint(t *testing.T) {
+	client := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/tradeoffer/42/accept" {
+			t.Fatalf("path=%s", req.URL.Path)
+		}
+		body, _ := io.ReadAll(req.Body)
+		values, _ := url.ParseQuery(string(body))
+		if values.Get("tradeofferid") != "42" || values.Get("partner") != "76561198000000001" {
+			t.Fatalf("form=%v", values)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"tradeid":"100"}`)), Header: make(http.Header)}, nil
+	})
+	result, err := NewProvider(client).Accept(context.Background(), "76561198000000000", "secret", "42", "76561198000000001")
+	if err != nil || result.Status != "accepted" {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }

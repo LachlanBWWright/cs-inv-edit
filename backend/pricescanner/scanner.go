@@ -45,11 +45,13 @@ type ProviderError struct {
 }
 
 type Result struct {
-	Currency  string          `json:"currency"`
-	Items     []ItemResult    `json:"items"`
-	Listings  []Quote         `json:"listings"`
-	Errors    []ProviderError `json:"errors"`
-	ScannedAt string          `json:"scannedAt"`
+	Currency   string          `json:"currency"`
+	Items      []ItemResult    `json:"items"`
+	Listings   []Quote         `json:"listings"`
+	Errors     []ProviderError `json:"errors"`
+	ScannedAt  string          `json:"scannedAt"`
+	ServedAt   string          `json:"servedAt,omitempty"`
+	CacheState string          `json:"cacheState,omitempty"`
 }
 
 type Provider interface {
@@ -116,7 +118,6 @@ func (s *Scanner) Scan(ctx context.Context, query Query) (Result, error) {
 	for response := range responses {
 		if response.err != nil {
 			result.Errors = append(result.Errors, ProviderError{Source: response.id, Message: response.err.Error()})
-			continue
 		}
 		for _, quote := range response.quotes {
 			quote = applyPriceMultiplier(quote, query.PriceMultipliers)

@@ -1,8 +1,9 @@
 import { createEffect, createResource, createSignal, onCleanup } from "solid-js";
 import { errAsync, fromThrowable } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
-import { steamAccountProfilesSchema, type ArmorySnapshot, type ConnectionStatus, type RelatedItemDto, type SettingsData, type SteamAccountProfile, type SteamTradesSnapshot, type StoreSnapshot } from "@cs-inv-edit/contracts";
-import type { AppBackendClient } from "./lib/backend.js";
+import { steamAccountProfilesSchema, type ArmorySnapshot, type ConnectionStatus, type RelatedItemDto, type SettingsData, type SteamAccountProfile, type SteamAccountTradesCollection, type SteamTradesSnapshot, type StoreSnapshot } from "@cs-inv-edit/contracts";
+import type { LocalAgentClient } from "./lib/backend.js";
+import type { SharedDataClient } from "./lib/shared-data.js";
 import { appErrorMessage, fromAppPromise } from "./lib/result.js";
 import type { AppError } from "./lib/result-http.js";
 import { enabledModeOrDefault, isAppMode, type AppMode, type AppScreen } from "./view.js";
@@ -12,7 +13,8 @@ import { createToastController } from "./features/notifications/controller.js";
 import { createOperationsController } from "./features/operations/controller.js";
 
 export interface AppProps {
-  backend: AppBackendClient;
+  backend: LocalAgentClient;
+  data: SharedDataClient;
   platform: "desktop" | "web";
 }
 
@@ -99,6 +101,7 @@ export function createAppController(props: AppProps) {
   const [armory, { refetch: refetchArmory, mutate: setArmory }] = createResource(() => resourceValue(props.backend.armory()));
   const [store, { refetch: refetchStore, mutate: setStore }] = createResource(() => resourceValue(props.backend.store()));
   const [trades, { mutate: setTrades }] = createResource(() => resourceValue(props.backend.trades()));
+  const [tradeAccounts, { mutate: setTradeAccounts }] = createResource(() => resourceValue(props.backend.tradeAccounts()));
   const [receipts, { refetch: refetchOperations }] = createResource(() => resourceValue(props.backend.operations()));
   const [events, { refetch: refetchEvents }] = createResource(() => resourceValue(props.backend.events()));
   const [connection, { refetch: refetchConnection, mutate: setConnection }] = createResource(() => resourceValue(props.backend.steamStatus?.() ?? errAsync({ message: "Steam status unavailable" })));
@@ -210,7 +213,8 @@ export function createAppController(props: AppProps) {
   createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; const enabled = settings()?.featureFlags.enableStoreRead === true; if (shell.view() !== "store" || !steamId || !enabled || store()?.status === "ready") return; const key = `${steamId}\u0000store\u0000${enabled}`; if (automaticStoreRefresh === key) return; automaticStoreRefresh = key; void refreshStoreState(); });
   let automaticTradeRefresh = "";
   const refreshTradesState = async () => { setTrades((current): SteamTradesSnapshot => ({ status: "loading", received: current?.received ?? [], sent: current?.sent ?? [], history: current?.history ?? [], refreshedAt: current?.refreshedAt ?? new Date().toISOString(), message: "Loading Steam trades" })); await props.backend.refreshTrades().match((snapshot) => setTrades(snapshot), (error) => setTrades((current): SteamTradesSnapshot => ({ status: "error", received: current?.received ?? [], sent: current?.sent ?? [], history: current?.history ?? [], refreshedAt: new Date().toISOString(), message: appErrorMessage(error, "Unable to load trades") }))); };
-  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; if (shell.view() !== "trades" || !steamId) return; const key = `${steamId}\u0000trades`; if (automaticTradeRefresh === key) return; automaticTradeRefresh = key; void refreshTradesState(); });
+  const refreshTradeAccountsState = async (steamId?: string) => { await props.backend.refreshTradeAccounts(steamId).match((collection) => setTradeAccounts(collection), (_error) => setTradeAccounts((current): SteamAccountTradesCollection => ({ accounts: current?.accounts ?? [], refreshedAt: new Date().toISOString() }))); };
+  createEffect(() => { const steamId = connection()?.state === "connected" ? connection()?.steamId : undefined; if (shell.view() !== "trades" || !steamId) return; const key = `${steamId}\u0000trades`; if (automaticTradeRefresh === key) return; automaticTradeRefresh = key; void refreshTradeAccountsState(); });
 
   createEffect(() => {
     const snapshot = armory();
@@ -323,18 +327,12 @@ export function createAppController(props: AppProps) {
   };
 
   const addAccount = async () => {
-    if (connection()?.state === "connected" && props.backend.disconnectSteam) {
-      await disconnectAndRefresh();
-    }
     shell.setSelectedItemId(undefined);
     shell.setAccountUsername("");
     shell.setView("account");
   };
 
   const signInAccount = async (account: SteamAccountProfile) => {
-    if (connection()?.state === "connected" && props.backend.disconnectSteam) {
-      await disconnectAndRefresh();
-    }
     shell.setSelectedItemId(undefined);
     shell.setAccountUsername(account.accountName);
     shell.setView("account");
@@ -383,6 +381,7 @@ export function createAppController(props: AppProps) {
     armory,
     store,
     trades,
+    tradeAccounts,
     receipts,
     events,
     connection,
@@ -393,6 +392,7 @@ export function createAppController(props: AppProps) {
     refreshArmoryState,
     refreshStoreState,
     refreshTradesState,
+    refreshTradeAccountsState,
     requestMarketPreview,
     saveSettings,
     addAccount,

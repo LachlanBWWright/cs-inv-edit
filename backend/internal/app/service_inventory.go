@@ -127,6 +127,7 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 	if err != nil {
 		return domain.InventorySnapshot{}, fmt.Errorf("CS2 item metadata refresh failed: %w", err)
 	}
+	activeTerminalIDs := activeTerminalItemIDs(metadata, gcItems)
 	report("Matching owned items to names, images, collections, and float ranges")
 	type pendingItem struct {
 		item               transport.GCInventoryItem
@@ -135,16 +136,20 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 		inspectURL         string
 	}
 	pendingItems := make([]pendingItem, 0, len(gcItems))
+	activeTerminalIDSet := make(map[uint64]bool, len(activeTerminalIDs))
+	for _, terminalID := range activeTerminalIDs {
+		activeTerminalIDSet[terminalID] = true
+	}
 	descriptionMatches := 0
 	for _, item := range gcItems {
 		if item.DefIndex == 0 {
 			continue
 		}
+		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
 		casketID := gcItemCasketID(item)
-		if item.Inventory == 0 && (casketID == 0 || (!showStorageUnitItems && !requestedStorageUnits[casketID])) {
+		if item.Inventory == 0 && !isTerminalMetadata(itemMetadata) && !activeTerminalIDSet[casketID] && (casketID == 0 || (!showStorageUnitItems && !requestedStorageUnits[casketID])) {
 			continue
 		}
-		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
 		descriptionMatched := false
 		inspectURL := ""
 		if description, ok := descriptionForGCItem(descriptions, item, itemMetadata); ok {
@@ -163,6 +168,8 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 	marketDescriptions := make(map[string]econ.MarketDescription)
 	var marketErr error
 	items := make([]domain.InventoryItem, 0, len(pendingItems))
+	terminalOffers := make(map[uint64][]domain.TerminalOffer)
+	terminalOfferDiagnostics := make(map[uint64][]string)
 	for _, pending := range pendingItems {
 		item := pending.item
 		defIndex := item.DefIndex
@@ -205,6 +212,41 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			Marketable:    itemMetadata.Marketable,
 			TradableAfter: itemMetadata.TradableAfter,
 		}
+		if terminalID := gcItemCasketID(item); activeTerminalIDSet[terminalID] {
+			terminalOffers[terminalID] = append(terminalOffers[terminalID], domain.TerminalOffer{
+				FauxItemID:    strconv.FormatUint(item.ID, 10),
+				PurchasePrice: item.Attributes[316],
+				Item: domain.RelatedItem{
+					Name:       inventoryItem.Name,
+					MarketName: inventoryItem.MarketName,
+					Kind:       inventoryItem.Kind,
+					Rarity:     inventoryItem.Rarity,
+					ImageURL:   inventoryItem.ImageURL,
+					PaintWear:  inventoryItem.PaintWear,
+					WearMin:    inventoryItem.PaintWearMin,
+					WearMax:    inventoryItem.PaintWearMax,
+				},
+			})
+			terminalOfferDiagnostics[terminalID] = append(terminalOfferDiagnostics[terminalID], terminalOfferDiagnostic(item, itemMetadata))
+			continue
+		}
+		if isActiveTerminalGCItem(item, itemMetadata) {
+			inventoryItem.Name = activeTerminalName(inventoryItem.Name)
+			inventoryItem.MarketName = activeTerminalName(inventoryItem.MarketName)
+			inventoryItem.Marketable = boolPointer(false)
+			inventoryItem.Tradable = boolPointer(false)
+			if pointsRemaining, present := item.Attributes[169]; present {
+				inventoryItem.TerminalPointsRemaining = &pointsRemaining
+			}
+			for _, offer := range item.VolatileOffers {
+				related, _ := relatedItemForFauxID(offer.FauxItemID, inventoryItem.ContainerItems)
+				inventoryItem.TerminalOffers = append(inventoryItem.TerminalOffers, domain.TerminalOffer{
+					FauxItemID:     strconv.FormatUint(offer.FauxItemID, 10),
+					GenerationTime: offer.GenerationTime,
+					Item:           related,
+				})
+			}
+		}
 		if count := item.Attributes[270]; count > 0 {
 			inventoryItem.StorageCount = &count
 		}
@@ -225,10 +267,38 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			inventoryItem.HasCustomName = true
 		}
 		inventoryItem.Diagnostics = inventoryItemDiagnostics(item, itemMetadata, pending.descriptionMatched, marketDescriptionUsed, descriptionErr, marketErr)
+		if isActiveTerminalGCItem(item, itemMetadata) {
+			inventoryItem.Diagnostics = append(inventoryItem.Diagnostics, activeTerminalStateDiagnostics(item)...)
+			for _, offer := range item.VolatileOffers {
+				related, decoded := relatedItemForFauxID(offer.FauxItemID, inventoryItem.ContainerItems)
+				inventoryItem.Diagnostics = append(inventoryItem.Diagnostics, fmt.Sprintf(
+					"Terminal volatile-offer SO: faux_itemid=%d (0x%016x), generation_time=%d, decoded_schema_item=%t, decoded_defindex=%d, decoded_paint_kit=%d",
+					offer.FauxItemID, offer.FauxItemID, offer.GenerationTime, decoded, related.Defindex, related.PaintKit,
+				))
+			}
+		}
 		if includeDebug {
 			inventoryItem.Debug = debugForGCItem(item, pending.descriptionMatched, marketDescriptionUsed)
 		}
 		items = append(items, inventoryItem)
+	}
+	for index := range items {
+		if terminalID, parseErr := strconv.ParseUint(items[index].ID, 10, 64); parseErr == nil {
+			if len(terminalOffers[terminalID]) > 0 {
+				items[index].TerminalOffers = append([]domain.TerminalOffer(nil), terminalOffers[terminalID]...)
+			}
+			if isTerminalInventoryItem(items[index]) && strings.HasPrefix(strings.ToLower(items[index].Name), "active ") {
+				items[index].Diagnostics = append(items[index].Diagnostics,
+					fmt.Sprintf("Terminal offer recovery: on-demand selection sends EMsg %d (CMsgCasketItem) with casket_item_id=%d and item_item_id=%d; this matches InventoryAPI.PerformItemCasketTransaction(0, terminal_id, terminal_id) on the CS2-current k_EMsgGCVolatileItemLoadContents route; the GC receiver remains active for CS2's five-second terminal-offer wait window", protocol.EMsgVolatileItemLoadContents, terminalID, terminalID),
+					fmt.Sprintf("Terminal offer recovery result: decoded_current_offers=%d, terminal_points_remaining=%s", len(items[index].TerminalOffers), optionalUint32String(items[index].TerminalPointsRemaining)),
+				)
+				if offerDiagnostics := terminalOfferDiagnostics[terminalID]; len(offerDiagnostics) > 0 {
+					items[index].Diagnostics = append(items[index].Diagnostics, offerDiagnostics...)
+				} else {
+					items[index].Diagnostics = append(items[index].Diagnostics, "Terminal current offer: neither a CSOVolatileItemOffer shared object (SO type 20) nor a GC economy-item fallback with casket attributes #272/#273 was decoded after EMsg 2536")
+				}
+			}
+		}
 	}
 	return domain.InventorySnapshot{
 		Items:       items,
@@ -239,6 +309,117 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 	}, nil
 }
 
+func relatedItemForFauxID(fauxItemID uint64, candidates []domain.RelatedItem) (domain.RelatedItem, bool) {
+	type identity struct {
+		defindex uint32
+		paintKit uint32
+	}
+	identities := []identity{
+		{defindex: uint32(fauxItemID & 0xffff), paintKit: uint32((fauxItemID >> 16) & 0xffff)},
+		{defindex: uint32((fauxItemID >> 16) & 0xffff), paintKit: uint32(fauxItemID & 0xffff)},
+		{defindex: uint32(fauxItemID), paintKit: uint32(fauxItemID >> 32)},
+		{defindex: uint32(fauxItemID >> 32), paintKit: uint32(fauxItemID)},
+	}
+	for _, identity := range identities {
+		for _, candidate := range candidates {
+			if candidate.Defindex == identity.defindex && candidate.PaintKit == identity.paintKit {
+				return candidate, true
+			}
+		}
+	}
+	return domain.RelatedItem{Name: fmt.Sprintf("Volatile terminal offer %d", fauxItemID)}, false
+}
+
+func activeTerminalStateDiagnostics(item transport.GCInventoryItem) []string {
+	points, pointsPresent := item.Attributes[169]
+	expiration, expirationPresent := item.Attributes[183]
+	volatileKind, volatilePresent := item.Attributes[315]
+	expirationText := "unset"
+	if expirationPresent {
+		expirationText = time.Unix(int64(expiration), 0).UTC().Format(time.RFC3339)
+	}
+	return []string{
+		fmt.Sprintf(
+			"Terminal classification: active=true because schema identity contains terminal, inventory=%d (0x%08x; active-terminal/X-Ray special position=%d), quantity=%d, quality=%d; schema display name is intentionally overridden from sealed to active",
+			item.Inventory, item.Inventory, xRayScannerLoadedCaseInventoryPosition, item.Quantity, item.Quality,
+		),
+		fmt.Sprintf(
+			"Terminal state attributes: quest_points_remaining(#169)=%s, expiration_date(#183)=%s [raw=%s], volatile_container(#315)=%s; instance_attribute_count=%d, byte_attributes={%s}",
+			optionalAttributeUint32(points, pointsPresent), expirationText, optionalAttributeUint32(expiration, expirationPresent), optionalAttributeUint32(volatileKind, volatilePresent), len(item.Attributes), rawByteAttributeSummary(item.AttributeBytes),
+		),
+		fmt.Sprintf(
+			"Terminal protocol routing: resume/current-offer=EMsg %d CMsgCasketItem(casket=terminal,item=terminal); next/reject=EMsg %d CMsgOpenCrate(tool=terminal,subject=terminal,points_remaining=#169); purchase=Steam store init(item_def_id=%d,supplemental_data=%d,cost=offer_attribute_316)",
+			protocol.EMsgVolatileItemLoadContents, protocol.EMsgOpenCrate, item.DefIndex, item.ID,
+		),
+	}
+}
+
+func terminalOfferDiagnostic(item transport.GCInventoryItem, metadata econ.Metadata) string {
+	return fmt.Sprintf(
+		"Terminal current offer: item_id=%d, original_id=%d, defindex=%d, casket_id=%d, inventory=%d (0x%08x), quantity=%d, quality=%d, rarity=%d, paint_kit=%d, paint_wear=%s, name=%q, market_name=%q, kind=%q, schema_rarity=%q, purchase_price(#316)=%d, attributes={%s}, byte_attributes={%s}",
+		item.ID, item.OriginalID, item.DefIndex, gcItemCasketID(item), item.Inventory, item.Inventory, item.Quantity, item.Quality, item.Rarity, item.PaintKit,
+		optionalFloatString(item.PaintWear), metadata.Name, metadata.MarketName, metadata.Kind, metadata.Rarity, item.Attributes[316], rawAttributeSummary(item.Attributes), rawByteAttributeSummary(item.AttributeBytes),
+	)
+}
+
+func rawAttributeSummary(attributes map[uint32]uint32) string {
+	ids := make([]int, 0, len(attributes))
+	for id := range attributes {
+		ids = append(ids, int(id))
+	}
+	sort.Ints(ids)
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		value := attributes[uint32(id)]
+		parts = append(parts, fmt.Sprintf("#%d=%d/0x%08x", id, value, value))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ",")
+}
+
+func rawByteAttributeSummary(attributes map[uint32][]byte) string {
+	ids := make([]int, 0, len(attributes))
+	for id := range attributes {
+		ids = append(ids, int(id))
+	}
+	sort.Ints(ids)
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, fmt.Sprintf("#%d=%x", id, attributes[uint32(id)]))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ",")
+}
+
+func optionalAttributeUint32(value uint32, present bool) string {
+	if !present {
+		return "unset"
+	}
+	return fmt.Sprintf("%d/0x%08x", value, value)
+}
+
+func optionalUint32String(value *uint32) string {
+	if value == nil {
+		return "unset"
+	}
+	return strconv.FormatUint(uint64(*value), 10)
+}
+
+func activeTerminalItemIDs(metadata *econ.Schema, items []transport.GCInventoryItem) []uint64 {
+	result := make([]uint64, 0)
+	for _, item := range items {
+		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
+		if isActiveTerminalGCItem(item, itemMetadata) {
+			result = append(result, item.ID)
+		}
+	}
+	return result
+}
+
 const xRayScannerLoadedCaseInventoryPosition uint32 = 0xc0000005
 
 // The GC retains the consumed container used by the X-Ray Scanner as a
@@ -246,7 +427,33 @@ const xRayScannerLoadedCaseInventoryPosition uint32 = 0xc0000005
 // Panorama client exposes it through the separate "xraymachine" filter rather
 // than the player's regular inventory.
 func isXRayScannerLoadedCase(item transport.GCInventoryItem, metadata econ.Metadata) bool {
-	return metadata.Kind == "container" && item.Quantity == 0 && item.Inventory == xRayScannerLoadedCaseInventoryPosition
+	return metadata.Kind == "container" &&
+		!isTerminalMetadata(metadata) &&
+		item.Quantity == 0 &&
+		item.Inventory == xRayScannerLoadedCaseInventoryPosition
+}
+
+func isTerminalMetadata(metadata econ.Metadata) bool {
+	return strings.Contains(strings.ToLower(metadata.Name+" "+metadata.MarketName), "terminal")
+}
+
+func isActiveTerminalGCItem(item transport.GCInventoryItem, metadata econ.Metadata) bool {
+	return isTerminalMetadata(metadata) && item.Quantity == 0 && item.Inventory == xRayScannerLoadedCaseInventoryPosition
+}
+
+func activeTerminalName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" || strings.HasPrefix(strings.ToLower(trimmed), "active ") {
+		return trimmed
+	}
+	if strings.HasPrefix(strings.ToLower(trimmed), "sealed ") {
+		trimmed = strings.TrimSpace(trimmed[len("sealed "):])
+	}
+	return "Active " + trimmed
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 func gcItemCasketID(item transport.GCInventoryItem) uint64 {
@@ -324,7 +531,7 @@ func paintExterior(wear *float64) string {
 func domainRelatedItems(items []econ.RelatedItem) []domain.RelatedItem {
 	out := make([]domain.RelatedItem, 0, len(items))
 	for _, item := range items {
-		out = append(out, domain.RelatedItem{Name: item.Name, MarketName: item.MarketName, ListingName: item.ListingName, Kind: item.Kind, Rarity: item.Rarity, ImageURL: item.ImageURL, Price: item.Price, PaintWear: item.PaintWear, WearMin: item.WearMin, WearMax: item.WearMax, Items: domainRelatedItems(item.Items)})
+		out = append(out, domain.RelatedItem{Defindex: item.DefIndex, PaintKit: item.PaintKit, Name: item.Name, MarketName: item.MarketName, ListingName: item.ListingName, Kind: item.Kind, Rarity: item.Rarity, ImageURL: item.ImageURL, Price: item.Price, PaintWear: item.PaintWear, WearMin: item.WearMin, WearMax: item.WearMax, Items: domainRelatedItems(item.Items)})
 	}
 	return out
 }
@@ -514,8 +721,17 @@ func inventoryItemDiagnostics(item transport.GCInventoryItem, metadata econ.Meta
 		diagnostics = append(diagnostics, "GC attributes: none decoded")
 	} else {
 		attributes := make([]string, 0, len(attributeIDs))
+		decodedByID := make(map[uint32]econ.DecodedEconAttribute, len(metadata.DecodedAttributes))
+		for _, attribute := range metadata.DecodedAttributes {
+			decodedByID[attribute.DefIndex] = attribute
+		}
 		for _, id := range attributeIDs {
-			attributes = append(attributes, fmt.Sprintf("%d=%d (0x%08x)", id, item.Attributes[uint32(id)], item.Attributes[uint32(id)]))
+			raw := item.Attributes[uint32(id)]
+			if decoded, ok := decodedByID[uint32(id)]; ok {
+				attributes = append(attributes, fmt.Sprintf("#%d %s: %s [raw=%d, 0x%08x]", id, decoded.Name, decoded.Value, raw, raw))
+				continue
+			}
+			attributes = append(attributes, fmt.Sprintf("#%d unknown attribute: %d (0x%08x)", id, raw, raw))
 		}
 		diagnostics = append(diagnostics, "GC attributes: "+strings.Join(attributes, ", "))
 	}

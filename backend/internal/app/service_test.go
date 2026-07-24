@@ -69,6 +69,30 @@ func TestStorePurchaseRejectsQuantityAboveCS2DropdownLimit(t *testing.T) {
 	}
 }
 
+func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	client.StorePurchaseResult = transport.StorePurchaseTransportResult{TransactionID: 1, OrderID: 2, CheckoutURL: "https://checkout.steampowered.com/checkout/approvetxn/1/"}
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.storeCurrencyID = 2
+	service.storeCountry = "DE"
+	service.store = domain.StoreSnapshot{Status: "ready", Currency: "EUR"}
+	defIndex := uint32(5176)
+	service.inventory = domain.InventorySnapshot{Status: "ready", Items: []domain.InventoryItem{{
+		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex,
+		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "700", PurchasePrice: 1299, Item: domain.RelatedItem{MarketName: "AK-47 | The Oligarch"}}},
+	}}}
+	session := service.InitializeStorePurchase(map[string]any{"offerId": "terminal:52994080407", "quantity": uint64(1), "expectedPriceSheetVersion": uint64(0), "expectedAmountMinor": uint64(1299)})
+	if session.Status != "awaiting_user" || len(client.StorePurchaseCalls) != 1 {
+		t.Fatalf("terminal purchase session = %#v calls=%#v", session, client.StorePurchaseCalls)
+	}
+	request := client.StorePurchaseCalls[0]
+	if request.ItemDefID != 5176 || request.Cost != 1299 || request.SupplementalData != 52994080407 {
+		t.Fatalf("terminal purchase request = %#v", request)
+	}
+}
+
 func TestSubmitOperationBlocksNameTagsByDefault(t *testing.T) {
 	service := NewService()
 	receipt := service.SubmitOperation("nametags.apply", map[string]any{})
@@ -128,6 +152,29 @@ func TestStorageMoveOutSendsAuthoritativeCasketExtractMessage(t *testing.T) {
 	}
 }
 
+func TestTerminalOfferLoadUsesCurrentVolatileItemRoute(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+
+	receipt := service.SubmitOperation("terminal.load-offer", map[string]any{"terminalId": "52994080407"})
+	if receipt.State != "awaiting_gc_confirmation" || len(client.SentProtoMessages) != 1 {
+		t.Fatalf("receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
+	}
+	sent := client.SentProtoMessages[0]
+	if sent.EMsg != protocol.EMsgVolatileItemLoadContents {
+		t.Fatalf("emsg=%d want volatile-item-load route %d", sent.EMsg, protocol.EMsgVolatileItemLoadContents)
+	}
+	var message cs2pb.CMsgCasketItem
+	if err := proto.Unmarshal(sent.Body, &message); err != nil {
+		t.Fatal(err)
+	}
+	if message.GetCasketItemId() != 52994080407 || message.GetItemItemId() != 52994080407 {
+		t.Fatalf("message=%#v", &message)
+	}
+}
+
 func TestBulkArmoryPurchaseSendsAdjustedBalances(t *testing.T) {
 	service := NewService()
 	client := transport.NewTestGCClient()
@@ -180,6 +227,21 @@ func TestFirstNewInventoryItemFindsArmoryReward(t *testing.T) {
 	reward := firstNewInventoryItem(before, after)
 	if reward == nil || reward.ID != "2" || reward.MarketName != "AK-47 | Reward" {
 		t.Fatalf("reward=%#v", reward)
+	}
+}
+
+func TestArmoryInventoryBaselineIncludesUnrefreshedMarketItems(t *testing.T) {
+	cached := domain.InventorySnapshot{Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}}}
+	baseline := includeGCInventoryIDs(cached, []transport.GCInventoryItem{{ID: 1}, {ID: 2}})
+	after := domain.InventorySnapshot{Items: []domain.InventoryItem{
+		{ID: "1", Name: "Existing"},
+		{ID: "2", Name: "Recent market purchase"},
+		{ID: "3", Name: "Armory reward"},
+	}}
+
+	reward := firstNewInventoryItem(baseline, after)
+	if reward == nil || reward.ID != "3" {
+		t.Fatalf("reward=%#v baseline=%#v", reward, baseline.Items)
 	}
 }
 
@@ -385,6 +447,53 @@ func TestXRayScannerLoadedCaseDetection(t *testing.T) {
 	}
 }
 
+func TestTerminalMetadataRemainsVisibleAtHiddenInventoryPosition(t *testing.T) {
+	if !isTerminalMetadata(econ.Metadata{Name: "Active Genesis Terminal", Kind: "container"}) {
+		t.Fatal("active terminal metadata was not recognized")
+	}
+	if isTerminalMetadata(econ.Metadata{Name: "Kilowatt Case", Kind: "container"}) {
+		t.Fatal("ordinary container was incorrectly recognized as a terminal")
+	}
+	activeTerminal := transport.GCInventoryItem{DefIndex: 5001, Inventory: xRayScannerLoadedCaseInventoryPosition, Quantity: 0}
+	if isXRayScannerLoadedCase(activeTerminal, econ.Metadata{Name: "Active Genesis Terminal", Kind: "container"}) {
+		t.Fatal("active terminal was incorrectly hidden as an X-Ray Scanner case")
+	}
+	if got := activeTerminalName("Sealed Genesis Terminal"); got != "Active Genesis Terminal" {
+		t.Fatalf("active terminal name = %q", got)
+	}
+}
+
+func TestActiveTerminalDiagnosticsIncludeStateProtocolAndOfferEvidence(t *testing.T) {
+	active := transport.GCInventoryItem{
+		ID: 52994080407, DefIndex: 5176, Inventory: xRayScannerLoadedCaseInventoryPosition, Quantity: 0, Quality: 14,
+		Attributes: map[uint32]uint32{169: 3, 183: 1785068424},
+	}
+	state := strings.Join(activeTerminalStateDiagnostics(active), "\n")
+	for _, expected := range []string{"active=true", "quest_points_remaining(#169)=3", "expiration_date(#183)=2026-07-26T12:20:24Z", "resume/current-offer=EMsg 2536 CMsgCasketItem", "supplemental_data=52994080407"} {
+		if !strings.Contains(state, expected) {
+			t.Fatalf("terminal state diagnostics omitted %q:\n%s", expected, state)
+		}
+	}
+	offer := transport.GCInventoryItem{
+		ID: 700, DefIndex: 7, Inventory: 0, Quantity: 1, Quality: 9, Rarity: 5, PaintKit: 123,
+		Attributes: map[uint32]uint32{272: uint32(active.ID), 273: uint32(active.ID >> 32), 316: 1299},
+	}
+	diagnostic := terminalOfferDiagnostic(offer, econ.Metadata{Name: "Offered weapon", MarketName: "AK-47 | Offer", Kind: "weapon_skin", Rarity: "classified"})
+	for _, expected := range []string{"item_id=700", "casket_id=52994080407", "purchase_price(#316)=1299", `market_name="AK-47 | Offer"`, "#316=1299"} {
+		if !strings.Contains(diagnostic, expected) {
+			t.Fatalf("terminal offer diagnostics omitted %q:\n%s", expected, diagnostic)
+		}
+	}
+}
+
+func TestRelatedItemForFauxIDMatchesPackedDefindexAndPaintKit(t *testing.T) {
+	candidates := []domain.RelatedItem{{Defindex: 7, PaintKit: 999, MarketName: "AK-47 | Test"}}
+	item, ok := relatedItemForFauxID(0xf000000003e70007, candidates)
+	if !ok || item.MarketName != "AK-47 | Test" {
+		t.Fatalf("item=%#v ok=%t", item, ok)
+	}
+}
+
 func TestIdenticalTradeUpNormalizesInputAndMapsOutputCaps(t *testing.T) {
 	inputWear, inputMin, inputMax := 0.05, 0.0, 0.10
 	outputMin, outputMax := 0.20, 0.60
@@ -404,6 +513,21 @@ func TestRevealAnimationsDefaultIndependently(t *testing.T) {
 	}
 	if settings.Animations.Armory != "slot-machine" {
 		t.Fatalf("Armory animation = %q", settings.Animations.Armory)
+	}
+	if settings.Animations.Terminal != "slot-machine" {
+		t.Fatalf("terminal animation = %q", settings.Animations.Terminal)
+	}
+}
+
+func TestTerminalRevealAnimationCanBeUpdatedIndependently(t *testing.T) {
+	service := NewService()
+	receipt := service.SubmitOperation("settings", map[string]any{"animations": map[string]any{"terminal": "countdown"}})
+	if receipt.State != "completed" {
+		t.Fatalf("settings receipt = %#v", receipt)
+	}
+	settings := service.Settings()
+	if settings.Animations.Terminal != "countdown" || settings.Animations.Container != "slot-machine" {
+		t.Fatalf("animations = %#v", settings.Animations)
 	}
 }
 

@@ -29,6 +29,7 @@ func steamErrorDetail(stage string, err error) string {
 
 type containerOpenResult struct {
 	OpenedItem      *domain.InventoryItem `json:"openedItem,omitempty"`
+	TerminalOffer   *domain.TerminalOffer `json:"terminalOffer,omitempty"`
 	ConsumedItemID  string                `json:"consumedItemId,omitempty"`
 	RequestEMsg     uint32                `json:"requestEMsg,omitempty"`
 	RequestMethod   string                `json:"requestMethod,omitempty"`
@@ -69,6 +70,8 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	if !isContainerLikeInventoryItem(*found) {
 		return false, "selected item is not a container or capsule", result
 	}
+	terminal := isTerminalInventoryItem(*found)
+	activeTerminal := terminal && strings.Contains(strings.ToLower(found.Name+" "+found.MarketName), "active")
 	toolItemID, err := optionalUint64Input(input, "keyItemId")
 	if err != nil {
 		return false, err.Error(), result
@@ -76,11 +79,14 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	if len(found.RequiredKeyDefIndexes) > 0 && toolItemID == 0 {
 		return false, "this container requires a compatible key, but none is owned", result
 	}
-	if len(found.RequiredKeyDefIndexes) == 0 && toolItemID != 0 {
+	if len(found.RequiredKeyDefIndexes) == 0 && toolItemID != 0 && !activeTerminal {
 		return false, "this container is keyless and must be opened without a key/tool", result
 	}
+	if activeTerminal {
+		toolItemID = itemIDUint
+	}
 	if toolItemID != 0 {
-		if toolItemID == itemIDUint {
+		if toolItemID == itemIDUint && !activeTerminal {
 			return false, "opening key/tool must be different from the container", result
 		}
 		var tool *domain.InventoryItem
@@ -94,7 +100,10 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 		if tool == nil {
 			return false, "opening key/tool is not present in the current owned inventory snapshot", result
 		}
-		compatible := false
+		if activeTerminal {
+			tool = found
+		}
+		compatible := activeTerminal
 		if tool.Defindex != nil {
 			for _, defIndex := range found.RequiredKeyDefIndexes {
 				if *tool.Defindex == defIndex {
@@ -107,9 +116,20 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 			return false, "selected opening key is not compatible with this container", result
 		}
 	}
+	pointsRemaining, err := optionalUint32PointerInput(input, "pointsRemaining")
+	if err != nil {
+		return false, err.Error(), result
+	}
+	volatileLimit, err := optionalUint32PointerInput(input, "volatileLimit")
+	if err != nil {
+		return false, err.Error(), result
+	}
+	if !terminal && (pointsRemaining != nil || volatileLimit != nil) {
+		return false, "terminal offer fields cannot be used with an ordinary container", result
+	}
 	result.RequestEMsg = protocol.EMsgOpenCrate
-	result.RequestMethod = "open_crate_proto"
-	body, err := proto.Marshal(openCrateMessage(itemIDUint, toolItemID))
+	result.RequestMethod = map[bool]string{true: "terminal_offer_proto", false: "open_crate_proto"}[terminal]
+	body, err := proto.Marshal(openCrateMessage(itemIDUint, toolItemID, pointsRemaining, volatileLimit))
 	if err != nil {
 		return false, "encode container open request failed: " + err.Error(), result
 	}
@@ -130,9 +150,12 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	if confirmation.Err != nil {
 		return false, confirmation.Err.Error(), result
 	}
-	if snapshot, openedItem, err := s.reconcileNewInventoryItemOnce(accountCtx, beforeInventory); err == nil && openedItem != nil {
+	if snapshot, openedItem, err := s.reconcileContainerResultOnce(accountCtx, beforeInventory, terminal); err == nil && openedItem != nil {
 		result.AfterItemCount = len(snapshot.Items)
 		result.OpenedItem = openedItem
+		if activeTerminal && len(openedItem.TerminalOffers) > 0 {
+			result.TerminalOffer = &openedItem.TerminalOffers[0]
+		}
 		snapshot.Message = fmt.Sprintf("Container opened: %s", openedInventoryItemName(openedItem))
 		s.mu.Lock()
 		currentKey, _, keyErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
@@ -149,15 +172,17 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 	return false, "container open response received, but the awarded item could not be decoded from GC response", result
 }
 
-func openCrateMessage(subjectItemID uint64, toolItemID uint64) *cs2pb.CMsgOpenCrate {
+func openCrateMessage(subjectItemID uint64, toolItemID uint64, pointsRemaining *uint32, volatileLimit *uint32) *cs2pb.CMsgOpenCrate {
 	message := &cs2pb.CMsgOpenCrate{SubjectItemId: proto.Uint64(subjectItemID)}
 	if toolItemID != 0 {
 		message.ToolItemId = proto.Uint64(toolItemID)
 	}
+	message.PointsRemaining = pointsRemaining
+	message.VolatileLimit = volatileLimit
 	return message
 }
 
-func (s *Service) reconcileNewInventoryItemOnce(ctx context.Context, before domain.InventorySnapshot) (domain.InventorySnapshot, *domain.InventoryItem, error) {
+func (s *Service) reconcileContainerResultOnce(ctx context.Context, before domain.InventorySnapshot, terminal bool) (domain.InventorySnapshot, *domain.InventoryItem, error) {
 	snapshot, err := s.fetchInventory(ctx, nil)
 	if err != nil {
 		return domain.InventorySnapshot{}, nil, fmt.Errorf("post-open inventory refresh failed: %w", err)
@@ -165,7 +190,53 @@ func (s *Service) reconcileNewInventoryItemOnce(ctx context.Context, before doma
 	if openedItem := firstNewInventoryItem(before, snapshot); openedItem != nil {
 		return snapshot, openedItem, nil
 	}
+	if terminal {
+		if transitioned := firstChangedTerminalItem(before, snapshot); transitioned != nil {
+			return snapshot, transitioned, nil
+		}
+	}
 	return snapshot, nil, fmt.Errorf("post-open inventory refresh found no new item; before_count=%d after_count=%d", len(before.Items), len(snapshot.Items))
+}
+
+func (s *Service) reconcileNewInventoryItemOnce(ctx context.Context, before domain.InventorySnapshot) (domain.InventorySnapshot, *domain.InventoryItem, error) {
+	return s.reconcileContainerResultOnce(ctx, before, false)
+}
+
+func firstChangedTerminalItem(before domain.InventorySnapshot, after domain.InventorySnapshot) *domain.InventoryItem {
+	beforeByID := make(map[string]domain.InventoryItem, len(before.Items))
+	for _, item := range before.Items {
+		beforeByID[item.ID] = item
+	}
+	for index := range after.Items {
+		item := &after.Items[index]
+		if !isTerminalInventoryItem(*item) {
+			continue
+		}
+		previous, existed := beforeByID[item.ID]
+		if !existed || previous.Name != item.Name || previous.MarketName != item.MarketName || !sameDefindex(previous.Defindex, item.Defindex) || !sameTerminalOffers(previous.TerminalOffers, item.TerminalOffers) {
+			return item
+		}
+	}
+	return nil
+}
+
+func sameTerminalOffers(left []domain.TerminalOffer, right []domain.TerminalOffer) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index].FauxItemID != right[index].FauxItemID {
+			return false
+		}
+	}
+	return true
+}
+
+func sameDefindex(left *uint32, right *uint32) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func firstNewInventoryItem(before domain.InventorySnapshot, after domain.InventorySnapshot) *domain.InventoryItem {
@@ -202,6 +273,10 @@ func isContainerLikeInventoryItem(item domain.InventoryItem) bool {
 	return item.Kind == "container" || len(item.ContainerItems) > 0 || strings.Contains(haystack, "capsule") || strings.Contains(haystack, "case") || strings.Contains(haystack, "container") || strings.Contains(haystack, "graffiti box")
 }
 
+func isTerminalInventoryItem(item domain.InventoryItem) bool {
+	return strings.Contains(strings.ToLower(item.Name+" "+item.MarketName), "terminal")
+}
+
 func optionalUint64Input(input map[string]any, key string) (uint64, error) {
 	value, ok := input[key]
 	if !ok || value == nil {
@@ -225,6 +300,18 @@ func optionalUint64Input(input map[string]any, key string) (uint64, error) {
 	default:
 		return 0, fmt.Errorf("%s must be a string item id", key)
 	}
+}
+
+func optionalUint32PointerInput(input map[string]any, key string) (*uint32, error) {
+	value, ok := input[key]
+	if !ok || value == nil {
+		return nil, nil
+	}
+	parsed, err := requiredUint32Input(input, key)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func requiredUint32Input(input map[string]any, key string) (uint32, error) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ARMORY_PURCHASE_TIMEOUT_MS, armoryPurchaseRequiresConfirmation, armoryRevealCandidates, armoryRevealResult, withArmoryPurchaseTimeout } from "./ArmoryView.js";
+import { ARMORY_PURCHASE_TIMEOUT_MS, armoryPurchaseRequiresConfirmation, armoryPurchaseUsesReveal, armoryRevealCandidates, armoryRevealResult, withArmoryPurchaseTimeout } from "./ArmoryView.js";
 import { generateRevealMiss, STATTRAK_ODDS } from "./ui/RevealAnimation.js";
 
 afterEach(() => vi.useRealTimers());
@@ -32,6 +32,29 @@ describe("Armory purchase timeout", () => {
 });
 
 describe("Armory reveal items", () => {
+  it("does not reveal an item when purchasing a weapon case", () => {
+    expect(armoryPurchaseUsesReveal({
+      campaignId: 1,
+      redeemId: 2,
+      expectedCost: 2,
+      generationTime: 3,
+      name: "Gallery Case",
+      category: "weapon_case",
+    })).toBe(false);
+  });
+
+  it("still reveals a directly redeemed collection item", () => {
+    expect(armoryPurchaseUsesReveal({
+      campaignId: 1,
+      redeemId: 2,
+      expectedCost: 4,
+      generationTime: 3,
+      name: "Graphic Collection",
+      category: "collection",
+      items: [{ name: "Collection skin", kind: "weapon_skin" }],
+    })).toBe(true);
+  });
+
   it("uses only the redeemed offer collection as reel candidates", () => {
     const candidates = armoryRevealCandidates([
       { name: "Collection A", marketName: "AK-47 | A", rarity: "Classified", imageUrl: "a.png", kind: "weapon_skin", wearMin: 0.1, wearMax: 0.7 },

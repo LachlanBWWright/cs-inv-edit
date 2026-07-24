@@ -44,7 +44,7 @@ export interface SettingsViewProps {
 export function settingsEqual(left: SettingsData | undefined, right: SettingsData | undefined) {
   if (!left || !right) return left === right;
   if (left.backendUrl !== right.backendUrl || left.validationMode !== right.validationMode || left.sacrificialAccountMode !== right.sacrificialAccountMode || left.armoryPurchasePacingSeconds !== right.armoryPurchasePacingSeconds) return false;
-  if (left.animations.container !== right.animations.container || left.animations.tradeUp !== right.animations.tradeUp || left.animations.armory !== right.animations.armory) return false;
+  if (left.animations.container !== right.animations.container || left.animations.tradeUp !== right.animations.tradeUp || left.animations.armory !== right.animations.armory || left.animations.terminal !== right.animations.terminal) return false;
   const keys = new Set([...Object.keys(left.featureFlags), ...Object.keys(right.featureFlags)] as Array<keyof FeatureFlags>);
   for (const key of keys) {
     if (left.featureFlags[key] !== right.featureFlags[key]) return false;
@@ -114,9 +114,9 @@ export function SettingsView(props: SettingsViewProps) {
     setDraft((current) => (current ? { ...current, featureFlags: { ...current.featureFlags, [key]: value } } : current));
   };
 
-  const animationMode = (key: "container" | "tradeUp" | "armory") => draft()?.animations?.[key] ?? "slot-machine";
-  const setAnimationMode = (key: "container" | "tradeUp" | "armory", value: RevealAnimationMode | TradeUpAnimationMode) => {
-    setDraft((current) => current ? { ...current, animations: { container: current.animations?.container ?? "slot-machine", tradeUp: current.animations?.tradeUp ?? "slot-machine", armory: current.animations?.armory ?? "slot-machine", [key]: value } } : current);
+  const animationMode = (key: "container" | "tradeUp" | "armory" | "terminal") => draft()?.animations?.[key] ?? "slot-machine";
+  const setAnimationMode = (key: "container" | "tradeUp" | "armory" | "terminal", value: RevealAnimationMode | TradeUpAnimationMode) => {
+    setDraft((current) => current ? { ...current, animations: { container: current.animations?.container ?? "slot-machine", tradeUp: current.animations?.tradeUp ?? "slot-machine", armory: current.animations?.armory ?? "slot-machine", terminal: current.animations?.terminal ?? "slot-machine", [key]: value } } : current);
   };
 
   const save = async () => {
@@ -161,8 +161,8 @@ export function SettingsView(props: SettingsViewProps) {
         <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
           <h4 class="text-sm font-semibold text-slate-100">Reveal animations</h4>
           <p class="mt-1 text-xs text-slate-500">Choose an animation independently for each randomized operation.</p>
-          <div class="mt-3 grid gap-3 sm:grid-cols-3">
-            <For each={[{ key: "container", label: "Containers" }, { key: "tradeUp", label: "Trade-ups" }, { key: "armory", label: "Armory" }] as const}>{(entry) => (
+          <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <For each={[{ key: "container", label: "Containers" }, { key: "tradeUp", label: "Trade-ups" }, { key: "armory", label: "Armory" }, { key: "terminal", label: "Terminals" }] as const}>{(entry) => (
               <label class="space-y-1.5 text-sm">
                 <span class="text-slate-300">{entry.label}</span>
                 <Select class="w-full" value={animationMode(entry.key)} onChange={(event) => setAnimationMode(entry.key, (event.currentTarget as HTMLSelectElement).value as RevealAnimationMode)}>

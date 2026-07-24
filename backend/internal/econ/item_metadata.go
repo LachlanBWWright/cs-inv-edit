@@ -94,6 +94,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		}
 	}
 	if keychain := s.matchKeychain(attributes); keychain != nil && isGenericKeychainItem(item, name) {
+		rarity = firstNonEmpty(keychain.Rarity, rarity)
 		keychainName := s.localize(keychain.ItemName)
 		if keychainName == "" {
 			keychainName = humanizeIdentifier(keychain.Name)
@@ -117,7 +118,15 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 
 func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind string, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {
 	imageURL, imageKey := s.itemImageLookup(item, paintKit, attributes)
-	return Metadata{
+	tradable := schemaTradable(item)
+	marketable := (*bool)(nil)
+	// Unsealed graffiti is the consumable spray instance. Only its sealed form
+	// is transferable through Steam inventory or the Community Market.
+	if kind == "tool_item" && strings.HasPrefix(marketName, "Graffiti | ") {
+		transferable := false
+		tradable, marketable = &transferable, &transferable
+	}
+	metadata := Metadata{
 		Name:                  name,
 		MarketName:            marketName,
 		Kind:                  kind,
@@ -132,10 +141,14 @@ func (s *Schema) metadataResult(item itemDefinition, name string, marketName str
 		CollectionItems:       s.collectionItemsFor(item.Name, paintKit),
 		TradeUpItems:          s.tradeUpItemsFor(item.Name, paintKit, rarity),
 		ContainerItems:        s.lootListItems(s.containerLootListName(item), nil),
-		Tradable:              schemaTradable(item),
+		Tradable:              tradable,
+		Marketable:            marketable,
 		PaintWearMin:          wearMin,
 		PaintWearMax:          wearMax,
+		DecodedAttributes:     s.decodeAttributes(attributes),
+		TradableAfter:         s.tradableAfterFromAttributes(attributes),
 	}
+	return metadata.NormalizeCS2TransferState()
 }
 
 func (s *Schema) itemImageURL(item itemDefinition, paintKit uint32, attributes map[uint32]uint32) string {
@@ -306,6 +319,23 @@ func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
 	}
 	if desc.Type != "" && m.Kind == "unknown" {
 		m.Kind = kindFromSteamType(desc.Type)
+	}
+	return m.NormalizeCS2TransferState()
+}
+
+// CS2 exposes one transfer capability to users: items that can be traded can
+// also be marketed, and permanent or temporary transfer restrictions apply to
+// both surfaces. Keep these fields converged even when only one Steam overlay
+// flag is available.
+func (m Metadata) NormalizeCS2TransferState() Metadata {
+	if m.Tradable != nil && !*m.Tradable || m.Marketable != nil && !*m.Marketable {
+		value := false
+		m.Tradable, m.Marketable = &value, &value
+		return m
+	}
+	if m.Tradable != nil && *m.Tradable || m.Marketable != nil && *m.Marketable || m.TradableAfter != "" {
+		value := true
+		m.Tradable, m.Marketable = &value, &value
 	}
 	return m
 }

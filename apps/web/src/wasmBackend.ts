@@ -1,4 +1,4 @@
-import type { AppBackendClient } from "@cs-inv-edit/app";
+import type { LocalAgentClient } from "@cs-inv-edit/app";
 import { createAppError } from "@cs-inv-edit/app";
 import { ResultAsync, err, errAsync, fromThrowable, ok, okAsync } from "neverthrow";
 import { healthStatusSchema, type ConnectionStatus, type FeatureFlags, type HealthStatus, type InventorySnapshot, type OperationEvent, type OperationReceipt, type SettingsData } from "@cs-inv-edit/contracts";
@@ -53,7 +53,7 @@ const defaultSettings: SettingsData = {
   validationMode: true,
   sacrificialAccountMode: true,
   featureFlags: defaultFeatureFlags,
-  animations: { container: "slot-machine", tradeUp: "slot-machine", armory: "slot-machine" },
+  animations: { container: "slot-machine", tradeUp: "slot-machine", armory: "slot-machine", terminal: "slot-machine" },
   armoryPurchasePacingSeconds: 5,
 };
 
@@ -110,7 +110,7 @@ async function loadWasmRuntime() {
   }
 }
 
-export function createWasmBackendClient(): AppBackendClient {
+export function createWasmBackendClient(): LocalAgentClient {
   let runtimePromise: Promise<void> | undefined;
   const ensureRuntime = () => {
     runtimePromise ??= loadWasmRuntime();
@@ -137,13 +137,17 @@ export function createWasmBackendClient(): AppBackendClient {
     refreshGameInventory: (game) => errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
     armory: () => okAsync({ balance: 0, generationTime: 0, itemIds: [], offers: [], refreshedAt: new Date().toISOString(), status: "requires_connection" as const }),
     marketPreview: () => errAsync({ message: "Steam Market previews are unavailable in WASM mode" }),
-    scanPrices: () => errAsync({ message: "Price scanning is unavailable in WASM mode" }),
     refreshArmory: () => okAsync(createReceipt("armory.refresh", "failed", "WASM mode cannot read live GC Armory state.")),
     redeemArmory: () => okAsync(createReceipt("armory.redeem", "blocked_by_feature_flag", "WASM mode cannot purchase Armory items.")),
     store: () => okAsync({ status: "requires_connection" as const, offers: [], refreshedAt: new Date().toISOString(), message: "Store catalogue unavailable in WASM mode. Steam purchases require the connected backend." }),
     refreshStore: () => okAsync(createReceipt("store.refresh", "requires_connection", "Store catalogue unavailable in WASM mode.")),
     trades: () => okAsync({ status: "requires_connection" as const, received: [], sent: [], history: [], refreshedAt: new Date().toISOString(), message: "Steam trades require the connected backend." }),
     refreshTrades: () => okAsync({ status: "requires_connection" as const, received: [], sent: [], history: [], refreshedAt: new Date().toISOString(), message: "Steam trades require the connected backend." }),
+    refreshTradeAccounts: () => okAsync({ accounts: [], refreshedAt: new Date().toISOString() }),
+    tradeAccounts: () => okAsync({ accounts: [], refreshedAt: new Date().toISOString() }),
+    createTradeOffer: () => okAsync({ status: "requires_connection" as const, message: "Steam trade mutations require the connected backend." }),
+    acceptTradeOffer: () => okAsync({ status: "requires_connection" as const, message: "Steam trade mutations require the connected backend." }),
+    counterTradeOffer: () => okAsync({ status: "requires_connection" as const, message: "Steam trade mutations require the connected backend." }),
     initializeStorePurchase: () => errAsync({ message: "Steam purchases require the connected backend." }),
     storePurchase: () => errAsync({ message: "Steam purchases require the connected backend." }),
     reconcileStorePurchase: () => errAsync({ message: "Steam purchases require the connected backend." }),

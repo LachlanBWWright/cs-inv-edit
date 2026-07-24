@@ -38,16 +38,29 @@ func (p *SteamProvider) Scan(ctx context.Context, query Query) ([]Quote, error) 
 		var payload struct {
 			Success bool   `json:"success"`
 			Lowest  string `json:"lowest_price"`
+			Median  string `json:"median_price"`
 			Volume  string `json:"volume"`
 		}
-		if err := getJSON(ctx, client, p.BaseURL+"?"+params.Encode(), nil, &payload); err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+		if err := getJSON(ctx, client, p.BaseURL+"?"+params.Encode(), map[string]string{"Accept": "application/json"}, &payload); err != nil {
+			// Keep quotes already resolved in this batch. The Community Market
+			// endpoint can rate-limit or reject an individual item without making
+			// the successful responses for the other requested items invalid.
+			return quotes, fmt.Errorf("%s: %w", name, err)
 		}
-		if !payload.Success || payload.Lowest == "" {
+		if !payload.Success {
+			continue
+		}
+		displayPrice := payload.Lowest
+		if displayPrice == "" {
+			// Steam omits lowest_price for some active CS2 listings while still
+			// returning a useful median_price and volume.
+			displayPrice = payload.Median
+		}
+		if displayPrice == "" {
 			continue
 		}
 		count := parseCount(payload.Volume)
-		quotes = append(quotes, Quote{Source: p.ID(), MarketName: name, Currency: query.Currency, AmountMinor: parseFormattedMinor(payload.Lowest), DisplayPrice: payload.Lowest, ListingCount: count, URL: "https://steamcommunity.com/market/listings/" + strconv.Itoa(appID) + "/" + url.PathEscape(name), ObservedAt: nowRFC3339()})
+		quotes = append(quotes, Quote{Source: p.ID(), MarketName: name, Currency: query.Currency, AmountMinor: parseFormattedMinor(displayPrice), DisplayPrice: displayPrice, ListingCount: count, URL: "https://steamcommunity.com/market/listings/" + strconv.Itoa(appID) + "/" + url.PathEscape(name), ObservedAt: nowRFC3339()})
 	}
 	return quotes, nil
 }
@@ -75,16 +88,21 @@ func NewSkinportProvider(client HTTPDoer) *SkinportProvider {
 }
 func (*SkinportProvider) ID() string { return "skinport" }
 func (p *SkinportProvider) Scan(ctx context.Context, query Query) ([]Quote, error) {
-	if query.AppID != 0 && query.AppID != 730 {
+	if query.AppID != 0 && query.AppID != 730 && query.AppID != 440 && query.AppID != 570 {
 		return []Quote{}, nil
 	}
 	client := p.Client
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
-	params := url.Values{"app_id": {"730"}, "currency": {query.Currency}, "tradable": {"1"}}
+	appID := query.AppID
+	if appID == 0 {
+		appID = 730
+	}
+	cacheKey := strconv.Itoa(appID) + ":" + query.Currency
+	params := url.Values{"app_id": {strconv.Itoa(appID)}, "currency": {query.Currency}, "tradable": {"1"}}
 	p.mu.Lock()
-	cached, ok := p.cache[query.Currency]
+	cached, ok := p.cache[cacheKey]
 	p.mu.Unlock()
 	items := cached.items
 	if !ok || time.Now().After(cached.expires) {
@@ -95,7 +113,7 @@ func (p *SkinportProvider) Scan(ctx context.Context, query Query) ([]Quote, erro
 		if p.cache == nil {
 			p.cache = make(map[string]skinportCache)
 		}
-		p.cache[query.Currency] = skinportCache{items: items, expires: time.Now().Add(5 * time.Minute)}
+		p.cache[cacheKey] = skinportCache{items: items, expires: time.Now().Add(5 * time.Minute)}
 		p.mu.Unlock()
 	}
 	wanted := make(map[string]bool, len(query.MarketNames))
@@ -175,6 +193,220 @@ func (p *CSFloatProvider) Scan(ctx context.Context, query Query) ([]Quote, error
 	return quotes, nil
 }
 
+type WaxpeerProvider struct {
+	Client  HTTPDoer
+	BaseURL string
+}
+
+type MarketNetProvider struct {
+	Client  HTTPDoer
+	BaseURL string
+	Source  string
+	AppID   int
+	mu      sync.Mutex
+	cache   map[string]marketCSGOCache
+}
+
+type marketCSGOItem struct {
+	Name   string `json:"market_hash_name"`
+	Volume string `json:"volume"`
+	Price  string `json:"price"`
+}
+
+type marketCSGOCache struct {
+	items   []marketCSGOItem
+	expires time.Time
+}
+
+func NewMarketCSGOProvider(client HTTPDoer) *MarketNetProvider {
+	return &MarketNetProvider{Client: client, BaseURL: "https://market.csgo.com/api/v2/prices", Source: "marketcsgo", AppID: 730}
+}
+
+func NewMarketDotaProvider(client HTTPDoer) *MarketNetProvider {
+	return &MarketNetProvider{Client: client, BaseURL: "https://market.dota2.net/api/v2/prices", Source: "marketdota", AppID: 570}
+}
+
+func (p *MarketNetProvider) ID() string { return p.Source }
+
+func (p *MarketNetProvider) Scan(ctx context.Context, query Query) ([]Quote, error) {
+	if query.AppID != 0 && query.AppID != p.AppID {
+		return []Quote{}, nil
+	}
+	if query.Currency != "USD" && query.Currency != "EUR" && query.Currency != "RUB" {
+		return nil, fmt.Errorf("%s supports USD, EUR, and RUB; requested %s", p.ID(), query.Currency)
+	}
+	client := p.Client
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	p.mu.Lock()
+	cached, ok := p.cache[query.Currency]
+	p.mu.Unlock()
+	items := cached.items
+	if !ok || time.Now().After(cached.expires) {
+		var payload struct {
+			Success bool             `json:"success"`
+			Items   []marketCSGOItem `json:"items"`
+		}
+		if err := getJSON(ctx, client, p.BaseURL+"/"+query.Currency+".json", nil, &payload); err != nil {
+			return nil, err
+		}
+		if !payload.Success {
+			return nil, fmt.Errorf("%s price catalogue request failed", p.ID())
+		}
+		items = payload.Items
+		p.mu.Lock()
+		if p.cache == nil {
+			p.cache = make(map[string]marketCSGOCache)
+		}
+		p.cache[query.Currency] = marketCSGOCache{items: items, expires: time.Now().Add(5 * time.Minute)}
+		p.mu.Unlock()
+	}
+	wanted := make(map[string]bool, len(query.MarketNames))
+	for _, name := range query.MarketNames {
+		wanted[name] = true
+	}
+	quotes := make([]Quote, 0, len(query.MarketNames))
+	for _, item := range items {
+		if !wanted[item.Name] {
+			continue
+		}
+		amount := parseDecimalMinor(item.Price)
+		if amount == nil {
+			continue
+		}
+		quotes = append(quotes, Quote{Source: p.ID(), MarketName: item.Name, Currency: query.Currency, AmountMinor: amount, DisplayPrice: formatMinor(*amount, query.Currency), ListingCount: parseCount(item.Volume), ObservedAt: nowRFC3339()})
+	}
+	return quotes, nil
+}
+
+type waxpeerPrice struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	Min   int64  `json:"min"`
+}
+
+func NewWaxpeerProvider(client HTTPDoer) *WaxpeerProvider {
+	return &WaxpeerProvider{Client: client, BaseURL: "https://api.waxpeer.com/v1/prices"}
+}
+
+func (*WaxpeerProvider) ID() string { return "waxpeer" }
+
+func (p *WaxpeerProvider) Scan(ctx context.Context, query Query) ([]Quote, error) {
+	if query.AppID != 0 && query.AppID != 730 && query.AppID != 440 {
+		return []Quote{}, nil
+	}
+	if query.Currency != "USD" {
+		return nil, fmt.Errorf("Waxpeer quotes are USD; requested %s (no exchange-rate conversion is performed)", query.Currency)
+	}
+	client := p.Client
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	quotes := make([]Quote, 0, len(query.MarketNames))
+	game := "csgo"
+	marketPath := "csgo"
+	if query.AppID == 440 {
+		game = "tf2"
+		marketPath = "tf2"
+	}
+	for _, name := range query.MarketNames {
+		params := url.Values{"game": {game}, "search": {name}, "minified": {"1"}}
+		var payload struct {
+			Success bool           `json:"success"`
+			Items   []waxpeerPrice `json:"items"`
+			Message string         `json:"msg"`
+		}
+		if err := getJSON(ctx, client, p.BaseURL+"?"+params.Encode(), nil, &payload); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		if !payload.Success {
+			return nil, fmt.Errorf("%s: Waxpeer request failed: %s", name, payload.Message)
+		}
+		for _, item := range payload.Items {
+			if item.Name != name || item.Min <= 0 {
+				continue
+			}
+			// Waxpeer prices use thousandths of USD (1000 = USD 1.00).
+			amount := int64(math.Round(float64(item.Min) / 10))
+			count := item.Count
+			quotes = append(quotes, Quote{Source: p.ID(), MarketName: name, Currency: "USD", AmountMinor: &amount, DisplayPrice: formatMinor(amount, "USD"), ListingCount: &count, URL: "https://waxpeer.com/" + marketPath + "?search=" + url.QueryEscape(name), ObservedAt: nowRFC3339()})
+			break
+		}
+	}
+	return quotes, nil
+}
+
+type PriceDBProvider struct {
+	Client  HTTPDoer
+	BaseURL string
+}
+
+func NewPriceDBProvider(client HTTPDoer) *PriceDBProvider {
+	return &PriceDBProvider{Client: client, BaseURL: "https://pricedb.io/api/search"}
+}
+
+func (*PriceDBProvider) ID() string { return "backpacktf" }
+
+func (p *PriceDBProvider) Scan(ctx context.Context, query Query) ([]Quote, error) {
+	if query.AppID != 440 {
+		return []Quote{}, nil
+	}
+	client := p.Client
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	quotes := make([]Quote, 0, len(query.MarketNames))
+	for _, name := range query.MarketNames {
+		var payload struct {
+			Success bool `json:"success"`
+			Data    struct {
+				Results []struct {
+					Name   string `json:"name"`
+					Source string `json:"source"`
+					Buy    struct {
+						Keys  float64 `json:"keys"`
+						Metal float64 `json:"metal"`
+					} `json:"buy"`
+					Sell struct {
+						Keys  float64 `json:"keys"`
+						Metal float64 `json:"metal"`
+					} `json:"sell"`
+				} `json:"results"`
+			} `json:"data"`
+		}
+		params := url.Values{"q": {name}}
+		if err := getJSON(ctx, client, p.BaseURL+"?"+params.Encode(), nil, &payload); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		if !payload.Success {
+			return nil, fmt.Errorf("%s: PriceDB request failed", name)
+		}
+		for _, item := range payload.Data.Results {
+			if item.Name != name || item.Source != "bptf" {
+				continue
+			}
+			quotes = append(quotes, Quote{Source: p.ID(), MarketName: name, Currency: "TF2", DisplayPrice: formatTF2Range(item.Buy.Keys, item.Buy.Metal, item.Sell.Keys, item.Sell.Metal), ObservedAt: nowRFC3339()})
+			break
+		}
+	}
+	return quotes, nil
+}
+
+func formatTF2Range(buyKeys, buyMetal, sellKeys, sellMetal float64) string {
+	format := func(keys, metal float64) string {
+		parts := make([]string, 0, 2)
+		if keys > 0 {
+			parts = append(parts, strconv.FormatFloat(keys, 'f', -1, 64)+" keys")
+		}
+		if metal > 0 || len(parts) == 0 {
+			parts = append(parts, strconv.FormatFloat(metal, 'f', -1, 64)+" ref")
+		}
+		return strings.Join(parts, " + ")
+	}
+	return format(buyKeys, buyMetal) + " – " + format(sellKeys, sellMetal)
+}
+
 func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
 func formatMinor(value int64, currency string) string {
 	return strings.ToUpper(currency) + " " + strconv.FormatFloat(float64(value)/100, 'f', 2, 64)
@@ -205,6 +437,14 @@ func parseFormattedMinor(value string) *int64 {
 		clean = strings.ReplaceAll(strings.ReplaceAll(clean, ".", ""), ",", "")
 	}
 	n, err := strconv.ParseFloat(clean, 64)
+	if err != nil {
+		return nil
+	}
+	minor := int64(math.Round(n * 100))
+	return &minor
+}
+func parseDecimalMinor(value string) *int64 {
+	n, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return nil
 	}

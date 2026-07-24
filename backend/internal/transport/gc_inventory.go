@@ -343,6 +343,12 @@ func packetBodyForDiagnostics(emsg uint32, body []byte, protobufPayload bool) []
 	return payload
 }
 
+// CS2's terminal UI polls for the volatile offer for five one-second
+// intervals after requesting casket contents. Keep the GC receiver alive for
+// that same window so a late CSOVolatileItemOffer is not discarded after the
+// ordinary ClientWelcome arrives.
+const cs2PostWelcomeSettle = 5 * time.Second
+
 func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem, error) {
 	s.requestMu.Lock()
 	defer s.requestMu.Unlock()
@@ -370,12 +376,36 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 	helloRetryDelay := time.Second
 	helloRetryCount := 0
 	statusNoSessionCount := 0
+	incrementalItems := make(map[uint64]GCInventoryItem)
+	volatileOffers := make(map[uint32][]GCVolatileOffer)
+	var welcomeItems []GCInventoryItem
+	var settleTimer *time.Timer
+	var settle <-chan time.Time
+	defer func() {
+		if settleTimer != nil {
+			settleTimer.Stop()
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
+			if len(welcomeItems) > 0 {
+				welcomeItems = mergeInventoryItemMap(welcomeItems, incrementalItems)
+				attachVolatileOffers(welcomeItems, volatileOffers)
+				trace.Add(fmt.Sprintf("cs2 gc settle interrupted by context; returning inventory_items=%d incremental_econ_items=%d volatile_offer_defindexes=%d", len(welcomeItems), len(incrementalItems), len(volatileOffers)))
+				return welcomeItems, nil
+			}
 			wrapped := fmt.Errorf("cs2 gc inventory timed out waiting for ClientWelcome after %d ClientHello retries (client_version=%d): %w", helloRetryCount, cs2ClientVersion, ctx.Err())
 			return nil, trace.Error(wrapped)
+		case <-settle:
+			welcomeItems = mergeInventoryItemMap(welcomeItems, incrementalItems)
+			attachVolatileOffers(welcomeItems, volatileOffers)
+			trace.Add(fmt.Sprintf("cs2 gc post-welcome settle completed inventory_items=%d incremental_econ_items=%d volatile_offer_defindexes=%d", len(welcomeItems), len(incrementalItems), len(volatileOffers)))
+			return welcomeItems, nil
 		case <-helloRetry.C:
+			if len(welcomeItems) > 0 {
+				continue
+			}
 			if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
 				wrapped := fmt.Errorf("cs2 gc client hello retry failed: %w", err)
 				return nil, trace.Error(wrapped)
@@ -438,11 +468,173 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 				if err != nil {
 					return nil, trace.Error(err)
 				}
-				trace.Add(fmt.Sprintf("cs2 gc ClientWelcome decoded inventory_items=%d", len(items)))
-				return items, nil
+				welcomeItems = items
+				if settleTimer == nil {
+					settleTimer = time.NewTimer(cs2PostWelcomeSettle)
+				} else {
+					resetTimer(settleTimer, cs2PostWelcomeSettle)
+				}
+				settle = settleTimer.C
+				trace.Add(fmt.Sprintf("cs2 gc ClientWelcome decoded inventory_items=%d; settling asynchronous SO updates for %s", len(items), cs2PostWelcomeSettle))
+				continue
+			}
+			update, found, decodeErr := decodeCS2IncrementalInventory(message)
+			if decodeErr != nil {
+				trace.Add(fmt.Sprintf("cs2 gc incremental economy decode failed emsg=%d error=%v", message.EMsg, decodeErr))
+				continue
+			}
+			if found {
+				for _, item := range update.Items {
+					incrementalItems[item.ID] = item
+				}
+				for defindex, offers := range update.VolatileOffers {
+					volatileOffers[defindex] = append([]GCVolatileOffer(nil), offers...)
+				}
+				if settleTimer != nil {
+					resetTimer(settleTimer, 250*time.Millisecond)
+				}
+				trace.Add(fmt.Sprintf("cs2 gc retained incremental objects emsg=%d economy_items=%d volatile_offer_defindexes=%d", message.EMsg, len(update.Items), len(update.VolatileOffers)))
 			}
 		}
 	}
+}
+
+type cs2IncrementalInventoryUpdate struct {
+	Items          []GCInventoryItem
+	VolatileOffers map[uint32][]GCVolatileOffer
+}
+
+// The current CS2 client registers
+// CProtoBufSharedObject<CSOVolatileItemOffer, 20>. The MSVC symbol in the
+// authoritative GameTracking client strings encodes 20 as $0BE@.
+const cs2VolatileItemOfferSOTypeID int32 = 20
+
+func decodeCS2IncrementalInventory(message GCMessage) (cs2IncrementalInventoryUpdate, bool, error) {
+	switch message.EMsg {
+	case protocol.EMsgSOCacheSubscribed:
+		var subscribed cs2pb.CMsgSOCacheSubscribed
+		if err := proto.Unmarshal(message.Body, &subscribed); err != nil {
+			return cs2IncrementalInventoryUpdate{}, true, fmt.Errorf("decode CS2 subscribed SOCache: %w", err)
+		}
+		return decodeCS2SubscribedTypes(subscribed.GetObjects())
+	case protocol.EMsgSOCreate, protocol.EMsgSOUpdate:
+		var single cs2pb.CMsgSOSingleObject
+		if err := proto.Unmarshal(message.Body, &single); err != nil {
+			return cs2IncrementalInventoryUpdate{}, true, fmt.Errorf("decode CS2 single SO: %w", err)
+		}
+		if single.GetTypeId() == 1 {
+			item, err := decodeCS2EconItem(single.GetObjectData())
+			if err != nil {
+				return cs2IncrementalInventoryUpdate{}, true, err
+			}
+			return cs2IncrementalInventoryUpdate{Items: []GCInventoryItem{item}}, true, nil
+		}
+		if single.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+			return cs2IncrementalInventoryUpdate{}, false, nil
+		}
+		offer, ok := decodeCS2VolatileOffer(single.GetObjectData())
+		if !ok {
+			return cs2IncrementalInventoryUpdate{}, false, nil
+		}
+		return cs2IncrementalInventoryUpdate{VolatileOffers: map[uint32][]GCVolatileOffer{offer.GetDefidx(): domainVolatileOffers(&offer)}}, true, nil
+	case protocol.EMsgSOUpdateMultiple:
+		var multiple cs2pb.CMsgSOMultipleObjects
+		if err := proto.Unmarshal(message.Body, &multiple); err != nil {
+			return cs2IncrementalInventoryUpdate{}, true, fmt.Errorf("decode CS2 multiple SO update: %w", err)
+		}
+		update := cs2IncrementalInventoryUpdate{Items: make([]GCInventoryItem, 0), VolatileOffers: make(map[uint32][]GCVolatileOffer)}
+		for _, object := range multiple.GetObjectsModified() {
+			if object.GetTypeId() != 1 {
+				if object.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+					continue
+				}
+				if offer, ok := decodeCS2VolatileOffer(object.GetObjectData()); ok {
+					update.VolatileOffers[offer.GetDefidx()] = domainVolatileOffers(&offer)
+				}
+				continue
+			}
+			item, err := decodeCS2EconItem(object.GetObjectData())
+			if err != nil {
+				return cs2IncrementalInventoryUpdate{}, true, err
+			}
+			update.Items = append(update.Items, item)
+		}
+		return update, len(update.Items) > 0 || len(update.VolatileOffers) > 0, nil
+	default:
+		return cs2IncrementalInventoryUpdate{}, false, nil
+	}
+}
+
+func decodeCS2SubscribedTypes(types []*cs2pb.CMsgSOCacheSubscribed_SubscribedType) (cs2IncrementalInventoryUpdate, bool, error) {
+	update := cs2IncrementalInventoryUpdate{Items: make([]GCInventoryItem, 0), VolatileOffers: make(map[uint32][]GCVolatileOffer)}
+	found := false
+	for _, objectType := range types {
+		if objectType.GetTypeId() != 1 {
+			if objectType.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+				continue
+			}
+			for _, objectData := range objectType.GetObjectData() {
+				if offer, ok := decodeCS2VolatileOffer(objectData); ok {
+					update.VolatileOffers[offer.GetDefidx()] = domainVolatileOffers(&offer)
+					found = true
+				}
+			}
+			continue
+		}
+		found = true
+		for _, objectData := range objectType.GetObjectData() {
+			item, err := decodeCS2EconItem(objectData)
+			if err != nil {
+				return cs2IncrementalInventoryUpdate{}, true, err
+			}
+			update.Items = append(update.Items, item)
+		}
+	}
+	return update, found, nil
+}
+
+func decodeCS2VolatileOffer(body []byte) (cs2pb.CSOVolatileItemOffer, bool) {
+	var offer cs2pb.CSOVolatileItemOffer
+	if proto.Unmarshal(body, &offer) != nil || offer.GetDefidx() == 0 || offer.GetDefidx() > 1_000_000 || len(offer.GetFauxItemid()) == 0 {
+		return cs2pb.CSOVolatileItemOffer{}, false
+	}
+	return offer, true
+}
+
+func domainVolatileOffers(offer *cs2pb.CSOVolatileItemOffer) []GCVolatileOffer {
+	result := make([]GCVolatileOffer, 0, len(offer.GetFauxItemid()))
+	for index, fauxItemID := range offer.GetFauxItemid() {
+		generationTime := uint32(0)
+		if index < len(offer.GetGenerationTime()) {
+			generationTime = offer.GetGenerationTime()[index]
+		}
+		result = append(result, GCVolatileOffer{FauxItemID: fauxItemID, GenerationTime: generationTime})
+	}
+	return result
+}
+
+func attachVolatileOffers(items []GCInventoryItem, offers map[uint32][]GCVolatileOffer) {
+	for index := range items {
+		if values := offers[items[index].DefIndex]; len(values) > 0 {
+			items[index].VolatileOffers = append([]GCVolatileOffer(nil), values...)
+		}
+	}
+}
+
+func mergeInventoryItemMap(items []GCInventoryItem, additional map[uint64]GCInventoryItem) []GCInventoryItem {
+	indexByID := make(map[uint64]int, len(items)+len(additional))
+	for index := range items {
+		indexByID[items[index].ID] = index
+	}
+	for id, item := range additional {
+		if index, exists := indexByID[id]; exists {
+			items[index] = item
+			continue
+		}
+		indexByID[id] = len(items)
+		items = append(items, item)
+	}
+	return items
 }
 
 func cs2ClientHello() ([]byte, error) {
@@ -831,35 +1023,28 @@ func decodeInventoryFromClientWelcome(body []byte) ([]GCInventoryItem, error) {
 		return nil, fmt.Errorf("failed to decode CS2 ClientWelcome: %w", err)
 	}
 	items := make([]GCInventoryItem, 0)
+	volatileOffers := make(map[uint32][]GCVolatileOffer)
 	var decodeErrors int
 	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
 		for _, objectType := range cache.GetObjects() {
 			if objectType.GetTypeId() != 1 { // CSOEconItem is the authoritative owned-item SO type.
+				if objectType.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+					continue
+				}
+				for _, objectData := range objectType.GetObjectData() {
+					if offer, ok := decodeCS2VolatileOffer(objectData); ok {
+						volatileOffers[offer.GetDefidx()] = domainVolatileOffers(&offer)
+					}
+				}
 				continue
 			}
 			for _, objectData := range objectType.GetObjectData() {
-				var econ cs2pb.CSOEconItem
-				if err := proto.Unmarshal(objectData, &econ); err != nil {
+				item, err := decodeCS2EconItem(objectData)
+				if err != nil {
 					decodeErrors++
 					continue
 				}
-				if econ.GetId() == 0 {
-					continue
-				}
-				paintWear := econPaintWear(&econ)
-				items = append(items, GCInventoryItem{
-					ID:         econ.GetId(),
-					OriginalID: econ.GetOriginalId(),
-					DefIndex:   econ.GetDefIndex(),
-					Quantity:   econ.GetQuantity(),
-					Quality:    econ.GetQuality(),
-					Rarity:     econ.GetRarity(),
-					Inventory:  econ.GetInventory(),
-					CustomName: econ.GetCustomName(),
-					PaintKit:   econPaintKit(&econ),
-					PaintWear:  paintWear,
-					Attributes: econAttributes(&econ),
-				})
+				items = append(items, item)
 			}
 		}
 	}
@@ -869,7 +1054,32 @@ func decodeInventoryFromClientWelcome(body []byte) ([]GCInventoryItem, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("CS2 ClientWelcome contained no decoded econ inventory items")
 	}
+	attachVolatileOffers(items, volatileOffers)
 	return items, nil
+}
+
+func decodeCS2EconItem(body []byte) (GCInventoryItem, error) {
+	var econ cs2pb.CSOEconItem
+	if err := proto.Unmarshal(body, &econ); err != nil {
+		return GCInventoryItem{}, fmt.Errorf("decode CS2 CSOEconItem: %w", err)
+	}
+	if econ.GetId() == 0 {
+		return GCInventoryItem{}, fmt.Errorf("decoded CS2 CSOEconItem omitted id")
+	}
+	return GCInventoryItem{
+		ID:             econ.GetId(),
+		OriginalID:     econ.GetOriginalId(),
+		DefIndex:       econ.GetDefIndex(),
+		Quantity:       econ.GetQuantity(),
+		Quality:        econ.GetQuality(),
+		Rarity:         econ.GetRarity(),
+		Inventory:      econ.GetInventory(),
+		CustomName:     econ.GetCustomName(),
+		PaintKit:       econPaintKit(&econ),
+		PaintWear:      econPaintWear(&econ),
+		Attributes:     econAttributes(&econ),
+		AttributeBytes: econAttributeBytes(&econ),
+	}, nil
 }
 
 func econAttributes(item *cs2pb.CSOEconItem) map[uint32]uint32 {
@@ -880,6 +1090,16 @@ func econAttributes(item *cs2pb.CSOEconItem) map[uint32]uint32 {
 			value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
 		}
 		attributes[attribute.GetDefIndex()] = value
+	}
+	return attributes
+}
+
+func econAttributeBytes(item *cs2pb.CSOEconItem) map[uint32][]byte {
+	attributes := make(map[uint32][]byte)
+	for _, attribute := range item.GetAttribute() {
+		if len(attribute.GetValueBytes()) > 0 {
+			attributes[attribute.GetDefIndex()] = append([]byte(nil), attribute.GetValueBytes()...)
+		}
 	}
 	return attributes
 }

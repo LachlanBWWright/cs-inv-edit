@@ -9,7 +9,7 @@ import type { ToastItem } from "../../components/ui/ToastViewport.js";
 export interface OperationsController {
   operationApi: ReturnType<typeof createOperationApi>;
   notifyOperationReceipt: (receipt: OperationReceipt) => void;
-  settleOperation: (receiptResult: ResultAsync<OperationReceipt, AppError>) => Promise<OperationReceipt>;
+  settleOperation: (receiptResult: ResultAsync<OperationReceipt, AppError>, options?: { suppressToast?: boolean }) => Promise<OperationReceipt>;
 }
 
 export interface CreateOperationsControllerOptions {
@@ -24,7 +24,7 @@ export function createOperationsController(options: CreateOperationsControllerOp
   const operationApi = createOperationApi(options.backend);
 
   const notifyOperationReceipt = (receipt: OperationReceipt) => {
-    if (receipt.type === "containers.open") {
+    if (receipt.type === "containers.open" || receipt.type === "terminal.load-offer") {
       return;
     }
     const base = receipt.message ?? receipt.type;
@@ -41,10 +41,10 @@ export function createOperationsController(options: CreateOperationsControllerOp
     }
   };
 
-  const settleOperation = async (receiptResult: ResultAsync<OperationReceipt, AppError>): Promise<OperationReceipt> => {
+  const settleOperation = async (receiptResult: ResultAsync<OperationReceipt, AppError>, settleOptions?: { suppressToast?: boolean }): Promise<OperationReceipt> => {
     return receiptResult.andThen((receipt) => {
       console.info("[app] operation receipt", receipt);
-      notifyOperationReceipt(receipt);
+      if (!settleOptions?.suppressToast) notifyOperationReceipt(receipt);
       if (receipt.type !== "containers.open" && (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation")) {
         return options.refreshInventory().map(() => receipt);
       }
@@ -55,7 +55,7 @@ export function createOperationsController(options: CreateOperationsControllerOp
     }).andThen((receipt) => fromAppPromise(Promise.all([options.refetchOperations(), options.refetchEvents()]), "Operation state refresh failed").map(() => receipt)).match((receipt) => receipt, (error) => {
       console.error("[app] operation failed", error);
       const message = appErrorMessage(error, "Unknown operation error");
-      options.pushToast({ title: "Operation error", description: message, variant: "danger" });
+      if (!settleOptions?.suppressToast) options.pushToast({ title: "Operation error", description: message, variant: "danger" });
       return { operationId: `failed-${Date.now()}`, type: "operation.error", state: "failed", createdAt: new Date().toISOString(), message };
     });
   };

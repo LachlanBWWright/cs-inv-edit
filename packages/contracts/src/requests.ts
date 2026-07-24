@@ -26,6 +26,14 @@ export interface FeatureFlags {
   enableTf2Customization: boolean;
   enableDota2Inventory: boolean;
   enableSteamInventory: boolean;
+  enableSteamTradeMutations?: boolean;
+}
+
+export interface SteamTradeMutationAssetRequest { appId: number; contextId: string; assetId: string; amount: number; }
+export interface CreateSteamTradeOfferRequest {
+  partnerSteamId: string; message?: string;
+  itemsToGive: SteamTradeMutationAssetRequest[]; itemsToReceive: SteamTradeMutationAssetRequest[];
+  tradeToken?: string;
 }
 
 export type EconomyGame = "steam" | "tf2" | "dota2";
@@ -87,7 +95,7 @@ export interface TF2ItemDetails extends EconomyItemDetailsBase {
   equipSlot?: string;
   usableClasses?: string[];
   capabilities?: Record<string, string>;
-  itemKind?: "item" | "weapon" | "cosmetic" | "tool" | "container" | "crafting_material";
+  itemKind?: "item" | "weapon" | "cosmetic" | "tool" | "container" | "crafting_material" | "taunt" | "paint_can" | "key" | "strangifier" | "killstreak_kit";
   itemClass?: string;
   craftClass?: string;
   craftMaterialType?: string;
@@ -102,8 +110,31 @@ export interface TF2ItemDetails extends EconomyItemDetailsBase {
   baseItem?: boolean;
   hidden?: boolean;
   staticAttributes?: Record<string, string>;
+  rarity?: string;
+  equipConflicts?: string[];
+  loadoutSlots?: Record<string, string>;
+  prefabChain?: string[];
+  containerItems?: TF2RelatedItem[];
+  decodedAttributes?: TF2Attribute[];
   hero?: never;
   slot?: never;
+}
+
+export interface TF2RelatedItem {
+  defIndex?: number;
+  name: string;
+  rarity?: string;
+  poolKind: "primary" | "bonus" | "unresolved";
+  imageUrl?: string;
+}
+
+export interface TF2Attribute {
+  defIndex: number;
+  name: string;
+  value: string;
+  effectType?: string;
+  hidden?: boolean;
+  attributeClass?: string;
 }
 
 export interface Dota2ItemDetails extends EconomyItemDetailsBase {
@@ -161,6 +192,7 @@ export interface AnimationSettings {
   container: RevealAnimationMode;
   tradeUp: TradeUpAnimationMode;
   armory: RevealAnimationMode;
+  terminal: RevealAnimationMode;
 }
 
 export interface TradeUpPreview {
@@ -184,6 +216,8 @@ export interface SetItemNameRequest {
 export interface OpenContainerRequest {
   itemId: string;
   keyItemId?: string;
+  pointsRemaining?: number;
+  volatileLimit?: number;
 }
 
 export interface RemoveItemNameRequest {

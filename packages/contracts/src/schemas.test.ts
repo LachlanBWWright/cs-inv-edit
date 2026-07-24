@@ -58,7 +58,7 @@ it("migrates older settings payloads with multi-game flags disabled", () => {
     validationMode: true,
     sacrificialAccountMode: false,
     armoryPurchasePacingSeconds: 5,
-    animations: { container: "none", tradeUp: "none", armory: "none" },
+    animations: { container: "none", tradeUp: "none", armory: "none", terminal: "none" },
     featureFlags: {
       enableStorageMutations: false, enableContainerOpening: false, enableInventoryDebug: false, enableTradeups: false,
       enableStickerExtract: false, enableNameTags: false, enableItemDeletion: false, enableStatTrakSwap: false,

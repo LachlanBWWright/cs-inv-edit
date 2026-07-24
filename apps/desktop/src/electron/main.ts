@@ -118,13 +118,17 @@ ipcMain.handle("backend:refreshGameInventory", async (_event, game: unknown) => 
 });
 ipcMain.handle("backend:armory", async () => requestJson("/armory", backendSchemas.armory));
 ipcMain.handle("backend:marketPreview", async (_event, marketName: string) => requestJson(`/market/preview?marketName=${encodeURIComponent(marketName)}`, backendSchemas.marketPreview));
-ipcMain.handle("backend:scanPrices", async (_event, input: unknown) => postJson("/prices/scan", backendSchemas.priceScan, input));
 ipcMain.handle("backend:refreshArmory", async () => requestJson("/armory/refresh", backendSchemas.receipt, { method: "POST" }));
 ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) => postJson("/armory/redeem", backendSchemas.receipt, input));
 ipcMain.handle("backend:store", async () => requestJson("/store", backendSchemas.store));
 ipcMain.handle("backend:refreshStore", async () => requestJson("/store/refresh", backendSchemas.receipt, { method: "POST" }));
 ipcMain.handle("backend:trades", async () => requestJson("/trades", backendSchemas.trades));
 ipcMain.handle("backend:refreshTrades", async () => requestJson("/trades/refresh", backendSchemas.trades, { method: "POST" }));
+ipcMain.handle("backend:tradeAccounts", async () => requestJson("/trade-accounts", backendSchemas.tradeAccounts));
+ipcMain.handle("backend:refreshTradeAccounts", async (_event, steamId?: string) => requestJson(`/trade-accounts${steamId ? `?steamId=${encodeURIComponent(steamId)}` : ""}`, backendSchemas.tradeAccounts, { method: "POST" }));
+ipcMain.handle("backend:createTradeOffer", async (_event, input: unknown) => postJson("/trades/offers", backendSchemas.tradeMutation, input));
+ipcMain.handle("backend:acceptTradeOffer", async (_event, id: string) => postJson(`/trades/offers/${encodeURIComponent(id)}/accept`, backendSchemas.tradeMutation, {}));
+ipcMain.handle("backend:counterTradeOffer", async (_event, id: string, input: unknown) => postJson(`/trades/offers/${encodeURIComponent(id)}/counter`, backendSchemas.tradeMutation, input));
 ipcMain.handle("backend:initializeStorePurchase", async (_event, input?: unknown) => {
   const parsed = backendSchemas.initializeStorePurchase.safeParse(input);
   return parsed.success ? postJson("/store/purchases", backendSchemas.purchaseSession, parsed.data) : { ok: false as const, error: { message: "Invalid store purchase IPC argument", cause: parsed.error } };

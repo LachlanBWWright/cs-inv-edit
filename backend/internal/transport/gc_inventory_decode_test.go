@@ -9,6 +9,7 @@ import (
 
 	cs2pb "cs-inv-edit/backend/internal/proto/generated"
 	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
+	"cs-inv-edit/backend/internal/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -42,6 +43,76 @@ func TestDecodeInventoryIgnoresNonEconSOCacheTypes(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ID != 1234 || items[0].DefIndex != 7 {
 		t.Fatalf("decoded inventory = %#v", items)
+	}
+}
+
+func TestDecodeCS2IncrementalInventoryRetainsTerminalOfferSOCreate(t *testing.T) {
+	offerBody, err := proto.Marshal(&cs2pb.CSOEconItem{
+		Id:       proto.Uint64(700),
+		DefIndex: proto.Uint32(8),
+		Attribute: []*cs2pb.CSOEconItem_Attribute{
+			{DefIndex: proto.Uint32(272), Value: proto.Uint32(0x89abcdef)},
+			{DefIndex: proto.Uint32(273), Value: proto.Uint32(0x01234567)},
+			{DefIndex: proto.Uint32(316), Value: proto.Uint32(1299), ValueBytes: []byte{0x13, 0x05, 0, 0}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messageBody, err := proto.Marshal(&cs2pb.CMsgSOSingleObject{TypeId: proto.Int32(1), ObjectData: offerBody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, found, err := decodeCS2IncrementalInventory(GCMessage{AppID: 730, EMsg: protocol.EMsgSOCreate, Body: messageBody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || len(update.Items) != 1 {
+		t.Fatalf("found=%t update=%#v", found, update)
+	}
+	if got := update.Items[0].Attributes[316]; got != 1299 {
+		t.Fatalf("purchase price=%d want=1299", got)
+	}
+	if got := uint64(update.Items[0].Attributes[272]) | uint64(update.Items[0].Attributes[273])<<32; got != 0x0123456789abcdef {
+		t.Fatalf("casket id=%x want=123456789abcdef", got)
+	}
+	if got := update.Items[0].AttributeBytes[316]; len(got) != 4 || got[0] != 0x13 {
+		t.Fatalf("raw purchase-price bytes=%x", got)
+	}
+}
+
+func TestMergeInventoryItemMapAddsVolatileOfferAndUpdatesTerminal(t *testing.T) {
+	items := []GCInventoryItem{{ID: 10, DefIndex: 5176, Quantity: 1}}
+	additional := map[uint64]GCInventoryItem{
+		10: {ID: 10, DefIndex: 5176, Quantity: 0, Quality: 14},
+		20: {ID: 20, DefIndex: 8, Attributes: map[uint32]uint32{316: 1299}},
+	}
+	merged := mergeInventoryItemMap(items, additional)
+	if len(merged) != 2 || merged[0].Quantity != 0 || merged[0].Quality != 14 || merged[1].ID != 20 {
+		t.Fatalf("merged=%#v", merged)
+	}
+}
+
+func TestDecodeCS2IncrementalInventoryRetainsDedicatedVolatileOfferSO(t *testing.T) {
+	offerBody, err := proto.Marshal(&cs2pb.CSOVolatileItemOffer{
+		Defidx:         proto.Uint32(5176),
+		FauxItemid:     []uint64{0xf000000003e70007},
+		GenerationTime: []uint32{1784820000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messageBody, err := proto.Marshal(&cs2pb.CMsgSOSingleObject{TypeId: proto.Int32(cs2VolatileItemOfferSOTypeID), ObjectData: offerBody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, found, err := decodeCS2IncrementalInventory(GCMessage{AppID: 730, EMsg: protocol.EMsgSOUpdate, Body: messageBody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offers := update.VolatileOffers[5176]
+	if !found || len(offers) != 1 || offers[0].FauxItemID != 0xf000000003e70007 || offers[0].GenerationTime != 1784820000 {
+		t.Fatalf("found=%t update=%#v", found, update)
 	}
 }
 

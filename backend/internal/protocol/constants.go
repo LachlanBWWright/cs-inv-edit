@@ -47,6 +47,7 @@ const (
 	EMsgCasketItemLoadContents        = uint32(cs2pb.EGCItemMsg_k_EMsgGCCasketItemLoadContents)
 	EMsgGiftItem                      = uint32(cs2pb.EGCItemMsg_k_EMsgGCDeliverGift)
 	EMsgOpenCrate                     = uint32(cs2pb.EGCItemMsg_k_EMsgGCOpenCrate)
+	EMsgVolatileItemLoadContents      = uint32(cs2pb.EGCItemMsg_k_EMsgGCVolatileItemLoadContents)
 
 	CustomizationExtractSticker     = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_ExtractSticker)
 	CustomizationEncapsulateSticker = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_EncapsulateSticker)

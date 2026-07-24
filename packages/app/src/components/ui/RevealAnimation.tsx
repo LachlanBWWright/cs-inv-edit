@@ -5,12 +5,16 @@ import { ResultAsync, fromThrowable } from "neverthrow";
 import { rarityBorderClass } from "../inventory-view-utils.js";
 import { generateCappedWear, weightedRandomItem } from "../related-item-preview-utils.js";
 import { WearRangeBar } from "./WearRangeBar.js";
+import type { ReturnEstimate } from "../roi-utils.js";
+import { ReturnEstimateCard } from "../ReturnEstimateCard.js";
 
 const crateOpenSoundUrl = new URL("../../assets/audio/csgo-ui-crate-open.wav", import.meta.url).href;
 const crateScrollSoundUrl = new URL("../../assets/audio/csgo-ui-crate-item-scroll.wav", import.meta.url).href;
 
 export interface RevealItem {
   name: string;
+  marketName?: string;
+  price?: string;
   imageUrl?: string;
   rarity?: string;
   kind?: string;
@@ -32,6 +36,11 @@ export interface RevealAnimationProps {
   result: RevealItem;
   ready?: boolean;
   onComplete: () => void;
+  returnEstimate?: ReturnEstimate;
+  returnEstimateLoading?: boolean;
+  returnEstimateCostLabel?: string;
+  returnEstimateUnitCost?: number;
+  returnEstimateNote?: string;
 }
 
 export const STATTRAK_ODDS = 1 / 10;
@@ -309,6 +318,7 @@ export function RevealAnimation(props: RevealAnimationProps) {
           >
             <Show when={props.mode !== "slot-machine"}><p class="reveal-eyebrow">{props.title}</p></Show>
             <ModeContent count={count()} revealed={revealed()} rolling={rolling()} waiting={waiting()} reel={reel()} reelRef={(element) => { reelElement = element; }} travel={travel()} {...props} />
+            <Show when={props.returnEstimate || props.returnEstimateLoading}><div class="mx-auto mt-3 w-[530px] max-w-full text-left"><ReturnEstimateCard estimate={props.returnEstimate} loading={props.returnEstimateLoading} costLabel={props.returnEstimateCostLabel} unitCost={props.returnEstimateUnitCost} note={props.returnEstimateNote} /></div></Show>
           </div>
         </div>
       </Show>
@@ -326,6 +336,7 @@ function ResultImageShowcase(props: { item: RevealItem }) {
         <img class="min-h-0 w-full flex-1 object-contain" src={props.item.imageUrl} alt={props.item.name} referrerpolicy="no-referrer" onError={() => setImageFailed(true)} />
       </Show>
       <p class="w-full truncate px-3 pb-3 text-sm font-semibold text-slate-100">{props.item.name}</p>
+      <Show when={props.item.price}><p class="pb-3 text-sm font-semibold text-emerald-300">{props.item.price}</p></Show>
     </div>
   );
 }
@@ -340,6 +351,7 @@ function ResultCard(props: { item: RevealItem; compact?: boolean }) {
         <img src={props.item.imageUrl} alt="" referrerpolicy="no-referrer" onError={() => setImageFailed(true)} />
       </Show>
       <p>{props.item.name}</p>
+      <Show when={props.item.price}><p class="text-xs font-semibold text-emerald-300">{props.item.price}</p></Show>
       <Show when={props.item.wear !== undefined}><WearRangeBar compact wear={props.item.wear!} min={props.item.wearMin} max={props.item.wearMax} /></Show>
     </div>
   );

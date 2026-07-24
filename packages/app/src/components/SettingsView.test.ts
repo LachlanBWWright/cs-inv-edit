@@ -7,7 +7,7 @@ const settings: SettingsData = {
   validationMode: true,
   sacrificialAccountMode: true,
   armoryPurchasePacingSeconds: 5,
-  animations: { container: "slot-machine", tradeUp: "slot-machine", armory: "slot-machine" },
+  animations: { container: "slot-machine", tradeUp: "slot-machine", armory: "slot-machine", terminal: "slot-machine" },
   featureFlags: {
     enableStorageMutations: true,
     enableContainerOpening: true,
@@ -39,5 +39,9 @@ describe("settings changes", () => {
   it("detects a feature flag change without depending on object identity", () => {
     expect(settingsEqual(settings, { ...settings, featureFlags: { ...settings.featureFlags } })).toBe(true);
     expect(settingsEqual(settings, { ...settings, featureFlags: { ...settings.featureFlags, enableArmoryRedemption: false } })).toBe(false);
+  });
+
+  it("detects an independent terminal animation change", () => {
+    expect(settingsEqual(settings, { ...settings, animations: { ...settings.animations, terminal: "countdown" } })).toBe(false);
   });
 });

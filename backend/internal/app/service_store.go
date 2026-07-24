@@ -167,10 +167,39 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 		return failed("invalid store purchase quantity; CS2 supports between 1 and 20 items per purchase")
 	}
 	var offer *domain.StoreOffer
-	for i := range s.store.Offers {
-		if s.store.Offers[i].ID == offerID {
-			offer = &s.store.Offers[i]
+	terminalID := uint64(0)
+	if strings.HasPrefix(offerID, "terminal:") {
+		terminalID, _ = strconv.ParseUint(strings.TrimPrefix(offerID, "terminal:"), 10, 64)
+		if quantity64 != 1 || terminalID == 0 {
+			s.mu.Unlock()
+			return failed("terminal purchases require one valid active terminal")
+		}
+		for itemIndex := range s.inventory.Items {
+			item := &s.inventory.Items[itemIndex]
+			if item.ID != strconv.FormatUint(terminalID, 10) || !isTerminalInventoryItem(*item) || len(item.TerminalOffers) == 0 || item.Defindex == nil {
+				continue
+			}
+			current := item.TerminalOffers[0]
+			if current.PurchasePrice == 0 || expected != uint64(current.PurchasePrice) {
+				s.mu.Unlock()
+				return failed("the terminal offer price changed; refresh inventory and review the current offer")
+			}
+			offer = &domain.StoreOffer{
+				ID:          offerID,
+				DefIndex:    *item.Defindex,
+				Name:        current.Item.MarketName,
+				Currency:    steamCurrencyCode(s.storeCurrencyID),
+				AmountMinor: uint64(current.PurchasePrice),
+				Purchasable: true,
+			}
 			break
+		}
+	} else {
+		for i := range s.store.Offers {
+			if s.store.Offers[i].ID == offerID {
+				offer = &s.store.Offers[i]
+				break
+			}
 		}
 	}
 	if offer == nil || !offer.Purchasable {
@@ -181,7 +210,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	if offer.SaleAmountMinor != nil {
 		amount = *offer.SaleAmountMinor
 	}
-	if uint32(version64) != s.store.PriceSheetVersion || expected != amount {
+	if terminalID == 0 && (uint32(version64) != s.store.PriceSheetVersion || expected != amount) {
 		s.mu.Unlock()
 		return failed("The CS2 store price changed. Refresh the store and review the updated price before continuing.")
 	}
@@ -201,7 +230,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	}
 	sessionID := newID()
 	session := domain.PurchaseSession{ID: sessionID, Status: "initializing", OfferID: offer.ID, DefIndex: offer.DefIndex, Name: offer.Name, Quantity: uint32(quantity64), Currency: offer.Currency, AmountMinor: amount * quantity64, FormattedAmount: formatStoreAmount(offer.Currency, amount*quantity64), CreatedAt: created, ExpiresAt: time.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339), Message: "Initializing purchase with Steam"}
-	purchaseRequest := transport.StorePurchaseRequest{Country: purchaseCountry, Language: 0, Currency: purchaseCurrency, ItemDefID: offer.DefIndex, Quantity: uint32(quantity64), Cost: amount * quantity64, PurchaseType: offer.PurchaseType}
+	purchaseRequest := transport.StorePurchaseRequest{Country: purchaseCountry, Language: 0, Currency: purchaseCurrency, ItemDefID: offer.DefIndex, Quantity: uint32(quantity64), Cost: amount * quantity64, PurchaseType: offer.PurchaseType, SupplementalData: terminalID}
 	s.purchaseSessions[sessionID] = session
 	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

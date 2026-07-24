@@ -25,6 +25,7 @@ import type {
   PurchaseSession,
   InitializeStorePurchaseRequest,
   SteamAccountProfile,
+  SteamAccountTradesCollection,
   SteamTradesSnapshot,
   UseItemRequest,
   UseMultipleItemsRequest,
@@ -41,6 +42,7 @@ import { ToastViewport, type ToastItem } from "./components/ui/ToastViewport.js"
 import type { AppScreen } from "./view.js";
 import { isEconomyInventoryScreen, isInventoryScreen } from "./view.js";
 import { itemWeaponName, type InventorySort } from "./components/inventory-view-utils.js";
+import { economyCategoryOptions } from "./components/game-inventory-utils.js";
 
 export interface AppViewProps {
   view: AppScreen;
@@ -57,9 +59,11 @@ export interface AppViewProps {
   steamInventory: GameInventorySnapshot | undefined;
   tf2Inventory: GameInventorySnapshot | undefined;
   dota2Inventory: GameInventorySnapshot | undefined;
+  gameInventoryLoading: Record<"steam" | "tf2" | "dota2", boolean>;
   armory: ArmorySnapshot | undefined;
   store: StoreSnapshot | undefined;
   trades: SteamTradesSnapshot | undefined;
+  tradeAccounts: SteamAccountTradesCollection | undefined;
   settings: SettingsData | undefined;
   query: string;
   setQuery: (value: string) => void;
@@ -87,15 +91,16 @@ export interface AppViewProps {
   onGameOperation: (type: string, input: unknown) => Promise<OperationReceipt>;
   onArmoryRefresh: () => Promise<unknown>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
-  onScanPrices: (marketNames: string[]) => Promise<PriceScanResult | undefined>;
+  onScanPrices: (marketNames: string[], appId?: number) => Promise<PriceScanResult | undefined>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
   onStoreRefresh: () => Promise<unknown>;
   onStorePurchase: (input: InitializeStorePurchaseRequest) => Promise<PurchaseSession>;
   onStoreReconcile: (id: string) => Promise<PurchaseSession>;
-  onTradesRefresh: () => Promise<unknown>;
+  onTradesRefresh: (steamId?: string) => Promise<unknown>;
   onInventoryRename: (input: SetItemNameRequest) => Promise<unknown>;
   onRemoveName: (input: RemoveItemNameRequest) => Promise<unknown>;
-  onOpenContainer: (input: OpenContainerRequest) => Promise<unknown>;
+  onOpenContainer: (input: OpenContainerRequest, suppressToast?: boolean) => Promise<unknown>;
+  onTerminalSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
   onStorageSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
   onTradeUpSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
   onStickerSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
@@ -118,13 +123,22 @@ export function AppView(props: AppViewProps) {
   const [collectionFilter, setCollectionFilter] = createSignal("all");
   const [sort, setSort] = createSignal<InventorySort>("name");
   const [marketPrices, setMarketPrices] = createSignal<ReadonlyMap<string, number>>(new Map());
+  const [economyTagFilter, setEconomyTagFilter] = createSignal("");
   let requestedPriceNames = "";
   const rarityOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.rarity).filter((value): value is string => !!value))].sort());
   const weaponOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map(itemWeaponName).filter((value): value is string => !!value))].sort());
   const collectionOptions = createMemo(() => [...new Set((props.inventory?.items ?? []).map((item) => item.collection).filter((value): value is string => !!value))].sort());
+  const economyGame = createMemo(() => props.view === "steam-inventory" ? "steam" as const : props.view === "tf2-inventory" ? "tf2" as const : "dota2" as const);
+  const economySnapshot = createMemo(() => economyGame() === "steam" ? props.steamInventory : economyGame() === "tf2" ? props.tf2Inventory : props.dota2Inventory);
+  const navbarEconomyCategoryOptions = createMemo(() => economyCategoryOptions(economyGame(), economySnapshot()));
+  let previousEconomyGame = economyGame();
   createEffect(() => {
-    if (sort() !== "price-low" && sort() !== "price-high") return;
-    const names = [...new Set((props.inventory?.items ?? []).filter((item) => item.marketable !== false).map((item) => item.marketName).filter((value): value is string => !!value))].sort();
+    const game = economyGame();
+    if (game !== previousEconomyGame) setEconomyTagFilter("");
+    previousEconomyGame = game;
+  });
+  createEffect(() => {
+    const names = [...new Set((props.inventory?.items ?? []).map((item) => item.marketName).filter((value): value is string => !!value))].sort();
     const requestKey = names.join("\u0000");
     if (!requestKey || requestKey === requestedPriceNames) return;
     requestedPriceNames = requestKey;
@@ -169,6 +183,9 @@ export function AppView(props: AppViewProps) {
         collectionOptions={collectionOptions()}
         compactMode={props.compactMode}
         setCompactMode={props.setCompactMode}
+        economyTagFilter={economyTagFilter()}
+        setEconomyTagFilter={setEconomyTagFilter}
+        economyCategoryOptions={navbarEconomyCategoryOptions()}
         onAddAccount={props.onAddAccount}
         onSignInAccount={props.onSignInAccount}
         onSignOutAccount={props.onSignOutAccount}
@@ -219,9 +236,12 @@ export function AppView(props: AppViewProps) {
         marketPrices={marketPrices()}
         compactMode={props.compactMode}
         onMarketPreview={props.onMarketPreview}
+        onScanPrices={props.onScanPrices}
         onRename={props.onInventoryRename}
         onRemoveName={props.onRemoveName}
         onOpenContainer={props.onOpenContainer}
+        onTerminalPurchase={props.onStorePurchase}
+        onLoadTerminalOffer={(terminalId) => props.onTerminalSubmit("terminal.load-offer", { terminalId })}
         onLoadStorageContents={(casketId) => props.onStorageSubmit("storage.load", { casketId })}
         onMoveFromStorage={(input) => props.onStorageSubmit("storage.move-out", input)}
         onToast={props.onToast}
@@ -229,22 +249,26 @@ export function AppView(props: AppViewProps) {
           />
         </Match>
         <Match when={isEconomyInventoryScreen(props.view)}>
-          <GameInventoryView
+		  <GameInventoryView
 			game={props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2"}
+			loading={props.gameInventoryLoading[props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2"]}
 			connected={props.connection ? props.connection.state === "connected" : undefined}
+			steamId={props.connection?.state === "connected" ? props.connection.steamId : undefined}
 			settings={props.settings}
         snapshot={props.view === "steam-inventory" ? props.steamInventory : props.view === "tf2-inventory" ? props.tf2Inventory : props.dota2Inventory}
         query={props.query}
+        tagFilter={economyTagFilter()}
         selectedAssetId={props.selectedItemId}
         setSelectedAssetId={props.setSelectedItemId}
         compactMode={props.compactMode}
+        onScanPrices={props.onScanPrices}
 		onRefresh={() => props.onGameInventoryRefresh(props.view === "steam-inventory" ? "steam" : props.view === "tf2-inventory" ? "tf2" : "dota2")}
 		onOperation={props.onGameOperation}
           />
         </Match>
-        <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onMarketPreview={props.onMarketPreview} onRedeem={props.onArmoryRedeem} /></Match>
+        <Match when={props.view === "armory"}><ArmoryView armory={props.armory} settings={props.settings} onRefresh={props.onArmoryRefresh} onMarketPreview={props.onMarketPreview} onScanPrices={props.onScanPrices} onRedeem={props.onArmoryRedeem} /></Match>
         <Match when={props.view === "store"}><StoreView store={props.store} settings={props.settings} onRefresh={props.onStoreRefresh} onPurchase={props.onStorePurchase} onReconcile={props.onStoreReconcile} /></Match>
-        <Match when={props.view === "trades"}><TradesView snapshot={props.trades} onRefresh={props.onTradesRefresh} onReconnect={() => props.setView("account")} /></Match>
+        <Match when={props.view === "trades"}><TradesView snapshot={props.trades} accounts={props.tradeAccounts} activeSteamId={props.connection?.steamId} onRefresh={props.onTradesRefresh} onReconnect={() => props.setView("account")} /></Match>
         </Switch>
       </section>
 

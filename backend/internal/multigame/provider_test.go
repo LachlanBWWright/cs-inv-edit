@@ -185,3 +185,32 @@ func TestTF2SchemaEnrichmentRecordsContentRevision(t *testing.T) {
 		t.Fatalf("schema revision=%q", snapshot.SchemaRevision)
 	}
 }
+
+func TestTF2SchemaNameRemainsCanonicalWhenItemHasCustomName(t *testing.T) {
+	provider := NewProvider()
+	provider.communityBase = "https://inventory.test"
+	provider.tf2ItemsURL = "https://schema.test/items_game.txt"
+	provider.tf2EnglishURL = "https://schema.test/tf_english.txt"
+	provider.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := `{"success":1,"assets":[{"appid":440,"contextid":"2","assetid":"1","classid":"10","instanceid":"0","amount":"1"}],"descriptions":[{"appid":440,"classid":"10","instanceid":"0","name":"uhm, ackchually","icon_url":"token","tradable":1,"marketable":0}]}`
+		if request.URL.Host == "schema.test" {
+			if strings.HasSuffix(request.URL.Path, "items_game.txt") {
+				body = `"items_game" { "items" { "42" { "name" "actual_hat" "item_name" "#Item_Hat" } } "attributes" {} }`
+			} else {
+				body = `"lang" { "Tokens" { "Item_Hat" "Actual Hat" } }`
+			}
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	snapshot := provider.EnrichOwned(context.Background(), "7656119", games["tf2"], []OwnedItem{{ID: 1, DefIndex: 42, Quantity: 1, CustomName: "uhm, ackchually"}})
+	if got := snapshot.Items[0]; got.Name != "Actual Hat" || got.Details.CustomName != "uhm, ackchually" {
+		t.Fatalf("TF2 canonical/custom names = %#v", got)
+	}
+}
+
+func TestDescriptionTradableAfterParsesOwnerDescription(t *testing.T) {
+	got := descriptionTradableAfter([]descriptionLine{{Value: `<span>Tradable After Jul 24, 2026 (16:00:00) GMT</span>`}})
+	if got != "2026-07-24T16:00:00Z" {
+		t.Fatalf("tradable after=%q", got)
+	}
+}

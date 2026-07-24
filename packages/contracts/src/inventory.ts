@@ -44,6 +44,8 @@ export interface InventoryItemDto {
   collectionItems?: RelatedItemDto[];
   tradeUpItems?: RelatedItemDto[];
   containerItems?: RelatedItemDto[];
+  terminalOffers?: TerminalOfferDto[];
+  terminalPointsRemaining?: number;
   exterior?: string;
   rarity?: string;
   storageLocation?: string;
@@ -63,7 +65,16 @@ export interface InventoryItemDto {
   debug?: ItemDebugDto;
 }
 
+export interface TerminalOfferDto {
+  fauxItemId: string;
+  generationTime?: number;
+  purchasePrice?: number;
+  item: RelatedItemDto;
+}
+
 export interface RelatedItemDto {
+  defindex?: number;
+  paintKit?: number;
   name: string;
   marketName?: string;
   listingName?: string;
@@ -79,7 +90,7 @@ export interface RelatedItemDto {
 
 export interface PriceScanRequest { marketNames: string[]; currency: string; appId?: number; priceMultipliers?: Record<string, number> }
 export interface PriceQuoteDto { source: string; marketName: string; currency: string; amountMinor?: number; displayPrice: string; priceMultiplier: number; adjustedAmountMinor?: number; adjustedDisplayPrice?: string; listingCount?: number; url?: string; observedAt: string }
-export interface PriceScanResult { currency: string; items: Array<{ marketName: string; quotes: PriceQuoteDto[] }>; listings: PriceQuoteDto[]; errors: Array<{ source: string; message: string }>; scannedAt: string }
+export interface PriceScanResult { currency: string; items: Array<{ marketName: string; quotes: PriceQuoteDto[] }>; listings: PriceQuoteDto[]; errors: Array<{ source: string; message: string }>; scannedAt: string; servedAt?: string; cacheState?: "fresh" | "stale" }
 
 export interface ItemDebugDto {
   gcId?: string;
@@ -162,6 +173,19 @@ export interface SteamTradesSnapshot {
   refreshedAt: string; message?: string;
 }
 
+export interface SteamAccountTradesSnapshot {
+  steamId: string; accountName: string; avatarUrl?: string; snapshot: SteamTradesSnapshot;
+}
+
+export interface SteamAccountTradesCollection {
+  accounts: SteamAccountTradesSnapshot[]; refreshedAt: string;
+}
+
+export interface SteamTradeMutationResult {
+  status: "submitted" | "accepted" | "blocked_by_feature_flag" | "requires_connection" | "requires_refresh" | "error";
+  tradeOfferId?: string; needsMobileConfirmation?: boolean; message?: string;
+}
+
 export interface InitializeStorePurchaseRequest {
   offerId: string; quantity: number; expectedPriceSheetVersion: number;
   expectedAmountMinor: number; supplementalData?: string;
@@ -215,6 +239,7 @@ export interface OperationReceipt {
 
 export interface OperationResult {
   openedItem?: InventoryItemDto;
+  terminalOffer?: TerminalOfferDto;
   consumedItemId?: string;
   requestEMsg?: number;
   requestMethod?: string;

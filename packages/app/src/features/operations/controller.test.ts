@@ -60,4 +60,27 @@ describe("createOperationsController", () => {
     expect(failed.state).toBe("failed");
     expect(pushToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Operation error" }));
   });
+
+  it("does not toast for silent terminal operations or their transport failures", async () => {
+    const pushToast = vi.fn();
+    const error = { message: "terminal request failed" } as AppError;
+    const controller = createOperationsController({
+      backend: {} as AppBackendClient,
+      pushToast,
+      refreshInventory: () => okAsync(undefined),
+      refetchOperations: () => Promise.resolve(undefined),
+      refetchEvents: () => Promise.resolve(undefined),
+    });
+
+    await controller.settleOperation(okAsync({
+      operationId: "terminal-load",
+      type: "terminal.load-offer",
+      state: "awaiting_gc_confirmation",
+      createdAt: new Date().toISOString(),
+      message: "Loading terminal offer",
+    }), { suppressToast: true });
+    await controller.settleOperation(errAsync(error), { suppressToast: true });
+
+    expect(pushToast).not.toHaveBeenCalled();
+  });
 });

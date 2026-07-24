@@ -20,6 +20,7 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 	if username == "" || password == "" {
 		return domain.ConnectionStatus{State: "error", Detail: "Username and password required"}
 	}
+	s.prepareAdditionalSteamSession()
 
 	if err := s.gcClient.Connect(context.Background()); err != nil {
 		s.mu.Lock()
@@ -62,8 +63,7 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 	s.activateAccountSessionLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername = ""
 	s.pendingPassword = ""
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
-	s.tradeAccessToken = result.WebAccessToken
+	s.registerSteamSessionLocked(domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}, result.WebAccessToken)
 	status := s.connection
 	s.mu.Unlock()
 	s.resolveSteamAvatar(fmt.Sprintf("%d", result.SteamID))
@@ -71,6 +71,7 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 }
 
 func (s *Service) StartSteamQR() domain.ConnectionStatus {
+	s.prepareAdditionalSteamSession()
 	if err := s.gcClient.Connect(context.Background()); err != nil {
 		return domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam CM connect", err), Diagnostics: transport.DiagnosticsFromError(err)}
 	}
@@ -138,8 +139,7 @@ func (s *Service) finishSteamLogin(username string, result transport.LogonResult
 	s.activateAccountSessionLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername, s.pendingPassword = "", ""
 	s.authCancel = nil
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
-	s.tradeAccessToken = result.WebAccessToken
+	s.registerSteamSessionLocked(domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}, result.WebAccessToken)
 	s.mu.Unlock()
 	s.resolveSteamAvatar(fmt.Sprintf("%d", result.SteamID))
 }
@@ -159,6 +159,9 @@ func (s *Service) resolveSteamAvatar(steamID string) {
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		if session := s.steamSessions[steamID]; session != nil {
+			session.Connection.AvatarURL = avatarURL
+		}
 		if s.connection.State == "connected" && s.connection.SteamID == steamID {
 			s.connection.AvatarURL = avatarURL
 		}
@@ -221,8 +224,7 @@ func (s *Service) SubmitSteamGuard(input map[string]any) domain.ConnectionStatus
 	s.activateAccountSessionLocked(fmt.Sprintf("%d", result.SteamID))
 	s.pendingUsername = ""
 	s.pendingPassword = ""
-	s.connection = domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}
-	s.tradeAccessToken = result.WebAccessToken
+	s.registerSteamSessionLocked(domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: fmt.Sprintf("%d", result.SteamID), AccountName: username}, result.WebAccessToken)
 	s.resolveSteamAvatar(fmt.Sprintf("%d", result.SteamID))
 	return s.connection
 }
@@ -235,6 +237,7 @@ func (s *Service) cancelGameRefreshesForAccountChangeLocked(nextSteamID string) 
 
 func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	s.mu.Lock()
+	disconnectedSteamID := s.connection.SteamID
 	s.invalidateAccountSessionLocked()
 	if s.authCancel != nil {
 		s.authCancel()
@@ -243,6 +246,9 @@ func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "disconnected"}
 	s.tradeAccessToken = ""
 	s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()}
+	delete(s.tradeAccounts, disconnectedSteamID)
+	delete(s.steamSessions, disconnectedSteamID)
+	s.activeSteamID = ""
 	s.inventory = emptyInventory()
 	s.clearAllGameInventoriesLocked()
 	s.pendingUsername = ""

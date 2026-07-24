@@ -209,6 +209,12 @@ type GCInventoryItem struct {
 	Origin         uint32
 	Style          uint32
 	CustomDesc     string
+	VolatileOffers []GCVolatileOffer
+}
+
+type GCVolatileOffer struct {
+	FauxItemID     uint64
+	GenerationTime uint32
 }
 
 type GCEquippedState struct {

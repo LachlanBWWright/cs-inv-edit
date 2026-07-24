@@ -10,8 +10,10 @@
   "scripts": {
     "dev:desktop": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop dev",
     "dev:web": "pnpm --filter @cs-inv-edit/web dev",
-    "build": "pnpm -r --if-present build && pnpm build:backend",
+    "build": "pnpm -r --if-present build && pnpm build:services",
     "build:backend": "go build -o bin/cs2-backend ./backend/cmd/cs2-backend",
+    "build:data-service": "go build -o bin/data-service ./backend/cmd/data-service",
+    "build:services": "pnpm build:backend && pnpm build:data-service",
     "build:repo": "./scripts/build.sh",
     "test:backend": "go test ./backend/...",
     "test:frontend": "vitest run",

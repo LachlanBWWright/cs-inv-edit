@@ -12,7 +12,7 @@ import (
 
 	"cs-inv-edit/backend/internal/app"
 	"cs-inv-edit/backend/internal/operations"
-	"cs-inv-edit/backend/pricescanner"
+	"cs-inv-edit/backend/internal/steamtrade"
 	"golang.org/x/net/websocket"
 )
 
@@ -38,9 +38,12 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/store/purchases/{id}", h.storePurchase)
 	h.mux.HandleFunc("/store/purchases/{id}/reconcile", h.storePurchaseReconcile)
 	h.mux.HandleFunc("/trades", h.trades)
+	h.mux.HandleFunc("/trade-accounts", h.tradeAccounts)
 	h.mux.HandleFunc("/trades/refresh", h.tradesRefresh)
+	h.mux.HandleFunc("/trades/offers", h.tradeOfferCreate)
+	h.mux.HandleFunc("/trades/offers/{id}/accept", h.tradeOfferAccept)
+	h.mux.HandleFunc("/trades/offers/{id}/counter", h.tradeOfferCounter)
 	h.mux.HandleFunc("/market/preview", h.marketPreview)
-	h.mux.HandleFunc("/prices/scan", h.priceScan)
 	h.mux.HandleFunc("/operations", h.operations)
 	h.mux.HandleFunc("/operations/", h.operationRoot)
 	h.mux.HandleFunc("/operations/{type}", h.operation)
@@ -74,6 +77,20 @@ func NewHandler(service *app.Service) http.Handler {
 	return h.withCORS(h.mux)
 }
 
+func (h *Handler) tradeAccounts(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		writeJSON(w, h.service.AccountTrades())
+		return
+	}
+	if r.Method == http.MethodPost {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		writeJSON(w, h.service.RefreshAccountTrades(ctx, r.URL.Query().Get("steamId")))
+		return
+	}
+	writeError(w, http.StatusMethodNotAllowed, "trade accounts route requires GET or POST")
+}
+
 func (h *Handler) trades(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "trades route requires GET")
@@ -92,26 +109,53 @@ func (h *Handler) tradesRefresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.service.RefreshTrades(ctx))
 }
 
-func (h *Handler) priceScan(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "price scan requires POST")
-		return
-	}
-	var query pricescanner.Query
+func decodeTradeCreate(w http.ResponseWriter, r *http.Request) (steamtrade.CreateRequest, bool) {
+	var input steamtrade.CreateRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&query); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid price scan request: "+err.Error())
+	if err := decoder.Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid trade offer request: "+err.Error())
+		return input, false
+	}
+	return input, true
+}
+
+func (h *Handler) tradeOfferCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "trade offer route requires POST")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	input, ok := decodeTradeCreate(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	result, err := h.service.ScanPrices(ctx, query)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	writeJSON(w, h.service.CreateTradeOffer(ctx, input))
+}
+
+func (h *Handler) tradeOfferAccept(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "trade accept route requires POST")
 		return
 	}
-	writeJSON(w, result)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	writeJSON(w, h.service.AcceptTradeOffer(ctx, r.PathValue("id")))
+}
+
+func (h *Handler) tradeOfferCounter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "trade counter route requires POST")
+		return
+	}
+	input, ok := decodeTradeCreate(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	writeJSON(w, h.service.CounterTradeOffer(ctx, r.PathValue("id"), input))
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) { writeJSON(w, h.service.Health()) }
