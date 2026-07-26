@@ -37,7 +37,9 @@ describe("createOperationsController", () => {
     expect(refreshInventory).toHaveBeenCalledTimes(1);
     expect(refetchOperations).toHaveBeenCalledTimes(1);
     expect(refetchEvents).toHaveBeenCalledTimes(1);
-    expect(pushToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Operation completed" }));
+    expect(pushToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Operation completed" }),
+    );
   });
 
   it("returns a failed fallback receipt for a backend error", async () => {
@@ -58,7 +60,9 @@ describe("createOperationsController", () => {
     const failed = await controller.settleOperation(errAsync(error));
 
     expect(failed.state).toBe("failed");
-    expect(pushToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Operation error" }));
+    expect(pushToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Operation error" }),
+    );
   });
 
   it("does not toast for silent terminal operations or their transport failures", async () => {
@@ -72,13 +76,16 @@ describe("createOperationsController", () => {
       refetchEvents: () => Promise.resolve(undefined),
     });
 
-    await controller.settleOperation(okAsync({
-      operationId: "terminal-load",
-      type: "terminal.load-offer",
-      state: "awaiting_gc_confirmation",
-      createdAt: new Date().toISOString(),
-      message: "Loading terminal offer",
-    }), { suppressToast: true });
+    await controller.settleOperation(
+      okAsync({
+        operationId: "terminal-load",
+        type: "terminal.load-offer",
+        state: "awaiting_gc_confirmation",
+        createdAt: new Date().toISOString(),
+        message: "Loading terminal offer",
+      }),
+      { suppressToast: true },
+    );
     await controller.settleOperation(errAsync(error), { suppressToast: true });
 
     expect(pushToast).not.toHaveBeenCalled();

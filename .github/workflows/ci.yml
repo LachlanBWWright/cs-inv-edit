@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - 'copilot/**'
+      - "copilot/**"
   pull_request:
 
 jobs:
@@ -43,7 +43,6 @@ jobs:
 
       - name: Build shared shells
         run: pnpm build
-
 
   mac-app:
     needs: quality

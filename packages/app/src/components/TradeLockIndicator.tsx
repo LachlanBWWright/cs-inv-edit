@@ -14,11 +14,24 @@ export function TradeLockIndicator(props: { item: InventoryItemDto }) {
   const timer = window.setInterval(() => setNow(Date.now()), 60_000);
   onCleanup(() => window.clearInterval(timer));
   const remaining = () => remainingLabel(props.item.tradableAfter, now());
-  const isTradeLocked = () => props.item.tradable === false || !!props.item.tradableAfter;
+  const isTradeLocked = () =>
+    props.item.tradable === false || !!props.item.tradableAfter;
 
   return (
     <Show when={isTradeLocked()}>
-      <span class="pointer-events-none absolute right-2 top-2 z-20 rounded-md border border-rose-400/50 bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold text-rose-300 shadow-lg" aria-label={props.item.tradableAfter ? `Trade locked until ${new Date(props.item.tradableAfter).toLocaleString()}` : "Not tradable"} title={props.item.tradableAfter ? `Tradable after ${new Date(props.item.tradableAfter).toLocaleString()}` : "Not tradable"}>
+      <span
+        class="pointer-events-none absolute right-2 top-2 z-20 rounded-md border border-rose-400/50 bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold text-rose-300 shadow-lg"
+        aria-label={
+          props.item.tradableAfter
+            ? `Trade locked until ${new Date(props.item.tradableAfter).toLocaleString()}`
+            : "Not tradable"
+        }
+        title={
+          props.item.tradableAfter
+            ? `Tradable after ${new Date(props.item.tradableAfter).toLocaleString()}`
+            : "Not tradable"
+        }
+      >
         {remaining() || "×"}
       </span>
     </Show>

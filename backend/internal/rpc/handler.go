@@ -29,6 +29,10 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/inventory/refresh", h.inventoryRefresh)
 	h.mux.HandleFunc("/games/{game}/inventory", h.gameInventory)
 	h.mux.HandleFunc("/games/{game}/inventory/refresh", h.gameInventoryRefresh)
+	h.mux.HandleFunc("/games/tf2/features", h.tf2Features)
+	h.mux.HandleFunc("/steam-inventory-service/{appID}", h.steamInventoryService)
+	h.mux.HandleFunc("/steam-inventory-service/{appID}/refresh", h.steamInventoryServiceRefresh)
+	h.mux.HandleFunc("/steam-inventory-service/games", h.steamInventoryServiceGames)
 	h.mux.HandleFunc("/armory", h.armory)
 	h.mux.HandleFunc("/armory/refresh", h.armoryRefresh)
 	h.mux.HandleFunc("/armory/redeem", h.armoryRedeem)
@@ -195,6 +199,61 @@ func (h *Handler) gameInventoryRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	receipt := h.service.RefreshGameInventory(r.PathValue("game"))
+	if receipt.State == "blocked_by_feature_flag" {
+		w.WriteHeader(http.StatusForbidden)
+	}
+	writeJSON(w, receipt)
+}
+func (h *Handler) tf2Features(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "TF2 features route requires GET")
+		return
+	}
+	writeJSON(w, h.service.TF2Features())
+}
+func (h *Handler) steamInventoryServiceGames(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Steam Inventory Service games route requires GET")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	writeJSON(w, h.service.SteamInventoryServiceGames(ctx))
+}
+func parseSteamInventoryServiceAppID(w http.ResponseWriter, r *http.Request) (uint32, bool) {
+	value, err := strconv.ParseUint(r.PathValue("appID"), 10, 32)
+	if err != nil || value == 0 {
+		writeError(w, http.StatusBadRequest, "Steam Inventory Service AppID must be a positive 32-bit integer")
+		return 0, false
+	}
+	return uint32(value), true
+}
+func (h *Handler) steamInventoryService(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Steam Inventory Service route requires GET")
+		return
+	}
+	appID, ok := parseSteamInventoryServiceAppID(w, r)
+	if !ok {
+		return
+	}
+	snapshot, enabled := h.service.SteamInventoryService(appID)
+	if !enabled {
+		writeError(w, http.StatusForbidden, "Steam inventory is disabled by feature flag")
+		return
+	}
+	writeJSON(w, snapshot)
+}
+func (h *Handler) steamInventoryServiceRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Steam Inventory Service refresh requires POST")
+		return
+	}
+	appID, ok := parseSteamInventoryServiceAppID(w, r)
+	if !ok {
+		return
+	}
+	receipt := h.service.RefreshSteamInventoryService(appID)
 	if receipt.State == "blocked_by_feature_flag" {
 		w.WriteHeader(http.StatusForbidden)
 	}

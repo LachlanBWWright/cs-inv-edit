@@ -16,15 +16,29 @@ import type { ResultAsync } from "neverthrow";
 import type { AppError } from "./result-http.js";
 
 export interface OperationApi {
-  applyNameTag(input: SetItemNameRequest): ResultAsync<OperationReceipt, AppError>;
-  removeNameTag(input: RemoveItemNameRequest): ResultAsync<OperationReceipt, AppError>;
+  applyNameTag(
+    input: SetItemNameRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
+  removeNameTag(
+    input: RemoveItemNameRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
   deleteItem(input: DeleteItemRequest): ResultAsync<OperationReceipt, AppError>;
-  applyStatTrakSwap(input: ApplyStatTrakSwapRequest): ResultAsync<OperationReceipt, AppError>;
-  applyStrangePart(input: ApplyStrangePartRequest): ResultAsync<OperationReceipt, AppError>;
+  applyStatTrakSwap(
+    input: ApplyStatTrakSwapRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
+  applyStrangePart(
+    input: ApplyStrangePartRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
   useItem(input: UseItemRequest): ResultAsync<OperationReceipt, AppError>;
-  useMultipleItems(input: UseMultipleItemsRequest): ResultAsync<OperationReceipt, AppError>;
-  applyToolToItem(input: ApplyToolToItemRequest): ResultAsync<OperationReceipt, AppError>;
-  applyToolToBaseItem(input: ApplyToolToBaseItemRequest): ResultAsync<OperationReceipt, AppError>;
+  useMultipleItems(
+    input: UseMultipleItemsRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
+  applyToolToItem(
+    input: ApplyToolToItemRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
+  applyToolToBaseItem(
+    input: ApplyToolToBaseItemRequest,
+  ): ResultAsync<OperationReceipt, AppError>;
   giftItem(input: GiftItemRequest): ResultAsync<OperationReceipt, AppError>;
 }
 

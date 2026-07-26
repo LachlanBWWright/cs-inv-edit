@@ -19,6 +19,7 @@
     "test:frontend": "vitest run",
     "test": "./scripts/test.sh",
     "lint": "pnpm -r --if-present lint",
+    "format": "prettier --write .",
     "typecheck": "pnpm -r --if-present typecheck",
     "run": "./scripts/run.sh",
     "check": "pnpm lint && pnpm typecheck && pnpm test:frontend && pnpm test:backend && pnpm build && pnpm find:long-files && pnpm find:deep-indentation",
@@ -39,6 +40,7 @@
     "electron-builder": "^26.15.3",
     "eslint": "^10.7.0",
     "eslint-plugin-neverthrow": "^1.1.4",
+    "prettier": "^3.9.6",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   },

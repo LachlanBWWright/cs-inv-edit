@@ -54,7 +54,7 @@ func TestClientWelcomeStoreContextUsesGameTrackingDescriptor(t *testing.T) {
 }
 
 func TestStoreDynamicMessagesRoundTrip(t *testing.T) {
-	body, err := MarshalStorePurchaseInit(StorePurchaseRequest{Country: "AU", Language: 0, Currency: 21, Lines: []StorePurchaseLine{{ItemDefID: 1200, Quantity: 2, Cost: 305}}})
+	body, err := MarshalStorePurchaseInit(StorePurchaseRequest{Country: "AU", Language: 0, Currency: 21, Lines: []StorePurchaseLine{{ItemDefID: 1200, Quantity: 2, Cost: 305, PurchaseType: 3, PurchaseTypePresent: true, OmitSupplementalData: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,9 +72,32 @@ func TestStoreDynamicMessagesRoundTrip(t *testing.T) {
 		t.Fatalf("currency = %d", got)
 	}
 	line := message.Get(field(message, "line_items")).List().Get(0).Message()
+	purchaseType := line.Descriptor().Fields().ByName("purchase_type")
+	if !line.Has(purchaseType) || line.Get(purchaseType).Uint() != 3 {
+		t.Fatal("price-sheet purchase_type must be explicitly present")
+	}
 	supplemental := line.Descriptor().Fields().ByName("supplemental_data")
-	if !line.Has(supplemental) || line.Get(supplemental).Uint() != 0 {
-		t.Fatal("supplemental_data must be explicitly present when zero")
+	if line.Has(supplemental) {
+		t.Fatal("ordinary store purchase must omit supplemental_data")
+	}
+}
+
+func TestSupplementalStorePurchaseIncludesParenthesizedAssetID(t *testing.T) {
+	body, err := MarshalStorePurchaseInit(StorePurchaseRequest{Country: "AU", Currency: 21, Lines: []StorePurchaseLine{{ItemDefID: 5176, Quantity: 1, Cost: 95, SupplementalData: 52994080407}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := newMessage("CMsgGCStorePurchaseInit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := proto.Unmarshal(body, message); err != nil {
+		t.Fatal(err)
+	}
+	line := message.Get(field(message, "line_items")).List().Get(0).Message()
+	supplemental := line.Descriptor().Fields().ByName("supplemental_data")
+	if !line.Has(supplemental) || line.Get(supplemental).Uint() != 52994080407 {
+		t.Fatal("supplemental store purchase must include its asset id")
 	}
 }
 

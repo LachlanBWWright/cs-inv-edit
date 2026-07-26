@@ -175,6 +175,10 @@ func storePurchaseResult(result int32) storePurchaseResultInfo {
 		104: {"Fraud", "Steam rejected the transaction for account-security reasons"},
 		150: {"OldPriceSheet", "the CS2 store price sheet is stale"},
 		151: {"TxnNotFound", "the store transaction was not found"},
+		// Current CS2 uses this terminal-specific extension beyond the legacy
+		// public econ_store.h enum. The shipped terminal UI handles it as
+		// StoreCheckout_PurchaseExpiredItemsUnavailable.
+		200: {"PurchaseExpiredItemsUnavailable", "the terminal purchase expired or its current item is no longer available for sale"},
 	}
 	if known, ok := results[result]; ok {
 		return known
@@ -237,6 +241,83 @@ type GCArmorySnapshot struct {
 	Diagnostics    []string
 	XpShopTypeID   int32
 }
+
+type TF2PresetItem struct {
+	ClassID  uint32 `json:"classId"`
+	PresetID uint32 `json:"presetId"`
+	SlotID   uint32 `json:"slotId"`
+	ItemID   string `json:"itemId"`
+}
+
+type TF2ClassPreset struct {
+	ClassID        uint32 `json:"classId"`
+	ActivePresetID uint32 `json:"activePresetId"`
+}
+
+type TF2ActivityEntry struct {
+	Kind      string         `json:"kind"`
+	ID        string         `json:"id,omitempty"`
+	Timestamp uint32         `json:"timestamp,omitempty"`
+	Data      map[string]any `json:"data"`
+}
+
+type TF2MarketEntry struct {
+	DefinitionID uint32 `json:"definitionId"`
+	QualityID    uint32 `json:"qualityId"`
+	SellListings uint32 `json:"sellListings"`
+	PriceMinor   uint32 `json:"priceMinor"`
+}
+
+type TF2InspectedAttribute struct {
+	DefinitionID uint32 `json:"definitionId"`
+	Value        string `json:"value,omitempty"`
+	ValueBytes   string `json:"valueBytes,omitempty"`
+}
+
+type TF2InspectedEquippedState struct {
+	ClassID uint32 `json:"classId"`
+	SlotID  uint32 `json:"slotId"`
+}
+
+type TF2InspectedItem struct {
+	ID                string                      `json:"id"`
+	OriginalID        string                      `json:"originalId,omitempty"`
+	DefinitionID      uint32                      `json:"definitionId"`
+	Quantity          uint32                      `json:"quantity"`
+	Level             uint32                      `json:"level"`
+	QualityID         uint32                      `json:"qualityId"`
+	Flags             uint32                      `json:"flags"`
+	OriginID          uint32                      `json:"originId"`
+	CustomName        string                      `json:"customName,omitempty"`
+	CustomDescription string                      `json:"customDescription,omitempty"`
+	Style             uint32                      `json:"style"`
+	Attributes        []TF2InspectedAttribute     `json:"attributes"`
+	EquippedStates    []TF2InspectedEquippedState `json:"equippedStates"`
+	InteriorItem      *TF2InspectedItem           `json:"interiorItem,omitempty"`
+}
+
+type TF2FeatureSnapshot struct {
+	Status         string             `json:"status"`
+	RefreshedAt    string             `json:"refreshedAt"`
+	PresetItems    []TF2PresetItem    `json:"presetItems"`
+	ClassPresets   []TF2ClassPreset   `json:"classPresets"`
+	Matches        []map[string]any   `json:"matches"`
+	Ladder         []map[string]any   `json:"ladder"`
+	Ratings        []map[string]any   `json:"ratings"`
+	Quests         []map[string]any   `json:"quests"`
+	QuestNodes     []map[string]any   `json:"questNodes"`
+	QuestRewards   []map[string]any   `json:"questRewards"`
+	Matchmaking    map[string]any     `json:"matchmaking,omitempty"`
+	DataCenterPing map[string]any     `json:"dataCenterPing,omitempty"`
+	DailyStats     map[string]any     `json:"dailyStats,omitempty"`
+	Activity       []TF2ActivityEntry `json:"activity"`
+	Market         []TF2MarketEntry   `json:"market"`
+	InspectedItem  *TF2InspectedItem  `json:"inspectedItem,omitempty"`
+	InspectedAt    string             `json:"inspectedAt,omitempty"`
+	MarketAt       string             `json:"marketAt,omitempty"`
+	Currency       string             `json:"currency,omitempty"`
+	Diagnostics    []string           `json:"diagnostics"`
+}
 type GCStoreData struct {
 	Result            int32
 	Currency          int32
@@ -245,14 +326,22 @@ type GCStoreData struct {
 	PriceSheet        []byte
 }
 type StorePurchaseRequest struct {
-	Country          string
-	Language         int32
-	Currency         int32
-	ItemDefID        uint32
-	Quantity         uint32
-	Cost             uint64
-	PurchaseType     uint32
-	SupplementalData uint64
+	Country              string
+	Language             int32
+	Currency             int32
+	ItemDefID            uint32
+	Quantity             uint32
+	Cost                 uint64
+	PurchaseType         uint32
+	SupplementalData     uint64
+	CountryPresent       bool
+	LanguagePresent      bool
+	OmitCurrency         bool
+	OmitItemDefID        bool
+	OmitQuantity         bool
+	OmitCost             bool
+	PurchaseTypePresent  bool
+	OmitSupplementalData bool
 }
 type StorePurchaseTransportResult struct {
 	TransactionID uint64
@@ -261,6 +350,22 @@ type StorePurchaseTransportResult struct {
 	ItemIDs       []uint64
 	Authorization map[string]any
 	Diagnostics   []string
+}
+
+type SteamInventoryServiceResponse struct {
+	ETag           string
+	RemovedItemIDs []uint64
+	ItemJSON       string
+	ItemDefJSON    string
+	Replayed       bool
+}
+
+type SteamOwnedGame struct {
+	AppID           uint32
+	Name            string
+	PlaytimeForever uint32
+	LastPlayed      uint32
+	HasMarket       bool
 }
 
 type GCClient interface {
@@ -275,27 +380,37 @@ type GCClient interface {
 	SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	RequestInventory(ctx context.Context) ([]GCInventoryItem, error)
 	RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error)
+	RequestSteamInventoryService(ctx context.Context, appID uint32, steamID uint64) (SteamInventoryServiceResponse, error)
+	RequestOwnedGames(ctx context.Context, steamID uint64) ([]SteamOwnedGame, error)
 	RequestArmory(ctx context.Context) (GCArmorySnapshot, error)
 	RequestStore(ctx context.Context, version uint32, currency int32) (GCStoreData, error)
 	InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (StorePurchaseTransportResult, error)
 	SetProtocolTracing(enabled bool)
 	ProtocolTrace(after uint64) []ProtocolTraceEntry
+	TF2Features() TF2FeatureSnapshot
 	Events() <-chan GCEvent
 	State() GCConnectionState
 }
 
 type TestGCClient struct {
-	events              chan GCEvent
-	state               GCConnectionState
-	SentProtoMessages   []GCMessage
-	GameInventoryErr    error
-	GameInventoryFunc   func(context.Context, uint32) ([]GCInventoryItem, error)
-	InventoryFunc       func(context.Context) ([]GCInventoryItem, error)
-	GamesPlayedCalls    [][]uint32
-	StorePurchaseCalls  []StorePurchaseRequest
-	StorePurchaseResult StorePurchaseTransportResult
-	StorePurchaseErr    error
+	events                    chan GCEvent
+	state                     GCConnectionState
+	SentProtoMessages         []GCMessage
+	SendProtoFunc             func(context.Context, uint32, uint32, []byte) error
+	GameInventoryErr          error
+	GameInventoryFunc         func(context.Context, uint32) ([]GCInventoryItem, error)
+	SteamInventoryServiceFunc func(context.Context, uint32, uint64) (SteamInventoryServiceResponse, error)
+	OwnedGamesFunc            func(context.Context, uint64) ([]SteamOwnedGame, error)
+	InventoryFunc             func(context.Context) ([]GCInventoryItem, error)
+	GamesPlayedCalls          [][]uint32
+	StorePurchaseCalls        []StorePurchaseRequest
+	StorePurchaseFunc         func(context.Context, StorePurchaseRequest) (StorePurchaseTransportResult, error)
+	StorePurchaseResult       StorePurchaseTransportResult
+	StorePurchaseErr          error
+	TF2FeatureResult          TF2FeatureSnapshot
 }
+
+func (m *TestGCClient) TF2Features() TF2FeatureSnapshot { return m.TF2FeatureResult }
 
 func NewTestGCClient() *TestGCClient {
 	return &TestGCClient{events: make(chan GCEvent, 16), state: GCConnectionState{State: "test"}}
@@ -337,8 +452,11 @@ func (m *TestGCClient) SendToGC(_ context.Context, _ uint32, _ uint32, _ []byte)
 	return nil
 }
 
-func (m *TestGCClient) SendProtoToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
+func (m *TestGCClient) SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error {
 	m.SentProtoMessages = append(m.SentProtoMessages, GCMessage{AppID: appID, EMsg: emsg, Body: append([]byte(nil), body...)})
+	if m.SendProtoFunc != nil {
+		return m.SendProtoFunc(ctx, appID, emsg, body)
+	}
 	return nil
 }
 
@@ -356,14 +474,31 @@ func (m *TestGCClient) RequestGameInventory(ctx context.Context, appID uint32) (
 	return nil, m.GameInventoryErr
 }
 
+func (m *TestGCClient) RequestSteamInventoryService(ctx context.Context, appID uint32, steamID uint64) (SteamInventoryServiceResponse, error) {
+	if m.SteamInventoryServiceFunc != nil {
+		return m.SteamInventoryServiceFunc(ctx, appID, steamID)
+	}
+	return SteamInventoryServiceResponse{}, nil
+}
+
+func (m *TestGCClient) RequestOwnedGames(ctx context.Context, steamID uint64) ([]SteamOwnedGame, error) {
+	if m.OwnedGamesFunc != nil {
+		return m.OwnedGamesFunc(ctx, steamID)
+	}
+	return []SteamOwnedGame{}, nil
+}
+
 func (m *TestGCClient) RequestArmory(context.Context) (GCArmorySnapshot, error) {
 	return GCArmorySnapshot{}, nil
 }
 func (m *TestGCClient) RequestStore(context.Context, uint32, int32) (GCStoreData, error) {
 	return GCStoreData{}, nil
 }
-func (m *TestGCClient) InitializeStorePurchase(_ context.Context, request StorePurchaseRequest) (StorePurchaseTransportResult, error) {
+func (m *TestGCClient) InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (StorePurchaseTransportResult, error) {
 	m.StorePurchaseCalls = append(m.StorePurchaseCalls, request)
+	if m.StorePurchaseFunc != nil {
+		return m.StorePurchaseFunc(ctx, request)
+	}
 	return m.StorePurchaseResult, m.StorePurchaseErr
 }
 

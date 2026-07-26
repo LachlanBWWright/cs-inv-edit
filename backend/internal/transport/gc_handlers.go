@@ -18,6 +18,7 @@ type GCHandler struct {
 	protocolTrace    func(*steammsg.Packet)
 	gcProtocolTrace  func(string, uint32, uint32, []byte)
 	sessionEnded     func(string)
+	microTxnAuth     func([]byte)
 }
 
 func NewGCHandler(events chan<- GCEvent, options ...any) *GCHandler {
@@ -32,6 +33,8 @@ func NewGCHandler(events chan<- GCEvent, options ...any) *GCHandler {
 			handler.gcProtocolTrace = typed
 		case func(string):
 			handler.sessionEnded = typed
+		case func([]byte):
+			handler.microTxnAuth = typed
 		}
 	}
 	return handler
@@ -85,6 +88,9 @@ func (h *GCHandler) handleClientMicroTxnAuthRequest(packet *steammsg.Packet) ([]
 		return nil, err
 	}
 	log.Printf("[store-purchase] received Steam emsg=5504 body_bytes=%d body_hex=%x", len(body.data), body.data)
+	if h.microTxnAuth != nil {
+		h.microTxnAuth(body.data)
+	}
 	if h.events != nil {
 		h.events <- GCEvent{Type: "steam.microtxn_authorization", Payload: bytes.Clone(body.data)}
 	}

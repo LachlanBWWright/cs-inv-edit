@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { gameInventorySnapshotSchema, settingsDataSchema, storeSnapshotSchema } from "./schemas.js";
+import {
+  gameInventorySnapshotSchema,
+  settingsDataSchema,
+  storeSnapshotSchema,
+} from "./schemas.js";
 
 const item = {
   game: "tf2",
@@ -10,44 +14,97 @@ const item = {
   tradable: true,
   marketable: true,
   tags: [],
-  details: { game: "tf2", level: 1, qualityId: 6, inventoryPosition: 1, originId: 0, style: 0, flags: 0, attributes: {} },
+  details: {
+    game: "tf2",
+    level: 1,
+    qualityId: 6,
+    inventoryPosition: 1,
+    originId: 0,
+    style: 0,
+    flags: 0,
+    attributes: {},
+  },
 } as const;
 
 describe("gameInventorySnapshotSchema", () => {
   it("accepts Steam Community items from AppID 753", () => {
-    expect(gameInventorySnapshotSchema.safeParse({
-      game: "steam", appId: 753, items: [{ ...item, game: "steam", appId: 753, details: { ...item.details, game: "steam" } }], refreshedAt: "now", status: "ready", diagnostics: [],
-    }).success).toBe(true);
+    expect(
+      gameInventorySnapshotSchema.safeParse({
+        game: "steam",
+        appId: 753,
+        items: [
+          {
+            ...item,
+            game: "steam",
+            appId: 753,
+            details: { ...item.details, game: "steam" },
+          },
+        ],
+        refreshedAt: "now",
+        status: "ready",
+        diagnostics: [],
+      }).success,
+    ).toBe(true);
   });
   it("accepts a consistent TF2 snapshot", () => {
-    expect(gameInventorySnapshotSchema.safeParse({
-      game: "tf2", appId: 440, items: [item], refreshedAt: "now", status: "ready", diagnostics: [],
-    }).success).toBe(true);
+    expect(
+      gameInventorySnapshotSchema.safeParse({
+        game: "tf2",
+        appId: 440,
+        items: [item],
+        refreshedAt: "now",
+        status: "ready",
+        diagnostics: [],
+      }).success,
+    ).toBe(true);
   });
 
   it("normalizes legacy null item tags without discarding owned items", () => {
     const parsed = gameInventorySnapshotSchema.safeParse({
-      game: "tf2", appId: 440, items: [{ ...item, tags: null }], refreshedAt: "now", status: "ready", diagnostics: [],
+      game: "tf2",
+      appId: 440,
+      items: [{ ...item, tags: null }],
+      refreshedAt: "now",
+      status: "ready",
+      diagnostics: [],
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.items[0]?.tags).toEqual([]);
   });
 
   it("rejects a mismatched game and AppID", () => {
-    expect(gameInventorySnapshotSchema.safeParse({
-      game: "tf2", appId: 570, items: [], refreshedAt: "now", status: "ready", diagnostics: [],
-    }).success).toBe(false);
+    expect(
+      gameInventorySnapshotSchema.safeParse({
+        game: "tf2",
+        appId: 570,
+        items: [],
+        refreshedAt: "now",
+        status: "ready",
+        diagnostics: [],
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects items from another inventory", () => {
-    expect(gameInventorySnapshotSchema.safeParse({
-      game: "dota2", appId: 570, items: [item], refreshedAt: "now", status: "ready", diagnostics: [],
-    }).success).toBe(false);
+    expect(
+      gameInventorySnapshotSchema.safeParse({
+        game: "dota2",
+        appId: 570,
+        items: [item],
+        refreshedAt: "now",
+        status: "ready",
+        diagnostics: [],
+      }).success,
+    ).toBe(false);
   });
 });
 
 it("normalizes a legacy null store offer list", () => {
-  const parsed = storeSnapshotSchema.safeParse({ status: "requires_connection", offers: null, refreshedAt: "now" });
+  const parsed = storeSnapshotSchema.safeParse({
+    status: "requires_connection",
+    offers: null,
+    refreshedAt: "now",
+  });
   expect(parsed.success).toBe(true);
   if (parsed.success) expect(parsed.data.offers).toEqual([]);
 });
@@ -58,13 +115,33 @@ it("migrates older settings payloads with multi-game flags disabled", () => {
     validationMode: true,
     sacrificialAccountMode: false,
     armoryPurchasePacingSeconds: 5,
-    animations: { container: "none", tradeUp: "none", armory: "none", terminal: "none" },
+    animations: {
+      container: "none",
+      tradeUp: "none",
+      armory: "none",
+      terminal: "none",
+    },
     featureFlags: {
-      enableStorageMutations: false, enableContainerOpening: false, enableInventoryDebug: false, enableTradeups: false,
-      enableStickerExtract: false, enableNameTags: false, enableItemDeletion: false, enableStatTrakSwap: false,
-      enableStrangeParts: false, enableItemUse: false, enableToolApplication: false, enableGifting: false,
+      enableStorageMutations: false,
+      enableContainerOpening: false,
+      enableInventoryDebug: false,
+      enableTradeups: false,
+      enableStickerExtract: false,
+      enableNameTags: false,
+      enableItemDeletion: false,
+      enableStatTrakSwap: false,
+      enableStrangeParts: false,
+      enableItemUse: false,
+      enableToolApplication: false,
+      enableGifting: false,
     },
   });
   expect(parsed.success).toBe(true);
-  if (parsed.success) expect(parsed.data.featureFlags).toMatchObject({ showStorageUnitItems: false, enableSteamInventory: true, enableTf2Inventory: true, enableDota2Inventory: false });
+  if (parsed.success)
+    expect(parsed.data.featureFlags).toMatchObject({
+      showStorageUnitItems: false,
+      enableSteamInventory: true,
+      enableTf2Inventory: true,
+      enableDota2Inventory: false,
+    });
 });

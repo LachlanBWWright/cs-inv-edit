@@ -4,7 +4,10 @@ export interface LoadingStage {
   detail: string;
 }
 
-export function loadingStageIndex(stages: readonly LoadingStage[], elapsedSeconds: number) {
+export function loadingStageIndex(
+  stages: readonly LoadingStage[],
+  elapsedSeconds: number,
+) {
   let index = 0;
   for (let candidate = 0; candidate < stages.length; candidate += 1) {
     if (elapsedSeconds >= stages[candidate]!.afterSeconds) index = candidate;

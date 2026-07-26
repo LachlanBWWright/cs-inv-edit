@@ -23,6 +23,8 @@ describe("formatItemId", () => {
 
 describe("formatState", () => {
   it("replaces underscores with spaces", () => {
-    expect(formatState("awaiting_gc_confirmation")).toBe("awaiting gc confirmation");
+    expect(formatState("awaiting_gc_confirmation")).toBe(
+      "awaiting gc confirmation",
+    );
   });
 });

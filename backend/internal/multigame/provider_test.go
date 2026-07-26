@@ -77,6 +77,16 @@ func TestEnrichOwnedSurvivesUnavailableCommunityOverlay(t *testing.T) {
 	}
 }
 
+func TestTF2InspectActionUsesSteamSuppliedTemplate(t *testing.T) {
+	got := tf2InspectAction(440, "76561198000000001", "2", "123", []descriptionAction{{Link: "steam://rungame/440/76561202255233023/+tf_econ_item_preview%20S%owner_steamid%A%assetid%D123"}})
+	if got != "steam://rungame/440/76561202255233023/+tf_econ_item_preview%20S76561198000000001A123D123" {
+		t.Fatalf("inspect action=%q", got)
+	}
+	if got := tf2InspectAction(570, "1", "2", "3", []descriptionAction{{Link: "steam://rungame/440/x"}}); got != "" {
+		t.Fatalf("non-TF2 action=%q", got)
+	}
+}
+
 func TestLoadRejectsCommunityAppIDMismatch(t *testing.T) {
 	provider := providerWithResponse(http.StatusOK, `{"success":1,"assets":[{"appid":440,"assetid":"1","classid":"1","instanceid":"0","amount":"1"}],"descriptions":[]}`)
 	_, err := provider.Load(context.Background(), "7656119", games["dota2"])

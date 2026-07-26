@@ -35,5 +35,14 @@ export function Popover(props: PopoverProps) {
     });
   });
 
-  return <div ref={(element) => { root = element; }} class={props.class}>{props.children}</div>;
+  return (
+    <div
+      ref={(element) => {
+        root = element;
+      }}
+      class={props.class}
+    >
+      {props.children}
+    </div>
+  );
 }

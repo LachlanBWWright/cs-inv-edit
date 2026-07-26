@@ -155,3 +155,36 @@ func TestMultiGameRoutesEnforceReadOnlyHTTPMethods(t *testing.T) {
 		}
 	}
 }
+
+func TestSteamInventoryServiceRouteValidatesAppID(t *testing.T) {
+	handler := NewHandler(app.NewService())
+	for _, path := range []string{"/steam-inventory-service/0", "/steam-inventory-service/not-a-number"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("%s status=%d body=%q", path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+func TestSteamInventoryServiceDisconnectedSnapshotIsDistinct(t *testing.T) {
+	handler := NewHandler(app.NewService())
+	req := httptest.NewRequest(http.MethodGet, "/steam-inventory-service/480", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Game  string `json:"game"`
+		AppID uint32 `json:"appId"`
+		Items []any  `json:"items"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Game != "steam-service" || payload.AppID != 480 || len(payload.Items) != 0 {
+		t.Fatalf("payload=%#v", payload)
+	}
+}

@@ -104,20 +104,25 @@ type asset struct {
 }
 
 type description struct {
-	AppID             int64             `json:"appid"`
-	ClassID           string            `json:"classid"`
-	InstanceID        string            `json:"instanceid"`
-	Name              string            `json:"name"`
-	MarketName        string            `json:"market_name"`
-	MarketHashName    string            `json:"market_hash_name"`
-	IconURL           string            `json:"icon_url"`
-	IconURLLarge      string            `json:"icon_url_large"`
-	Type              string            `json:"type"`
-	Tradable          int               `json:"tradable"`
-	Marketable        int               `json:"marketable"`
-	Tags              []tag             `json:"tags"`
-	Descriptions      []descriptionLine `json:"descriptions"`
-	OwnerDescriptions []descriptionLine `json:"owner_descriptions"`
+	AppID             int64               `json:"appid"`
+	ClassID           string              `json:"classid"`
+	InstanceID        string              `json:"instanceid"`
+	Name              string              `json:"name"`
+	MarketName        string              `json:"market_name"`
+	MarketHashName    string              `json:"market_hash_name"`
+	IconURL           string              `json:"icon_url"`
+	IconURLLarge      string              `json:"icon_url_large"`
+	Type              string              `json:"type"`
+	Tradable          int                 `json:"tradable"`
+	Marketable        int                 `json:"marketable"`
+	Tags              []tag               `json:"tags"`
+	Descriptions      []descriptionLine   `json:"descriptions"`
+	OwnerDescriptions []descriptionLine   `json:"owner_descriptions"`
+	Actions           []descriptionAction `json:"actions"`
+}
+
+type descriptionAction struct {
+	Link string `json:"link"`
 }
 
 type tag struct {
@@ -208,6 +213,7 @@ func (p *Provider) load(ctx context.Context, steamID string, game Game, webAcces
 				item.Name = desc.Name
 				item.MarketName = firstNonEmpty(desc.MarketHashName, desc.MarketName)
 				item.ImageURL = steamIconURL(firstNonEmpty(desc.IconURLLarge, desc.IconURL))
+				item.InspectURL = tf2InspectAction(game.AppID, steamID, owned.ContextID, owned.AssetID, desc.Actions)
 				item.Type = desc.Type
 				item.Tradable = desc.Tradable != 0
 				item.Marketable = desc.Marketable != 0
@@ -249,6 +255,21 @@ func (p *Provider) load(ctx context.Context, steamID string, game Game, webAcces
 	p.overlays[cacheKey] = overlayCacheEntry{snapshot: cloneGameSnapshot(snapshot), expiresAt: time.Now().Add(5 * time.Minute)}
 	p.overlayMu.Unlock()
 	return snapshot, nil
+}
+
+func tf2InspectAction(appID uint32, steamID, contextID, assetID string, actions []descriptionAction) string {
+	if appID != 440 {
+		return ""
+	}
+	for _, action := range actions {
+		link := strings.TrimSpace(action.Link)
+		link = strings.NewReplacer("%owner_steamid%", steamID, "%contextid%", contextID, "%assetid%", assetID).Replace(link)
+		parsed, err := url.Parse(link)
+		if err == nil && parsed.Scheme == "steam" && strings.Contains(strings.ToLower(parsed.Path), "440") {
+			return link
+		}
+	}
+	return ""
 }
 
 var descriptionHTML = regexp.MustCompile(`<[^>]+>`)

@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"sync"
+	"time"
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/econ"
@@ -55,6 +58,7 @@ type Service struct {
 	pendingUsername    string
 	pendingPassword    string
 	authCancel         context.CancelFunc
+	authEpoch          uint64
 	profileResolver    *steamprofile.Resolver
 	tradeAccessToken   string
 	tradeProvider      *steamtrade.Provider
@@ -268,6 +272,115 @@ func (s *Service) ProtocolTrace(after uint64) []transport.ProtocolTraceEntry {
 		return []transport.ProtocolTraceEntry{}
 	}
 	return s.gcClient.ProtocolTrace(after)
+}
+
+func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
+	s.mu.Lock()
+	enabled := s.settings.FeatureFlags.EnableTF2Inventory
+	connected := s.connection.State == "connected"
+	currency := s.store.Currency
+	s.mu.Unlock()
+	if !enabled {
+		snapshot := transport.TF2FeatureSnapshot{Status: "disabled", Diagnostics: []string{"TF2 inventory is disabled."}}
+		snapshot.PresetItems, snapshot.ClassPresets = []transport.TF2PresetItem{}, []transport.TF2ClassPreset{}
+		snapshot.Matches, snapshot.Ladder, snapshot.Ratings = []map[string]any{}, []map[string]any{}, []map[string]any{}
+		snapshot.Quests, snapshot.QuestNodes, snapshot.QuestRewards = []map[string]any{}, []map[string]any{}, []map[string]any{}
+		snapshot.Activity, snapshot.Market = []transport.TF2ActivityEntry{}, []transport.TF2MarketEntry{}
+		return snapshot
+	}
+	if !connected {
+		snapshot := transport.TF2FeatureSnapshot{Status: "requires_connection", Diagnostics: []string{"Connect Steam to load TF2 coordinator state."}}
+		snapshot.PresetItems, snapshot.ClassPresets = []transport.TF2PresetItem{}, []transport.TF2ClassPreset{}
+		snapshot.Matches, snapshot.Ladder, snapshot.Ratings = []map[string]any{}, []map[string]any{}, []map[string]any{}
+		snapshot.Quests, snapshot.QuestNodes, snapshot.QuestRewards = []map[string]any{}, []map[string]any{}, []map[string]any{}
+		snapshot.Activity, snapshot.Market = []transport.TF2ActivityEntry{}, []transport.TF2MarketEntry{}
+		return snapshot
+	}
+	snapshot := s.gcClient.TF2Features()
+	snapshot.Currency = currency
+	s.reconcileTF2Operations(snapshot)
+	return snapshot
+}
+
+func (s *Service) reconcileTF2Operations(snapshot transport.TF2FeatureSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nowTime := time.Now().UTC()
+	for index := range s.operations {
+		receipt := &s.operations[index]
+		if receipt.State != "awaiting_gc_confirmation" || len(receipt.Type) < 4 || receipt.Type[:4] != "tf2." {
+			continue
+		}
+		created, err := time.Parse(time.RFC3339Nano, receipt.CreatedAt)
+		if err != nil {
+			continue
+		}
+		result, _ := receipt.Result.(map[string]any)
+		confirmed := tf2ReceiptConfirmed(*receipt, result, snapshot, created)
+		if confirmed {
+			receipt.State = "completed"
+			receipt.Message = "TF2 Game Coordinator state confirmed the operation"
+			s.events = append(s.events, operations.NewEvent(*receipt, receipt.State, receipt.Message))
+			s.lastOperation = *receipt
+			continue
+		}
+		if nowTime.Sub(created) >= 15*time.Second {
+			receipt.State = "failed"
+			receipt.Message = "TF2 Game Coordinator did not confirm the operation before timeout; it was not retried"
+			s.events = append(s.events, operations.NewEvent(*receipt, receipt.State, receipt.Message))
+			s.lastOperation = *receipt
+		}
+	}
+}
+
+func tf2ReceiptConfirmed(receipt operations.Receipt, result map[string]any, snapshot transport.TF2FeatureSnapshot, created time.Time) bool {
+	switch receipt.Type {
+	case "tf2.loadout.set-preset-item":
+		classID, presetID, slotID := resultUint32(result["classId"]), resultUint32(result["presetId"]), resultUint32(result["slotId"])
+		itemID := fmt.Sprint(result["itemId"])
+		for _, entry := range snapshot.PresetItems {
+			if entry.ClassID == classID && entry.PresetID == presetID && entry.SlotID == slotID && entry.ItemID == itemID {
+				return true
+			}
+		}
+	case "tf2.loadout.select-preset":
+		classID, presetID := resultUint32(result["classId"]), resultUint32(result["presetId"])
+		for _, entry := range snapshot.ClassPresets {
+			if entry.ClassID == classID && entry.ActivePresetID == presetID {
+				return true
+			}
+		}
+	case "tf2.inspect.resolve":
+		return timestampAfter(snapshot.InspectedAt, created)
+	case "tf2.market.refresh":
+		return timestampAfter(snapshot.MarketAt, created)
+	case "tf2.matches.load":
+		return timestampAfter(snapshot.RefreshedAt, created) && len(snapshot.Matches) > 0
+	case "tf2.matches.stats":
+		return timestampAfter(snapshot.RefreshedAt, created) && snapshot.Matchmaking != nil
+	}
+	return false
+}
+
+func resultUint32(value any) uint32 {
+	switch typed := value.(type) {
+	case float64:
+		return uint32(typed)
+	case uint32:
+		return typed
+	case int:
+		return uint32(typed)
+	case string:
+		parsed, _ := strconv.ParseUint(typed, 10, 32)
+		return uint32(parsed)
+	default:
+		return 0
+	}
+}
+
+func timestampAfter(value string, reference time.Time) bool {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && !parsed.Before(reference)
 }
 
 func (s *Service) Health() HealthStatus {

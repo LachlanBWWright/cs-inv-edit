@@ -18,6 +18,7 @@ type SteamGCClient struct {
 	requestMu         sync.Mutex
 	conn              *steamcm.SteamConnection
 	events            chan GCEvent
+	microTxnAuth      chan []byte
 	state             GCConnectionState
 	pendingAuth       *steamAuthSession
 	activeSteamID     uint64
@@ -31,12 +32,16 @@ type SteamGCClient struct {
 	protocolEnabled   bool
 	protocolNextID    uint64
 	protocolTrace     []ProtocolTraceEntry
+	tf2Mu             sync.Mutex
+	tf2Features       TF2FeatureSnapshot
 }
 
 func NewSteamGCClient() *SteamGCClient {
 	return &SteamGCClient{
-		events: make(chan GCEvent, 64),
-		state:  GCConnectionState{State: "disconnected"},
+		events:       make(chan GCEvent, 64),
+		microTxnAuth: make(chan []byte, 8),
+		state:        GCConnectionState{State: "disconnected"},
+		tf2Features:  emptyTF2FeatureSnapshot(),
 	}
 }
 
@@ -63,6 +68,11 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 		unified,
 		NewGCHandler(events, &s.steamTraceActive, s.recordIncomingProtocol, s.recordGCProtocol, func(eventType string) {
 			s.handleSteamSessionEnded(conn, eventType)
+		}, func(body []byte) {
+			select {
+			case s.microTxnAuth <- append([]byte(nil), body...):
+			default:
+			}
 		}),
 	)
 	s.mu.Lock()
@@ -159,12 +169,15 @@ func (s *SteamGCClient) handleSteamSessionEnded(conn *steamcm.SteamConnection, e
 
 func (s *SteamGCClient) activateAuthenticatedAccount(steamID uint64) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.activeSteamID = steamID
 	s.connectionEpoch++
 	// ClientWelcome and its SOCaches belong to exactly one authenticated
 	// account and connection epoch. Never expose them after a relogin.
 	s.lastWelcome = nil
+	s.mu.Unlock()
+	s.tf2Mu.Lock()
+	s.tf2Features = emptyTF2FeatureSnapshot()
+	s.tf2Mu.Unlock()
 }
 
 func (s *SteamGCClient) clearConn(conn *steamcm.SteamConnection) {

@@ -19,16 +19,32 @@ describe("createSharedDataClient", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await createSharedDataClient("https://data.example/").queryPrices({ marketNames: ["Item"], currency: "USD", appId: 730 });
+    const result = await createSharedDataClient(
+      "https://data.example/",
+    ).queryPrices({ marketNames: ["Item"], currency: "USD", appId: 730 });
 
     expect(result.isOk()).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith("https://data.example/v1/prices/query", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://data.example/v1/prices/query",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("rejects malformed shared-service responses", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ currency: "USD" }) }));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ currency: "USD" }),
+        }),
+    );
 
-    const result = await createSharedDataClient("https://data.example").queryPrices({ marketNames: ["Item"], currency: "USD" });
+    const result = await createSharedDataClient(
+      "https://data.example",
+    ).queryPrices({ marketNames: ["Item"], currency: "USD" });
 
     expect(result.isErr()).toBe(true);
   });

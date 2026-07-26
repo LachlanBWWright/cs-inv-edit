@@ -1,7 +1,12 @@
-import type { ActivityEvent, DashboardData, InventoryItem, StatusFlag } from './types';
+import type {
+  ActivityEvent,
+  DashboardData,
+  InventoryItem,
+  StatusFlag,
+} from "./types";
 
 export type Notice = {
-  tone: 'info' | 'success' | 'warning';
+  tone: "info" | "success" | "warning";
   message: string;
 };
 
@@ -23,7 +28,7 @@ export type NextBestAction = {
 };
 
 export type StickerPlanSummary = {
-  kind: 'ok' | 'err';
+  kind: "ok" | "err";
   message: string;
   value?: {
     confidence: string;
@@ -32,7 +37,7 @@ export type StickerPlanSummary = {
 };
 
 export type PlanSummary<T> = {
-  kind: 'ok' | 'err';
+  kind: "ok" | "err";
   message: string;
   value?: T;
 };
@@ -56,13 +61,21 @@ export type AppDashboardProps = {
   onStickerPresetChange: (preset: string) => void;
   stickerPlanSummary: StickerPlanSummary | undefined;
   onStickerReview: () => void;
-  tradeUpPlanSummary: PlanSummary<{ collection: string; averageWear: string; predictedTier: string; outputTheme: string }> | undefined;
+  tradeUpPlanSummary:
+    | PlanSummary<{
+        collection: string;
+        averageWear: string;
+        predictedTier: string;
+        outputTheme: string;
+      }>
+    | undefined;
   onTradeUpReview: () => void;
-  storagePlanSummary: PlanSummary<{ summary: string; targetFreeSlots: number }> | undefined;
+  storagePlanSummary:
+    PlanSummary<{ summary: string; targetFreeSlots: number }> | undefined;
   onStorageReview: () => void;
   selectedStorageId: string;
   onSelectStorage: (unitId: string) => void;
-  toneClasses: Record<StatusFlag['tone'], string>;
-  readinessClasses: Record<InventoryItem['readiness'], string>;
-  activityClasses: Record<ActivityEvent['status'], string>;
+  toneClasses: Record<StatusFlag["tone"], string>;
+  readinessClasses: Record<InventoryItem["readiness"], string>;
+  activityClasses: Record<ActivityEvent["status"], string>;
 };

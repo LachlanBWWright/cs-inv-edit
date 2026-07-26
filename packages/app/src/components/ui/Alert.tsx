@@ -17,5 +17,15 @@ export function Alert(props: AlertProps) {
     warning: "border-amber-500/40 bg-amber-500/10 text-amber-100",
     danger: "border-rose-500/40 bg-rose-500/10 text-rose-100",
   };
-  return <div class={cn("rounded-xl border p-4 text-sm shadow-sm", variants[props.variant ?? "default"], props.class)}>{props.children}</div>;
+  return (
+    <div
+      class={cn(
+        "rounded-xl border p-4 text-sm shadow-sm",
+        variants[props.variant ?? "default"],
+        props.class,
+      )}
+    >
+      {props.children}
+    </div>
+  );
 }

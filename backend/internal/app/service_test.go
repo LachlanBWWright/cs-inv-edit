@@ -47,7 +47,7 @@ func TestStorePurchaseSendsAuthoritativeFieldsForMaximumCS2Quantity(t *testing.T
 		t.Fatalf("purchase calls = %d", len(client.StorePurchaseCalls))
 	}
 	request := client.StorePurchaseCalls[0]
-	if request.Country != "DE" || request.ItemDefID != 1200 || request.Quantity != 20 || request.Cost != 3500 || request.Currency != 2 || request.PurchaseType != 3 {
+	if request.Country != "DE" || !request.CountryPresent || !request.LanguagePresent || request.ItemDefID != 1200 || request.Quantity != 20 || request.Cost != 3500 || request.Currency != 2 || request.PurchaseType != 3 || !request.PurchaseTypePresent || !request.OmitSupplementalData {
 		t.Fatalf("purchase request = %#v", request)
 	}
 }
@@ -81,15 +81,95 @@ func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testi
 	defIndex := uint32(5176)
 	service.inventory = domain.InventorySnapshot{Status: "ready", Items: []domain.InventoryItem{{
 		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex,
-		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "700", PurchasePrice: 1299, Item: domain.RelatedItem{MarketName: "AK-47 | The Oligarch"}}},
+		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "700", PurchasePrice: 1299, Item: domain.RelatedItem{Defindex: 24, PaintKit: 1351, MarketName: "UMP-45 | Continuum"}}},
 	}}}
-	session := service.InitializeStorePurchase(map[string]any{"offerId": "terminal:52994080407", "quantity": uint64(1), "expectedPriceSheetVersion": uint64(0), "expectedAmountMinor": uint64(1299)})
+	terminalItemID := uint64(52994080407)
+	offerBody, err := proto.Marshal(&cs2pb.CSOEconItem{
+		Id:       proto.Uint64(700),
+		DefIndex: proto.Uint32(7),
+		Attribute: []*cs2pb.CSOEconItem_Attribute{
+			{DefIndex: proto.Uint32(272), Value: proto.Uint32(uint32(terminalItemID))},
+			{DefIndex: proto.Uint32(273), Value: proto.Uint32(uint32(terminalItemID >> 32))},
+			{DefIndex: proto.Uint32(316), Value: proto.Uint32(1299)},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	singleBody, err := proto.Marshal(&cs2pb.CMsgSOSingleObject{TypeId: proto.Int32(1), ObjectData: offerBody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedOffers, err := transport.DecodeCS2VirtualEconItems(protocol.EMsgSOCreate, singleBody)
+	if err != nil || len(decodedOffers) != 1 || decodedOffers[0].Attributes[316] != 1299 {
+		t.Fatalf("decoded terminal offer price: offers=%#v err=%v", decodedOffers, err)
+	}
+	confirmationBody, err := proto.Marshal(&cs2pb.CMsgGCItemCustomizationNotification{
+		Request: proto.Uint32(protocol.CustomizationCasketContents),
+		ItemId:  []uint64{terminalItemID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.SendProtoFunc = func(_ context.Context, _ uint32, emsg uint32, _ []byte) error {
+		if emsg == protocol.EMsgVolatileItemLoadContents {
+			client.Emit(transport.GCEvent{Type: "gc.message", Payload: transport.GCMessage{AppID: protocol.AppIDCS2, EMsg: protocol.EMsgSOCreate, Body: singleBody}})
+			client.Emit(transport.GCEvent{Type: "gc.message", Payload: transport.GCMessage{AppID: protocol.AppIDCS2, EMsg: protocol.EMsgItemCustomizationNotification, Body: confirmationBody}})
+		}
+		return nil
+	}
+	session := service.InitializeStorePurchase(map[string]any{"offerId": "terminal:52994080407", "quantity": uint64(1), "expectedPriceSheetVersion": uint64(0), "expectedAmountMinor": uint64(1299), "expectedTerminalOfferItemId": "700"})
 	if session.Status != "awaiting_user" || len(client.StorePurchaseCalls) != 1 {
 		t.Fatalf("terminal purchase session = %#v calls=%#v", session, client.StorePurchaseCalls)
 	}
 	request := client.StorePurchaseCalls[0]
-	if request.ItemDefID != 5176 || request.Cost != 1299 || request.SupplementalData != 52994080407 {
+	if request.Country != "DE" || request.ItemDefID != 5176 || request.Cost != 1299 || request.SupplementalData != 52994080407 || request.OmitSupplementalData || request.PurchaseTypePresent {
 		t.Fatalf("terminal purchase request = %#v", request)
+	}
+}
+
+func TestTerminalPurchaseRejectsStaleDisplayedOffer(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.storeCurrencyID = 2
+	service.storeCountry = "DE"
+	service.store = domain.StoreSnapshot{Status: "ready", Currency: "EUR"}
+	defIndex := uint32(5176)
+	service.inventory = domain.InventorySnapshot{Status: "ready", Items: []domain.InventoryItem{{
+		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex,
+		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "701", PurchasePrice: 1299, Item: domain.RelatedItem{Defindex: 24, MarketName: "UMP-45 | Continuum"}}},
+	}}}
+
+	session := service.InitializeStorePurchase(map[string]any{
+		"offerId":                     "terminal:52994080407",
+		"quantity":                    uint64(1),
+		"expectedPriceSheetVersion":   uint64(0),
+		"expectedAmountMinor":         uint64(1299),
+		"expectedTerminalOfferItemId": "700",
+	})
+	if session.Status != "failed" || !strings.Contains(session.Message, "changed before purchase") {
+		t.Fatalf("terminal purchase session = %#v", session)
+	}
+	if len(client.StorePurchaseCalls) != 0 {
+		t.Fatal("stale terminal offer reached the GC purchase transport")
+	}
+}
+
+func TestEncodedVolatileOfferItemID(t *testing.T) {
+	if got, want := encodedVolatileOfferItemID(24, 1351), uint64(17293822569191243800); got != want {
+		t.Fatalf("encoded volatile offer item id = %d, want %d", got, want)
+	}
+}
+
+func TestTerminalPurchaseWireShapesExhaustAllNonCanonicalPresenceCombinations(t *testing.T) {
+	shapes := terminalPurchaseWireShapes()
+	if len(shapes) != 255 {
+		t.Fatalf("terminal protobuf shape count = %d, want 255", len(shapes))
+	}
+	if got, want := shapes[0], terminalCanonicalPresence^(1<<7); got != want {
+		t.Fatalf("first protobuf shape = %08b, want nearest shape %08b", got, want)
 	}
 }
 
@@ -455,11 +535,31 @@ func TestTerminalMetadataRemainsVisibleAtHiddenInventoryPosition(t *testing.T) {
 		t.Fatal("ordinary container was incorrectly recognized as a terminal")
 	}
 	activeTerminal := transport.GCInventoryItem{DefIndex: 5001, Inventory: xRayScannerLoadedCaseInventoryPosition, Quantity: 0}
+	if !isActiveTerminalGCItem(activeTerminal, econ.Metadata{Name: "Sealed Genesis Terminal", Kind: "container"}) {
+		t.Fatal("terminal in the active GC slot was not classified as active")
+	}
 	if isXRayScannerLoadedCase(activeTerminal, econ.Metadata{Name: "Active Genesis Terminal", Kind: "container"}) {
 		t.Fatal("active terminal was incorrectly hidden as an X-Ray Scanner case")
 	}
 	if got := activeTerminalName("Sealed Genesis Terminal"); got != "Active Genesis Terminal" {
 		t.Fatalf("active terminal name = %q", got)
+	}
+}
+
+func TestSealedTerminalIsNotClassifiedAsActiveFromSchemaOrVolatileCatalogue(t *testing.T) {
+	sealed := transport.GCInventoryItem{
+		ID:        53040587310,
+		DefIndex:  5176,
+		Inventory: 0xc0000003,
+		Quantity:  0,
+		Quality:   4,
+		Attributes: map[uint32]uint32{
+			75: 1785668400,
+		},
+		VolatileOffers: []transport.GCVolatileOffer{{FauxItemID: 17293822569190457352}},
+	}
+	if isActiveTerminalGCItem(sealed, econ.Metadata{Name: "Sealed Genesis Terminal", MarketName: "Sealed Genesis Terminal", Kind: "container"}) {
+		t.Fatal("sealed terminal was classified as active")
 	}
 }
 
@@ -655,6 +755,73 @@ func TestFailedMultiGameRefreshDoesNotMutateCS2Inventory(t *testing.T) {
 	after := service.Inventory()
 	if after.Status != "ready" || after.RefreshedAt != "before" || len(after.Items) != 1 || after.Items[0].ID != "cs2-owned" {
 		t.Fatalf("CS2 inventory changed after TF2 failure: %#v", after)
+	}
+}
+
+func TestSteamInventoryServiceRefreshUsesRequestedAppID(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	var requestedAppID uint32
+	var requestedSteamID uint64
+	client.SteamInventoryServiceFunc = func(_ context.Context, appID uint32, steamID uint64) (transport.SteamInventoryServiceResponse, error) {
+		requestedAppID, requestedSteamID = appID, steamID
+		return transport.SteamInventoryServiceResponse{
+			ETag:        "v1",
+			ItemJSON:    `[{"itemid":"100","itemdefid":"7","quantity":"1"}]`,
+			ItemDefJSON: `[{"itemdefid":"7","name":"Owned service item"}]`,
+		}, nil
+	}
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "76561198000000000"}
+
+	receipt := service.RefreshSteamInventoryService(480)
+	if receipt.State != "completed" || requestedAppID != 480 || requestedSteamID != 76561198000000000 {
+		t.Fatalf("receipt=%#v appid=%d steamid=%d", receipt, requestedAppID, requestedSteamID)
+	}
+	snapshot, enabled := service.SteamInventoryService(480)
+	if !enabled || snapshot.Game != "steam-service" || len(snapshot.Items) != 1 || snapshot.Items[0].Name != "Owned service item" {
+		t.Fatalf("snapshot=%#v enabled=%t", snapshot, enabled)
+	}
+}
+
+func TestSteamInventoryServiceGamesUsesOwnedGamesAndExcludesDedicatedImplementations(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	client.OwnedGamesFunc = func(_ context.Context, steamID uint64) ([]transport.SteamOwnedGame, error) {
+		if steamID != 76561198000000000 {
+			t.Fatalf("SteamID = %d", steamID)
+		}
+		return []transport.SteamOwnedGame{
+			{AppID: 570, Name: "Dota 2"},
+			{AppID: 440, Name: "Team Fortress 2"},
+			{AppID: 730, Name: "Counter-Strike 2"},
+			{AppID: 753, Name: "Steam"},
+			{AppID: 480, Name: "Spacewar", PlaytimeForever: 12},
+			{AppID: 10, Name: "Counter-Strike", HasMarket: true},
+		}, nil
+	}
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "76561198000000000"}
+
+	result := service.SteamInventoryServiceGames(context.Background())
+	if result.Status != "ready" || len(result.Games) != 2 {
+		t.Fatalf("games = %#v", result)
+	}
+	if result.Games[0].AppID != 10 || result.Games[1].AppID != 480 {
+		t.Fatalf("filtered/sorted games = %#v", result.Games)
+	}
+}
+
+func TestSteamInventoryServiceSnapshotsAreAppIDScoped(t *testing.T) {
+	service := NewService()
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "76561198000000000"}
+	service.gameInventories[gameInventoryKey(service.connection.SteamID, steamInventoryServiceKey(10))] = domain.GameInventorySnapshot{
+		Game: "steam-service", AppID: 10, Status: "ready", Items: []domain.EconomyInventoryItem{{Game: "steam-service", AppID: 10, AssetID: "one", Name: "One", Quantity: 1}},
+	}
+	first, _ := service.SteamInventoryService(10)
+	second, _ := service.SteamInventoryService(20)
+	if len(first.Items) != 1 || len(second.Items) != 0 {
+		t.Fatalf("AppID 10=%#v AppID 20=%#v", first, second)
 	}
 }
 

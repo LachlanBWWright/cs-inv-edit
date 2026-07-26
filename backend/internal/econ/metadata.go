@@ -209,6 +209,19 @@ func (s *Schema) MetadataByItemName(itemName string) (uint32, Metadata, bool) {
 	return 0, Metadata{}, false
 }
 
+func (s *Schema) AttributeDefIndexByName(name string) (uint32, bool) {
+	if s == nil || s.attributes == nil {
+		return 0, false
+	}
+	target := strings.ToLower(name)
+	for defIndex, attr := range s.attributes {
+		if strings.ToLower(attr.Name) == target || strings.ToLower(attr.AttributeClass) == target {
+			return defIndex, true
+		}
+	}
+	return 0, false
+}
+
 type paintKitDefinition struct {
 	Name        string
 	Description string

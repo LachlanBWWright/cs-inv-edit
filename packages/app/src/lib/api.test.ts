@@ -18,7 +18,9 @@ describe("createOperationApi", () => {
 
     const api = createOperationApi(backend as AppBackendClient);
 
-    await expect(api.applyNameTag({ subjectItemId: "1", toolItemId: "2", name: "demo" })).resolves.toEqual(receipt);
+    await expect(
+      api.applyNameTag({ subjectItemId: "1", toolItemId: "2", name: "demo" }),
+    ).resolves.toEqual(receipt);
     await expect(api.removeNameTag({ itemId: "1" })).resolves.toEqual(receipt);
   });
 });

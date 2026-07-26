@@ -91,6 +91,18 @@ func steamWalletCurrencyToEconomyCurrency(walletCurrency int32) (int32, error) {
 }
 
 func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (result StorePurchaseTransportResult, resultErr error) {
+	// IMPORTANT: Do not replace this native CS2 cash-store flow with
+	// https://store.steampowered.com/buyitem/{appid}/{itemdefid}/{quantity}.
+	// BuyItem is a separate Steam Inventory Service web-store entry point. It
+	// does not support every CS2 price-sheet product (notably conventional case
+	// keys), and it does not authorize the GC order created below.
+	//
+	// CMsgGCStorePurchaseInitResponse.txn_id is the GC/Steam ORDER ID. It is
+	// not the Steam approval transaction ID and must never be inserted into an
+	// /checkout/approvetxn/ URL. The approval transaction ID comes from the
+	// Binary KeyValues payload of EMsg_ClientMicroTxnAuthRequest (5504). Until
+	// that payload is received and correlated with the GC order, no checkout
+	// link can be constructed safely.
 	s.requestMu.Lock()
 	defer s.requestMu.Unlock()
 	// Keep the raw Steam-message observer enabled for the entire handoff. The
@@ -100,13 +112,22 @@ func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request Sto
 	s.steamTraceActive.Store(true)
 	defer s.steamTraceActive.Store(false)
 	trace := newDiagnosticTrace("Purchase trace started")
-	trace.Add("SESSION routing identity platform=SteamClient os=Linux client_os_type=20 active_game=Counter-Strike 2 appid=730")
+	trace.Add(fmt.Sprintf("SESSION routing identity platform=SteamClient os=Linux client_os_type=20 active_game=Counter-Strike 2 appid=730 client_version=%d", cs2ClientVersion))
 	defer func() {
 		if resultErr != nil {
 			resultErr = trace.Error(resultErr)
 		}
 	}()
-	body, err := gametracking.MarshalStorePurchaseInit(gametracking.StorePurchaseRequest{Country: request.Country, Language: request.Language, Currency: request.Currency, Lines: []gametracking.StorePurchaseLine{{ItemDefID: request.ItemDefID, Quantity: request.Quantity, Cost: request.Cost, PurchaseType: request.PurchaseType, SupplementalData: request.SupplementalData}}})
+	body, err := gametracking.MarshalStorePurchaseInit(gametracking.StorePurchaseRequest{
+		Country: request.Country, Language: request.Language, Currency: request.Currency,
+		CountryPresent: request.CountryPresent, LanguagePresent: request.LanguagePresent, OmitCurrency: request.OmitCurrency,
+		Lines: []gametracking.StorePurchaseLine{{
+			ItemDefID: request.ItemDefID, Quantity: request.Quantity, Cost: request.Cost,
+			PurchaseType: request.PurchaseType, SupplementalData: request.SupplementalData,
+			OmitItemDefID: request.OmitItemDefID, OmitQuantity: request.OmitQuantity, OmitCost: request.OmitCost,
+			PurchaseTypePresent: request.PurchaseTypePresent, OmitSupplementalData: request.OmitSupplementalData,
+		}},
+	})
 	if err != nil {
 		return StorePurchaseTransportResult{}, err
 	}
@@ -120,6 +141,19 @@ func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request Sto
 	trace.Add(fmt.Sprintf("SEND fields country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%d supplemental_data=%d", request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, request.PurchaseType, request.SupplementalData))
 	trace.Add(fmt.Sprintf("SEND protobuf body (%d bytes): %x", len(body), body))
 	trace.Add(fmt.Sprintf("SEND GC inner envelope (%d bytes): %x", len(innerEnvelope), innerEnvelope))
+	// The generic GC event stream is intentionally not used for 5504. It has
+	// multiple consumers (inventory, containers, authentication, store), so a
+	// concurrent waiter can otherwise steal the one authorization packet for
+	// this exact order. Remove only stale packets before creating a new order.
+	for {
+		select {
+		case <-s.microTxnAuth:
+			trace.Add("DROP stale queued Steam emsg=5504 authorization from an earlier order")
+		default:
+			goto MicroTxnQueueDrained
+		}
+	}
+MicroTxnQueueDrained:
 	if err = s.SendProtoToGC(ctx, cs2AppID, emsgStorePurchaseInit, body); err != nil {
 		log.Printf("[store-purchase] GC request send failed appid=%d emsg=%d error=%v", cs2AppID, emsgStorePurchaseInit, err)
 		return StorePurchaseTransportResult{}, err
@@ -165,28 +199,37 @@ func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request Sto
 					if gc.Result != 1 {
 						return StorePurchaseTransportResult{}, fmt.Errorf("item_def_id=%d quantity=%d cost=%d currency=%d purchase_type=%d supplemental_data=%d: %w", request.ItemDefID, request.Quantity, request.Cost, request.Currency, request.PurchaseType, request.SupplementalData, StorePurchaseRejectedError{Result: gc.Result})
 					}
-					// The response URL is a catalogue/buy-item route used by some coupon
-					// offers. It is not a transaction authorization URL and fails for
-					// ordinary store tools such as Name Tags. Only the separate Steam
-					// ClientMicroTxnAuthRequest contains the transaction IDs needed for
-					// the user-facing approval handoff.
+					if auth != nil {
+						authOrderID, hasAuthOrderID := kvUint64(auth, "orderid")
+						if !hasAuthOrderID || authOrderID != gc.TransactionID {
+							trace.Add(fmt.Sprintf("IGNORE previously received Steam emsg=5504 for nonmatching orderid=%v; awaiting exact gc_order_id=%d", auth["orderid"], gc.TransactionID))
+							auth = nil
+						}
+					}
+					// Do not synthesize a BuyItem fallback here. The response URL may be
+					// a catalogue route used by some coupon-like offers, but conventional
+					// CS2 cash-store products such as keys require the native order that
+					// was just accepted. Only ClientMicroTxnAuthRequest can provide the
+					// separate approval transaction ID for that order.
 				}
 			}
 			if event.Type == "gc.failed" {
 				return StorePurchaseTransportResult{}, fmt.Errorf("Steam reported that the CS2 store purchase message failed")
 			}
-			if event.Type == "steam.microtxn_authorization" {
-				if raw, ok := event.Payload.([]byte); ok {
-					parsed, err := parseMicroTxnAuthorization(raw)
-					if err != nil {
-						log.Printf("[store-purchase] Steam emsg=5504 BinaryKV decode failed body_hex=%x error=%v", raw, err)
-						return StorePurchaseTransportResult{}, err
-					}
-					auth = parsed
-					log.Printf("[store-purchase] decoded Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"])
-					trace.Add(fmt.Sprintf("DECODE Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"]))
-				}
+		case raw := <-s.microTxnAuth:
+			parsed, parseErr := parseMicroTxnAuthorization(raw)
+			if parseErr != nil {
+				log.Printf("[store-purchase] Steam emsg=5504 BinaryKV decode failed body_hex=%x error=%v", raw, parseErr)
+				return StorePurchaseTransportResult{}, parseErr
 			}
+			orderID, hasOrderID := kvUint64(parsed, "orderid")
+			if gc != nil && (!hasOrderID || orderID != gc.TransactionID) {
+				trace.Add(fmt.Sprintf("IGNORE Steam emsg=5504 for nonmatching orderid=%v; awaiting exact gc_order_id=%d", parsed["orderid"], gc.TransactionID))
+				continue
+			}
+			auth = parsed
+			log.Printf("[store-purchase] decoded dedicated Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"])
+			trace.Add(fmt.Sprintf("DECODE dedicated Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"]))
 		}
 	}
 	orderID, ok := kvUint64(auth, "orderid")
@@ -263,6 +306,9 @@ func ValidateSteamCheckoutURL(raw string) error {
 		return fmt.Errorf("Steam checkout URL is invalid")
 	}
 	host := strings.ToLower(parsed.Hostname())
+	// Deliberately reject store.steampowered.com/buyitem links. This validator
+	// is for an already-created native CS2 transaction, not for starting a
+	// separate Steam Inventory Service web purchase.
 	if host != "checkout.steampowered.com" || !strings.HasPrefix(parsed.EscapedPath(), "/checkout/approvetxn/") {
 		return fmt.Errorf("URL is not a Steam transaction-approval page")
 	}

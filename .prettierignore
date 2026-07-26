@@ -1,0 +1,6 @@
+# Git submodules are external source and must not be formatted locally.
+proto/vendor/gametracking-cs2/
+proto/vendor/gametracking-dota2/
+proto/vendor/gametracking-tf2/
+proto/vendor/steam-protobufs/
+vendor/counter-strike-image-tracker/

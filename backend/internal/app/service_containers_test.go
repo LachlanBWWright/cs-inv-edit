@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"cs-inv-edit/backend/internal/domain"
+	"cs-inv-edit/backend/internal/transport"
 )
 
 func TestOpenCrateMessageOmitsToolForKeylessContainer(t *testing.T) {
@@ -13,6 +14,44 @@ func TestOpenCrateMessageOmitsToolForKeylessContainer(t *testing.T) {
 	}
 	if message.ToolItemId != nil {
 		t.Fatalf("keyless tool item id = %#v, want omitted", message.ToolItemId)
+	}
+}
+
+func TestVirtualItemBelongsToTerminalRequiresExactCasketID(t *testing.T) {
+	terminalID := uint64(52994080407)
+	exact := transport.GCVirtualEconItem{
+		ID: 1,
+		Attributes: map[uint32]uint32{
+			272: uint32(terminalID),
+			273: uint32(terminalID >> 32),
+		},
+	}
+	if !virtualItemBelongsToTerminal(exact, terminalID) {
+		t.Fatal("exact casket-id attributes were not matched")
+	}
+
+	sameLowOnly := transport.GCVirtualEconItem{
+		ID:        2,
+		Inventory: 0,
+		Attributes: map[uint32]uint32{
+			272: uint32(terminalID),
+			273: uint32(terminalID>>32) + 1,
+		},
+	}
+	if virtualItemBelongsToTerminal(sameLowOnly, terminalID) {
+		t.Fatal("partial casket-id match was accepted")
+	}
+}
+
+func TestRankedTerminalVirtualCandidatesPrefersPricedNewestOffer(t *testing.T) {
+	candidates := map[uint64]transport.GCVirtualEconItem{
+		100: {ID: 100, Attributes: map[uint32]uint32{316: 95}},
+		300: {ID: 300, Attributes: map[uint32]uint32{}},
+		200: {ID: 200, Attributes: map[uint32]uint32{316: 95}},
+	}
+	ranked := rankedTerminalVirtualCandidates(candidates)
+	if len(ranked) != 3 || ranked[0].ID != 200 || ranked[1].ID != 100 || ranked[2].ID != 300 {
+		t.Fatalf("candidate ranking = %#v", ranked)
 	}
 }
 
@@ -56,5 +95,29 @@ func TestTerminalActivationCanReconcileAnInPlaceItemTransformation(t *testing.T)
 	transitioned := firstChangedTerminalItem(before, after)
 	if transitioned == nil || transitioned.Name != "Active Genesis Terminal" {
 		t.Fatalf("terminal transition = %#v", transitioned)
+	}
+}
+
+func TestContainerOpenResultKinds(t *testing.T) {
+	ordinaryResult := containerOpenResult{Kind: "inventory_award", OpenedItem: &domain.InventoryItem{ID: "500", Name: "AK-47 | Redline"}}
+	if ordinaryResult.Kind != "inventory_award" || ordinaryResult.OpenedItem == nil {
+		t.Fatalf("ordinary result kind = %s, want inventory_award", ordinaryResult.Kind)
+	}
+
+	unsealedResult := containerOpenResult{Kind: "terminal_unsealed", TerminalItemID: "101"}
+	if unsealedResult.Kind != "terminal_unsealed" || unsealedResult.TerminalItemID != "101" {
+		t.Fatalf("unsealed result kind = %s, want terminal_unsealed", unsealedResult.Kind)
+	}
+
+	points := uint32(3)
+	offerResult := containerOpenResult{
+		Kind:            "terminal_offer",
+		TerminalItemID:  "101",
+		OfferItemID:     "9999",
+		Offer:           &domain.RelatedItem{Name: "Desert Eagle | Printstream"},
+		PointsRemaining: &points,
+	}
+	if offerResult.Kind != "terminal_offer" || offerResult.Offer == nil || offerResult.Offer.Name != "Desert Eagle | Printstream" {
+		t.Fatalf("offer result kind = %s, want terminal_offer", offerResult.Kind)
 	}
 }

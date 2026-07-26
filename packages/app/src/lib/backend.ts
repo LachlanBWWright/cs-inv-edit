@@ -4,8 +4,8 @@ import type {
   ApplyToolToBaseItemRequest,
   ApplyToolToItemRequest,
   ConnectionStatus,
-	ArmorySnapshot,
-	ArmoryRedeemRequest,
+  ArmorySnapshot,
+  ArmoryRedeemRequest,
   DeleteItemRequest,
   GiftItemRequest,
   EconomyGame,
@@ -20,6 +20,7 @@ import type {
   SettingsData,
   StoreSnapshot,
   SteamTradesSnapshot,
+  SteamInventoryServiceGames,
   SteamAccountTradesCollection,
   SteamTradeMutationResult,
   CreateSteamTradeOfferRequest,
@@ -28,6 +29,7 @@ import type {
   InitializeStorePurchaseRequest,
   UseItemRequest,
   UseMultipleItemsRequest,
+  TF2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
 import type { ResultAsync } from "neverthrow";
 import type { AppError } from "./result-http.js";
@@ -40,6 +42,10 @@ export interface LocalAgentClient {
   refreshInventory(): BackendResult<OperationReceipt>;
   gameInventory(game: EconomyGame): BackendResult<GameInventorySnapshot>;
   refreshGameInventory(game: EconomyGame): BackendResult<OperationReceipt>;
+  tf2Features(): BackendResult<TF2FeatureSnapshot>;
+  steamInventoryService(appId: number): BackendResult<GameInventorySnapshot>;
+  steamInventoryServiceGames(): BackendResult<SteamInventoryServiceGames>;
+  refreshSteamInventoryService(appId: number): BackendResult<OperationReceipt>;
   armory(): BackendResult<ArmorySnapshot>;
   marketPreview(marketName: string): BackendResult<RelatedItemDto>;
   refreshArmory(): BackendResult<OperationReceipt>;
@@ -49,14 +55,26 @@ export interface LocalAgentClient {
   trades(): BackendResult<SteamTradesSnapshot>;
   refreshTrades(): BackendResult<SteamTradesSnapshot>;
   tradeAccounts(): BackendResult<SteamAccountTradesCollection>;
-  refreshTradeAccounts(steamId?: string): BackendResult<SteamAccountTradesCollection>;
-  createTradeOffer(input: CreateSteamTradeOfferRequest): BackendResult<SteamTradeMutationResult>;
+  refreshTradeAccounts(
+    steamId?: string,
+  ): BackendResult<SteamAccountTradesCollection>;
+  createTradeOffer(
+    input: CreateSteamTradeOfferRequest,
+  ): BackendResult<SteamTradeMutationResult>;
   acceptTradeOffer(id: string): BackendResult<SteamTradeMutationResult>;
-  counterTradeOffer(id: string, input: CreateSteamTradeOfferRequest): BackendResult<SteamTradeMutationResult>;
-  initializeStorePurchase(input: InitializeStorePurchaseRequest): BackendResult<PurchaseSession>;
+  counterTradeOffer(
+    id: string,
+    input: CreateSteamTradeOfferRequest,
+  ): BackendResult<SteamTradeMutationResult>;
+  initializeStorePurchase(
+    input: InitializeStorePurchaseRequest,
+  ): BackendResult<PurchaseSession>;
   storePurchase(id: string): BackendResult<PurchaseSession>;
   reconcileStorePurchase(id: string): BackendResult<PurchaseSession>;
-  submitOperation(type: string, input?: unknown): BackendResult<OperationReceipt>;
+  submitOperation(
+    type: string,
+    input?: unknown,
+  ): BackendResult<OperationReceipt>;
   operations(): BackendResult<OperationReceipt[]>;
   events(): BackendResult<OperationEvent[]>;
   protocolTrace?(after: number): BackendResult<ProtocolTraceEntry[]>;
@@ -70,12 +88,22 @@ export interface LocalAgentClient {
   applyNameTag(input: SetItemNameRequest): BackendResult<OperationReceipt>;
   removeNameTag(input: RemoveItemNameRequest): BackendResult<OperationReceipt>;
   deleteItem(input: DeleteItemRequest): BackendResult<OperationReceipt>;
-  applyStatTrakSwap(input: ApplyStatTrakSwapRequest): BackendResult<OperationReceipt>;
-  applyStrangePart(input: ApplyStrangePartRequest): BackendResult<OperationReceipt>;
+  applyStatTrakSwap(
+    input: ApplyStatTrakSwapRequest,
+  ): BackendResult<OperationReceipt>;
+  applyStrangePart(
+    input: ApplyStrangePartRequest,
+  ): BackendResult<OperationReceipt>;
   useItem(input: UseItemRequest): BackendResult<OperationReceipt>;
-  useMultipleItems(input: UseMultipleItemsRequest): BackendResult<OperationReceipt>;
-  applyToolToItem(input: ApplyToolToItemRequest): BackendResult<OperationReceipt>;
-  applyToolToBaseItem(input: ApplyToolToBaseItemRequest): BackendResult<OperationReceipt>;
+  useMultipleItems(
+    input: UseMultipleItemsRequest,
+  ): BackendResult<OperationReceipt>;
+  applyToolToItem(
+    input: ApplyToolToItemRequest,
+  ): BackendResult<OperationReceipt>;
+  applyToolToBaseItem(
+    input: ApplyToolToBaseItemRequest,
+  ): BackendResult<OperationReceipt>;
   giftItem(input: GiftItemRequest): BackendResult<OperationReceipt>;
 }
 

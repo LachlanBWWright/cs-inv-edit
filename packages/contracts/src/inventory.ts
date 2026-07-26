@@ -1,4 +1,11 @@
-export type ConnectionState = "disconnected" | "connecting" | "awaiting_guard" | "needs_steam_guard" | "awaiting_qr" | "connected" | "error";
+export type ConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "awaiting_guard"
+  | "needs_steam_guard"
+  | "awaiting_qr"
+  | "connected"
+  | "error";
 
 export interface HealthStatus {
   status: "ok" | "error";
@@ -32,7 +39,14 @@ export interface InventoryItemDto {
   customName?: string;
   imageUrl?: string;
   inspectUrl?: string;
-  kind: "weapon_skin" | "sticker_item" | "container" | "storage_unit" | "tool_item" | "cs2_econ_item" | "unknown";
+  kind:
+    | "weapon_skin"
+    | "sticker_item"
+    | "container"
+    | "storage_unit"
+    | "tool_item"
+    | "cs2_econ_item"
+    | "unknown";
   defindex?: number;
   paintWear?: number;
   paintWearMin?: number;
@@ -85,12 +99,38 @@ export interface RelatedItemDto {
   paintWear?: number;
   wearMin?: number;
   wearMax?: number;
+  inspectUrl?: string;
   items?: RelatedItemDto[];
 }
 
-export interface PriceScanRequest { marketNames: string[]; currency: string; appId?: number; priceMultipliers?: Record<string, number> }
-export interface PriceQuoteDto { source: string; marketName: string; currency: string; amountMinor?: number; displayPrice: string; priceMultiplier: number; adjustedAmountMinor?: number; adjustedDisplayPrice?: string; listingCount?: number; url?: string; observedAt: string }
-export interface PriceScanResult { currency: string; items: Array<{ marketName: string; quotes: PriceQuoteDto[] }>; listings: PriceQuoteDto[]; errors: Array<{ source: string; message: string }>; scannedAt: string; servedAt?: string; cacheState?: "fresh" | "stale" }
+export interface PriceScanRequest {
+  marketNames: string[];
+  currency: string;
+  appId?: number;
+  priceMultipliers?: Record<string, number>;
+}
+export interface PriceQuoteDto {
+  source: string;
+  marketName: string;
+  currency: string;
+  amountMinor?: number;
+  displayPrice: string;
+  priceMultiplier: number;
+  adjustedAmountMinor?: number;
+  adjustedDisplayPrice?: string;
+  listingCount?: number;
+  url?: string;
+  observedAt: string;
+}
+export interface PriceScanResult {
+  currency: string;
+  items: Array<{ marketName: string; quotes: PriceQuoteDto[] }>;
+  listings: PriceQuoteDto[];
+  errors: Array<{ source: string; message: string }>;
+  scannedAt: string;
+  servedAt?: string;
+  cacheState?: "fresh" | "stale";
+}
 
 export interface ItemDebugDto {
   gcId?: string;
@@ -139,66 +179,142 @@ export interface ArmorySnapshot {
 }
 
 export interface StoreOfferDto {
-  id: string; itemLink: string; defIndex: number; name: string;
-  description?: string; imageUrl?: string; category?: string; rarity?: string;
-  currency: string; amountMinor: number; formattedPrice: string;
-  saleAmountMinor?: number; formattedSalePrice?: string;
-  requiresSupplementalData: boolean; supplementalDataKind?: string;
-  purchasable: boolean; unsupportedReason?: string;
+  id: string;
+  itemLink: string;
+  defIndex: number;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  category?: string;
+  rarity?: string;
+  currency: string;
+  amountMinor: number;
+  formattedPrice: string;
+  saleAmountMinor?: number;
+  formattedSalePrice?: string;
+  requiresSupplementalData: boolean;
+  supplementalDataKind?: string;
+  purchasable: boolean;
+  unsupportedReason?: string;
   items?: RelatedItemDto[];
 }
 
 export interface StoreSnapshot {
   status: "ready" | "requires_connection" | "loading" | "error";
-  priceSheetVersion?: number; currency?: string; offers: StoreOfferDto[];
-  refreshedAt: string; message?: string; diagnostics?: string[];
+  priceSheetVersion?: number;
+  currency?: string;
+  offers: StoreOfferDto[];
+  refreshedAt: string;
+  message?: string;
+  diagnostics?: string[];
 }
 
 export interface SteamTradeItemDto {
-  appId: number; contextId: string; assetId: string; amount: number;
-  name: string; marketName?: string; type?: string; imageUrl?: string;
-  tradable: boolean; marketable: boolean;
+  appId: number;
+  contextId: string;
+  assetId: string;
+  amount: number;
+  name: string;
+  marketName?: string;
+  type?: string;
+  imageUrl?: string;
+  tradable: boolean;
+  marketable: boolean;
 }
 
 export interface SteamTradeDto {
-  id: string; direction: "received" | "sent" | "history"; partnerSteamId: string;
-  partnerName?: string; partnerAvatarUrl?: string; partnerProfileUrl?: string;
-  message?: string; state: string; createdAt?: string; updatedAt?: string; expiresAt?: string;
-  itemsToGive: SteamTradeItemDto[]; itemsToReceive: SteamTradeItemDto[];
+  id: string;
+  direction: "received" | "sent" | "history";
+  partnerSteamId: string;
+  partnerName?: string;
+  partnerAvatarUrl?: string;
+  partnerProfileUrl?: string;
+  message?: string;
+  state: string;
+  createdAt?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+  itemsToGive: SteamTradeItemDto[];
+  itemsToReceive: SteamTradeItemDto[];
 }
 
 export interface SteamTradesSnapshot {
-  status: "ready" | "requires_connection" | "requires_reauthentication" | "loading" | "error";
-  received: SteamTradeDto[]; sent: SteamTradeDto[]; history: SteamTradeDto[];
-  refreshedAt: string; message?: string;
+  status:
+    | "ready"
+    | "requires_connection"
+    | "requires_reauthentication"
+    | "loading"
+    | "error";
+  received: SteamTradeDto[];
+  sent: SteamTradeDto[];
+  history: SteamTradeDto[];
+  refreshedAt: string;
+  message?: string;
 }
 
 export interface SteamAccountTradesSnapshot {
-  steamId: string; accountName: string; avatarUrl?: string; snapshot: SteamTradesSnapshot;
+  steamId: string;
+  accountName: string;
+  avatarUrl?: string;
+  snapshot: SteamTradesSnapshot;
 }
 
 export interface SteamAccountTradesCollection {
-  accounts: SteamAccountTradesSnapshot[]; refreshedAt: string;
+  accounts: SteamAccountTradesSnapshot[];
+  refreshedAt: string;
 }
 
 export interface SteamTradeMutationResult {
-  status: "submitted" | "accepted" | "blocked_by_feature_flag" | "requires_connection" | "requires_refresh" | "error";
-  tradeOfferId?: string; needsMobileConfirmation?: boolean; message?: string;
+  status:
+    | "submitted"
+    | "accepted"
+    | "blocked_by_feature_flag"
+    | "requires_connection"
+    | "requires_refresh"
+    | "error";
+  tradeOfferId?: string;
+  needsMobileConfirmation?: boolean;
+  message?: string;
 }
 
 export interface InitializeStorePurchaseRequest {
-  offerId: string; quantity: number; expectedPriceSheetVersion: number;
-  expectedAmountMinor: number; supplementalData?: string;
+  offerId: string;
+  quantity: number;
+  expectedPriceSheetVersion: number;
+  expectedAmountMinor: number;
+  supplementalData?: string;
+  expectedTerminalOfferItemId?: string;
 }
 
-export type PurchaseSessionStatus = "initializing" | "awaiting_steam_authorization" | "awaiting_user" | "finalizing" | "completed" | "cancelled" | "failed" | "expired";
+export type PurchaseSessionStatus =
+  | "initializing"
+  | "awaiting_steam_authorization"
+  | "awaiting_user"
+  | "finalizing"
+  | "completed"
+  | "cancelled"
+  | "failed"
+  | "expired";
 export interface PurchaseSession {
-  id: string; status: PurchaseSessionStatus; offerId: string; defIndex: number;
-  name: string; quantity: number; currency: string; amountMinor: number;
-  formattedAmount: string; transactionId?: string; orderId?: string;
-  checkoutUrl?: string; purchasedItemIds?: string[]; createdAt: string;
-  expiresAt?: string; message?: string; diagnostics?: string[];
-  errorCode?: string; errorResult?: number;
+  id: string;
+  status: PurchaseSessionStatus;
+  offerId: string;
+  defIndex: number;
+  name: string;
+  quantity: number;
+  currency: string;
+  amountMinor: number;
+  formattedAmount: string;
+  transactionId?: string;
+  orderId?: string;
+  checkoutUrl?: string;
+  purchasedItemIds?: string[];
+  createdAt: string;
+  expiresAt?: string;
+  message?: string;
+  diagnostics?: string[];
+  errorCode?: string;
+  errorResult?: number;
 }
 
 export interface ArmoryRedeemRequest {
@@ -231,14 +347,48 @@ export interface SteamAccountProfile {
 export interface OperationReceipt {
   operationId: string;
   type: string;
-  state: "queued" | "validating" | "encoded" | "sent" | "awaiting_gc_confirmation" | "reconciling_inventory" | "completed" | "failed" | "blocked_by_feature_flag" | "requires_validation" | "requires_connection";
+  state:
+    | "queued"
+    | "validating"
+    | "encoded"
+    | "sent"
+    | "awaiting_gc_confirmation"
+    | "reconciling_inventory"
+    | "completed"
+    | "failed"
+    | "blocked_by_feature_flag"
+    | "requires_validation"
+    | "requires_connection";
   createdAt: string;
   message?: string;
   result?: OperationResult;
 }
 
+export type ContainerOpenResultDto =
+  | {
+      kind: "inventory_award";
+      openedItem: InventoryItemDto;
+    }
+  | {
+      kind: "terminal_unsealed";
+      terminalItemId: string;
+    }
+  | {
+      kind: "terminal_offer";
+      terminalItemId: string;
+      offerItemId: string;
+      offer: RelatedItemDto;
+      pointsRemaining?: number;
+    };
+
 export interface OperationResult {
+  kind?: "inventory_award" | "terminal_unsealed" | "terminal_offer";
   openedItem?: InventoryItemDto;
+  terminalItemId?: string;
+  terminalDefIndex?: number;
+  offerItemId?: string;
+  offer?: RelatedItemDto;
+  pointsRemaining?: number;
   terminalOffer?: TerminalOfferDto;
   consumedItemId?: string;
   requestEMsg?: number;

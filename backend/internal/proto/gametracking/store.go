@@ -30,17 +30,25 @@ type StoreUserData struct {
 	PriceSheet        []byte
 }
 type StorePurchaseLine struct {
-	ItemDefID        uint32
-	Quantity         uint32
-	Cost             uint64
-	PurchaseType     uint32
-	SupplementalData uint64
+	ItemDefID            uint32
+	Quantity             uint32
+	Cost                 uint64
+	PurchaseType         uint32
+	SupplementalData     uint64
+	OmitItemDefID        bool
+	OmitQuantity         bool
+	OmitCost             bool
+	PurchaseTypePresent  bool
+	OmitSupplementalData bool
 }
 type StorePurchaseRequest struct {
-	Country  string
-	Language int32
-	Currency int32
-	Lines    []StorePurchaseLine
+	Country         string
+	Language        int32
+	Currency        int32
+	CountryPresent  bool
+	LanguagePresent bool
+	OmitCurrency    bool
+	Lines           []StorePurchaseLine
 }
 type StorePurchaseResponse struct {
 	Result        int32
@@ -94,6 +102,16 @@ func MessageNameForEMsg(emsg uint32) (string, bool) {
 	// the corresponding gcsdk message types do not. Keep these authoritative
 	// upstream exceptions explicit instead of guessing a nonexistent name.
 	baseGCMessageNames := map[uint32]string{
+		21:   "CMsgSOSingleObject",
+		22:   "CMsgSOSingleObject",
+		23:   "CMsgSOSingleObject",
+		24:   "CMsgSOCacheSubscribed",
+		25:   "CMsgSOCacheUnsubscribed",
+		26:   "CMsgSOMultipleObjects",
+		27:   "CMsgSOCacheSubscriptionCheck",
+		28:   "CMsgSOCacheSubscriptionRefresh",
+		1094: "CMsgCasketItem",
+		2536: "CMsgCasketItem",
 		4004: "CMsgClientWelcome",
 		4006: "CMsgClientHello",
 		4007: "CMsgServerHello",
@@ -114,14 +132,26 @@ func MessageNameForEMsg(emsg uint32) (string, bool) {
 				continue
 			}
 			valueName := string(value.Name())
-			if !strings.HasPrefix(valueName, "k_EMsg") {
+			if !strings.HasPrefix(valueName, "k_EMsg") && !strings.HasPrefix(valueName, "k_ESOMsg") {
 				continue
 			}
-			candidate := "CMsg" + strings.TrimPrefix(valueName, "k_EMsg")
-			if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
-				if _, ok := descriptor.(protoreflect.MessageDescriptor); ok {
-					found = candidate
-					return false
+			raw := strings.TrimPrefix(strings.TrimPrefix(valueName, "k_EMsg"), "k_ESOMsg")
+			candidates := []string{
+				"CMsg" + raw,
+				"CMsg" + strings.TrimPrefix(raw, "GC"),
+				"CMsgSO" + raw,
+				"CMsgSO" + strings.TrimPrefix(raw, "_"),
+				"CMsgSOCache" + raw,
+				"CMsgSOCache" + strings.TrimPrefix(raw, "_"),
+				"CMsgSOSingleObject",
+				"CMsgSOMultipleObjects",
+			}
+			for _, candidate := range candidates {
+				if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
+					if _, ok := descriptor.(protoreflect.MessageDescriptor); ok {
+						found = candidate
+						return false
+					}
 				}
 			}
 		}
@@ -154,9 +184,17 @@ func MarshalStorePurchaseInit(request StorePurchaseRequest) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	setString(message, "country", request.Country)
-	setInt(message, "language", int64(request.Language))
-	setInt(message, "currency", int64(request.Currency))
+	// Match the CS2 client wire shape: default-valued proto2 store context
+	// fields are absent, not explicitly present with an empty/zero value.
+	if request.Country != "" || request.CountryPresent {
+		setString(message, "country", request.Country)
+	}
+	if request.Language != 0 || request.LanguagePresent {
+		setInt(message, "language", int64(request.Language))
+	}
+	if !request.OmitCurrency {
+		setInt(message, "currency", int64(request.Currency))
+	}
 	field := message.Descriptor().Fields().ByName("line_items")
 	list := message.Mutable(field).List()
 	for _, source := range request.Lines {
@@ -164,15 +202,23 @@ func MarshalStorePurchaseInit(request StorePurchaseRequest) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		setUint(line, "item_def_id", uint64(source.ItemDefID))
-		setUint(line, "quantity", uint64(source.Quantity))
-		setUint(line, "cost_in_local_currency", source.Cost)
-		if source.PurchaseType != 0 {
+		if !source.OmitItemDefID {
+			setUint(line, "item_def_id", uint64(source.ItemDefID))
+		}
+		if !source.OmitQuantity {
+			setUint(line, "quantity", uint64(source.Quantity))
+		}
+		if !source.OmitCost {
+			setUint(line, "cost_in_local_currency", source.Cost)
+		}
+		if source.PurchaseType != 0 || source.PurchaseTypePresent {
 			setUint(line, "purchase_type", uint64(source.PurchaseType))
 		}
-		// The CS2 client explicitly sends this optional proto2 field even when it
-		// is zero. Presence is significant to the store purchase handler.
-		setUint(line, "supplemental_data", source.SupplementalData)
+		// StoreAPI only supplies supplemental_data for parenthesized purchase
+		// entries such as "defindex(asset_id)".
+		if !source.OmitSupplementalData {
+			setUint(line, "supplemental_data", source.SupplementalData)
+		}
 		list.Append(protoreflect.ValueOfMessage(line))
 	}
 	return proto.MarshalOptions{Deterministic: true}.Marshal(message)

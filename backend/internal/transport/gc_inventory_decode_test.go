@@ -273,7 +273,7 @@ func TestCS2ClientHelloUsesPinnedGameTrackingVersion(t *testing.T) {
 	if err := proto.Unmarshal(body, &hello); err != nil {
 		t.Fatal(err)
 	}
-	if hello.GetVersion() != cs2ClientVersion || hello.GetVersion() != 2000875 {
+	if hello.GetVersion() != cs2ClientVersion || hello.GetVersion() != 2000877 {
 		t.Fatalf("CS2 ClientHello version = %d, want pinned steam.inf version %d", hello.GetVersion(), cs2ClientVersion)
 	}
 }

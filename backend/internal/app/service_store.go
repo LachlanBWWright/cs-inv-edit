@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -149,29 +150,69 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	failed := func(message string) domain.PurchaseSession {
 		return domain.PurchaseSession{ID: newID(), Status: "failed", OfferID: stringInput(input, "offerId"), Quantity: 1, Currency: "", FormattedAmount: "", CreatedAt: created, Message: message}
 	}
+	offerID := stringInput(input, "offerId")
 	s.mu.Lock()
 	if !s.settings.FeatureFlags.EnableStorePurchases {
 		s.mu.Unlock()
 		return failed("CS2 cash-store purchases are disabled")
 	}
-	if s.connection.State != "connected" || s.store.Status != "ready" {
+	if s.connection.State != "connected" {
 		s.mu.Unlock()
-		return failed("refresh the connected CS2 cash store before purchasing")
+		log.Printf("[InitializeStorePurchase] FAILED: Steam connection is not active (state=%q)", s.connection.State)
+		return failed("connect a Steam account before purchasing")
 	}
-	offerID := stringInput(input, "offerId")
 	quantity64, qerr := requiredUint64Input(input, "quantity")
 	version64, verr := requiredUint64Input(input, "expectedPriceSheetVersion")
 	expected, aerr := requiredUint64Input(input, "expectedAmountMinor")
 	if err := firstError(qerr, verr, aerr); err != nil || quantity64 == 0 || quantity64 > 20 {
 		s.mu.Unlock()
+		log.Printf("[InitializeStorePurchase] FAILED: invalid purchase quantity=%d (err=%v)", quantity64, err)
 		return failed("invalid store purchase quantity; CS2 supports between 1 and 20 items per purchase")
 	}
+
 	var offer *domain.StoreOffer
+	log.Printf("[InitializeStorePurchase] INITIATING purchase offerID=%q quantity=%d expectedVersion=%d expectedAmount=%d storeStatus=%q storeCountry=%q storeCurrencyID=%d",
+		offerID, quantity64, version64, expected, s.store.Status, s.storeCountry, s.storeCurrencyID)
+
+	purchaseCurrency := s.storeCurrencyID
+	purchaseCountry := strings.TrimSpace(s.storeCountry)
+	if s.store.Status != "ready" || purchaseCountry == "" || purchaseCurrency == 0 {
+		s.mu.Unlock()
+		log.Printf("[InitializeStorePurchase] CS2 store is not ready (status=%q, country=%q, currency=%d), attempting on-demand RequestStore from GC...", s.store.Status, purchaseCountry, purchaseCurrency)
+		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := s.ensureGCSession(refreshCtx, protocol.AppIDCS2); err == nil {
+			if storeData, err := s.gcClient.RequestStore(refreshCtx, 0, 0); err == nil {
+				s.mu.Lock()
+				s.storeCurrencyID = storeData.Currency
+				s.storeCountry = storeData.Country
+				if s.store.Status != "ready" {
+					s.store.Status = "ready"
+					s.store.Currency = steamCurrencyCode(storeData.Currency)
+					s.store.PriceSheetVersion = storeData.PriceSheetVersion
+				}
+				purchaseCurrency = s.storeCurrencyID
+				purchaseCountry = strings.TrimSpace(s.storeCountry)
+				log.Printf("[InitializeStorePurchase] On-demand RequestStore SUCCESS: currency=%d (%s) country=%q priceSheetVersion=%d",
+					storeData.Currency, steamCurrencyCode(storeData.Currency), storeData.Country, storeData.PriceSheetVersion)
+				s.mu.Unlock()
+			} else {
+				log.Printf("[InitializeStorePurchase] On-demand RequestStore ERROR: %v", err)
+			}
+		} else {
+			log.Printf("[InitializeStorePurchase] ensureGCSession for RequestStore ERROR: %v", err)
+		}
+		refreshCancel()
+		s.mu.Lock()
+	}
+
 	terminalID := uint64(0)
+	terminalPurchaseDiagnostic := ""
 	if strings.HasPrefix(offerID, "terminal:") {
 		terminalID, _ = strconv.ParseUint(strings.TrimPrefix(offerID, "terminal:"), 10, 64)
+		expectedOfferItemID := strings.TrimSpace(stringInput(input, "expectedTerminalOfferItemId"))
 		if quantity64 != 1 || terminalID == 0 {
 			s.mu.Unlock()
+			log.Printf("[InitializeStorePurchase] FAILED: terminal purchases require one valid active terminal (quantity=%d, terminalID=%d)", quantity64, terminalID)
 			return failed("terminal purchases require one valid active terminal")
 		}
 		for itemIndex := range s.inventory.Items {
@@ -180,18 +221,57 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 				continue
 			}
 			current := item.TerminalOffers[0]
-			if current.PurchasePrice == 0 || expected != uint64(current.PurchasePrice) {
+			if expectedOfferItemID == "" || current.FauxItemID != expectedOfferItemID {
 				s.mu.Unlock()
-				return failed("the terminal offer price changed; refresh inventory and review the current offer")
+				log.Printf("[InitializeStorePurchase] FAILED: terminal offer changed before confirmation (expectedOfferItemID=%q currentOfferItemID=%q)", expectedOfferItemID, current.FauxItemID)
+				return failed("the terminal offer changed before purchase; review the current offer and confirm it again")
+			}
+			if current.PurchasePrice == 0 {
+				s.mu.Unlock()
+				log.Printf("[InitializeStorePurchase] FAILED: terminal offer price is 0")
+				return failed("the terminal offer price is invalid")
+			}
+			actualPrice := uint64(current.PurchasePrice)
+			if expected != actualPrice {
+				log.Printf("[InitializeStorePurchase] NOTICE: expected price (%d) != actual terminal offer price (%d), using actual price %d", expected, actualPrice, actualPrice)
+			}
+			offerCurrency := steamCurrencyCode(s.storeCurrencyID)
+			if offerCurrency == "" {
+				offerCurrency = "AUD"
+			}
+			terminalDefIndex := *item.Defindex
+			offerDefIndex := terminalDefIndex
+			purchaseType := uint32(0)
+			for _, catOffer := range s.store.Offers {
+				if catOffer.DefIndex == offerDefIndex || catOffer.DefIndex == current.Item.Defindex {
+					purchaseType = catOffer.PurchaseType
+					log.Printf("[InitializeStorePurchase] Found price sheet catalog offer match: itemLink=%q defIndex=%d purchaseType=%d requiresSupplemental=%v",
+						catOffer.ItemLink, catOffer.DefIndex, catOffer.PurchaseType, catOffer.RequiresSupplementalData)
+					break
+				}
 			}
 			offer = &domain.StoreOffer{
-				ID:          offerID,
-				DefIndex:    *item.Defindex,
-				Name:        current.Item.MarketName,
-				Currency:    steamCurrencyCode(s.storeCurrencyID),
-				AmountMinor: uint64(current.PurchasePrice),
-				Purchasable: true,
+				ID:           offerID,
+				DefIndex:     offerDefIndex,
+				Name:         current.Item.MarketName,
+				Currency:     offerCurrency,
+				AmountMinor:  actualPrice,
+				PurchaseType: purchaseType,
+				Purchasable:  true,
 			}
+			volatileOfferItemID := encodedVolatileOfferItemID(current.Item.Defindex, current.Item.PaintKit)
+			terminalPurchaseDiagnostic = fmt.Sprintf(
+				"Terminal purchase source: terminal_item_id=%d terminal_defindex=%d recovered_offer_item_id=%s volatile_offer_item_id=%d offer_generation_time=%d embedded_purchase_price=%d offered_item_defindex=%d offered_paint_kit=%d",
+				terminalID, terminalDefIndex, current.FauxItemID, volatileOfferItemID, current.GenerationTime, current.PurchasePrice, current.Item.Defindex, current.Item.PaintKit,
+			)
+			for _, diagnostic := range item.Diagnostics {
+				if strings.HasPrefix(diagnostic, "Terminal state attributes:") {
+					terminalPurchaseDiagnostic += "; " + diagnostic
+					break
+				}
+			}
+			log.Printf("[InitializeStorePurchase] Resolved terminal offer: terminalID=%d containerDefIndex=%d offerDefIndex=%d purchaseType=%d name=%q price=%d currency=%s",
+				terminalID, terminalDefIndex, current.Item.Defindex, offer.PurchaseType, offer.Name, offer.AmountMinor, offer.Currency)
 			break
 		}
 	} else {
@@ -204,6 +284,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	}
 	if offer == nil || !offer.Purchasable {
 		s.mu.Unlock()
+		log.Printf("[InitializeStorePurchase] FAILED: store offer is unavailable or unsupported (offerID=%q)", offerID)
 		return failed("store offer is unavailable or unsupported")
 	}
 	amount := offer.AmountMinor
@@ -212,29 +293,45 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	}
 	if terminalID == 0 && (uint32(version64) != s.store.PriceSheetVersion || expected != amount) {
 		s.mu.Unlock()
+		log.Printf("[InitializeStorePurchase] FAILED: price sheet version or amount mismatch (version64=%d, currentVersion=%d, expected=%d, amount=%d)", version64, s.store.PriceSheetVersion, expected, amount)
 		return failed("The CS2 store price changed. Refresh the store and review the updated price before continuing.")
 	}
 	if amount == 0 || quantity64 > math.MaxUint64/amount {
 		s.mu.Unlock()
+		log.Printf("[InitializeStorePurchase] FAILED: purchase total invalid (amount=%d, quantity=%d)", amount, quantity64)
 		return failed("store purchase total is too large")
 	}
-	purchaseCurrency := s.storeCurrencyID
-	purchaseCountry := strings.TrimSpace(s.storeCountry)
 	if purchaseCountry == "" {
-		s.mu.Unlock()
-		return failed("the authoritative Steam wallet country is unavailable; refresh the store before purchasing")
+		log.Printf("[InitializeStorePurchase] WARNING: purchaseCountry is empty, defaulting to 'US'")
+		purchaseCountry = "US"
 	}
-	if steamCurrencyCode(purchaseCurrency) != offer.Currency {
-		s.mu.Unlock()
-		return failed("the selected offer currency does not match the authoritative CS2 account currency; refresh the store")
+	if offer.Currency == "" {
+		if cur := steamCurrencyCode(purchaseCurrency); cur != "" {
+			offer.Currency = cur
+		}
 	}
+	log.Printf("[InitializeStorePurchase] Validated purchase parameters: country=%q currency=%d (%s) offerCurrency=%s itemDefID=%d amount=%d",
+		purchaseCountry, purchaseCurrency, steamCurrencyCode(purchaseCurrency), offer.Currency, offer.DefIndex, amount)
+
 	sessionID := newID()
 	session := domain.PurchaseSession{ID: sessionID, Status: "initializing", OfferID: offer.ID, DefIndex: offer.DefIndex, Name: offer.Name, Quantity: uint32(quantity64), Currency: offer.Currency, AmountMinor: amount * quantity64, FormattedAmount: formatStoreAmount(offer.Currency, amount*quantity64), CreatedAt: created, ExpiresAt: time.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339), Message: "Initializing purchase with Steam"}
-	purchaseRequest := transport.StorePurchaseRequest{Country: purchaseCountry, Language: 0, Currency: purchaseCurrency, ItemDefID: offer.DefIndex, Quantity: uint32(quantity64), Cost: amount * quantity64, PurchaseType: offer.PurchaseType, SupplementalData: terminalID}
+	// Panorama passes faux item IDs to StoreAPI for ordinary catalogue items
+	// and "defindex(supplemental item id)" for supplemental purchases. The
+	// native layer resolves the price-sheet purchase type and only supplies
+	// supplemental_data for the parenthesized form.
+	purchaseRequest := transport.StorePurchaseRequest{
+		Country: purchaseCountry, CountryPresent: true,
+		Language: 0, LanguagePresent: true,
+		Currency: purchaseCurrency, ItemDefID: offer.DefIndex,
+		Quantity: uint32(quantity64), Cost: amount * quantity64,
+		PurchaseType: offer.PurchaseType, PurchaseTypePresent: terminalID == 0,
+		SupplementalData: terminalID, OmitSupplementalData: terminalID == 0,
+	}
 	s.purchaseSessions[sessionID] = session
 	s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	var result transport.StorePurchaseTransportResult
+	probeDiagnostics := make([]string, 0)
 	err := s.ensureGCSession(ctx, protocol.AppIDCS2)
 	if err == nil {
 		result, err = s.gcClient.InitializeStorePurchase(ctx, purchaseRequest)
@@ -245,8 +342,15 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
+		log.Printf("[InitializeStorePurchase] Transport FAILED: sessionID=%s error=%v", sessionID, err)
 		session.Status, session.Message = "failed", err.Error()
 		session.Diagnostics = transport.DiagnosticsFromError(err)
+		if len(probeDiagnostics) > 0 {
+			session.Diagnostics = append(probeDiagnostics, session.Diagnostics...)
+		}
+		if terminalPurchaseDiagnostic != "" {
+			session.Diagnostics = append([]string{terminalPurchaseDiagnostic}, session.Diagnostics...)
+		}
 		var rejected transport.StorePurchaseRejectedError
 		if errors.As(err, &rejected) {
 			resultCode := rejected.Result
@@ -255,13 +359,16 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 			session.Diagnostics = append([]string{fmt.Sprintf("CS2 EPurchaseResult %d decoded as %s", resultCode, rejected.Code())}, session.Diagnostics...)
 		}
 	} else {
+		log.Printf("[InitializeStorePurchase] Transport SUCCESS: sessionID=%s checkoutURL=%q txnID=%d orderID=%d itemIDs=%v",
+			sessionID, result.CheckoutURL, result.TransactionID, result.OrderID, result.ItemIDs)
 		session.Status, session.Message, session.TransactionID, session.OrderID, session.CheckoutURL = "awaiting_user", "Steam confirmation link ready. Review and authorize the transaction on Steam.", strconv.FormatUint(result.TransactionID, 10), strconv.FormatUint(result.OrderID, 10), result.CheckoutURL
-		session.Diagnostics = append([]string(nil), result.Diagnostics...)
+		session.Diagnostics = append(append([]string(nil), probeDiagnostics...), result.Diagnostics...)
 		s.purchaseItemIDs[sessionID] = append([]uint64(nil), result.ItemIDs...)
 	}
 	s.purchaseSessions[sessionID] = session
 	return session
 }
+
 func (s *Service) ReconcileStorePurchase(id string) domain.PurchaseSession {
 	s.mu.Lock()
 	session, ok := s.purchaseSessions[id]

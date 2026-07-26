@@ -1,6 +1,14 @@
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
-import type { ConnectionStatus, InitializeStorePurchaseRequest, InventoryItemDto, InventorySnapshot, PriceScanResult, PurchaseSession, SettingsData } from "@cs-inv-edit/contracts";
+import type {
+  ConnectionStatus,
+  InitializeStorePurchaseRequest,
+  InventoryItemDto,
+  InventorySnapshot,
+  PriceScanResult,
+  PurchaseSession,
+  SettingsData,
+} from "@cs-inv-edit/contracts";
 import { InventoryDetailsPanel } from "./InventoryDetailsPanel.js";
 import { Alert } from "./ui/Alert.js";
 import { InventoryGrid } from "./inventory-view-content-sections.js";
@@ -16,7 +24,9 @@ export interface InventoryViewContentProps {
   selectedItem: InventoryItemDto | undefined;
   selectedItemKey: string | undefined;
   statusMessage: string;
-  terminalOfferState: { terminalId: string; state: "loading" | "error"; message: string } | undefined;
+  terminalOfferState:
+    | { terminalId: string; state: "loading" | "error"; message: string }
+    | undefined;
   containerStatusMessage: string;
   renameOpen: boolean;
   draftName: string;
@@ -34,14 +44,24 @@ export interface InventoryViewContentProps {
   canUseNameTagOn: boolean;
   compactMode: "icons" | "concise" | "detailed";
   marketPrices: ReadonlyMap<string, number>;
-  onMarketPreview: (marketName: string) => Promise<import("@cs-inv-edit/contracts").RelatedItemDto | undefined>;
-  onScanPrices: (marketNames: string[], appId?: number) => Promise<PriceScanResult | undefined>;
+  onMarketPreview: (
+    marketName: string,
+  ) => Promise<import("@cs-inv-edit/contracts").RelatedItemDto | undefined>;
+  onScanPrices: (
+    marketNames: string[],
+    appId?: number,
+  ) => Promise<PriceScanResult | undefined>;
   onSelectItem: (item: InventoryItemDto, options?: { range: boolean }) => void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRenameSubmit: () => Promise<void> | void;
   onRemoveName: () => Promise<void> | void;
-  onOpenContainer: (terminalSelection?: { pointsRemaining?: number; volatileLimit?: number }) => Promise<void> | void;
-  onTerminalPurchase: (input: InitializeStorePurchaseRequest) => Promise<PurchaseSession>;
+  onOpenContainer: (terminalSelection?: {
+    pointsRemaining?: number;
+    volatileLimit?: number;
+  }) => Promise<void> | void;
+  onTerminalPurchase: (
+    input: InitializeStorePurchaseRequest,
+  ) => Promise<PurchaseSession>;
   onLoadStorageContents: (casketId: string) => Promise<boolean>;
   browsingStorageUnit: InventoryItemDto | undefined;
   removeFromStorageMode: boolean;
@@ -58,27 +78,45 @@ export interface InventoryViewContentProps {
   onRefresh: () => void;
 }
 
-function SelectionAlert(props: Pick<InventoryViewContentProps, 'selectionMode' | 'selectedItemIds'>): JSX.Element | null {
+function SelectionAlert(
+  props: Pick<InventoryViewContentProps, "selectionMode" | "selectedItemIds">,
+): JSX.Element | null {
   if (props.selectionMode === "inventory") {
     return null;
   }
 
   return (
     <Alert variant="warning">
-      {props.selectionMode === "inventory-storage" ? "Storage selection is a stub." : "Trade-up selection is a stub."} Select multiple inventory items below; no operation will be performed. Selected: {props.selectedItemIds.length}.
+      {props.selectionMode === "inventory-storage"
+        ? "Storage selection is a stub."
+        : "Trade-up selection is a stub."}{" "}
+      Select multiple inventory items below; no operation will be performed.
+      Selected: {props.selectedItemIds.length}.
     </Alert>
   );
 }
 
-function ConnectionAlert(props: Pick<InventoryViewContentProps, 'inventory' | 'connected'>): JSX.Element | null {
+function ConnectionAlert(
+  props: Pick<InventoryViewContentProps, "inventory" | "connected">,
+): JSX.Element | null {
   if (props.inventory?.status !== "requires_connection" || props.connected) {
     return null;
   }
 
-  return <Alert variant="warning">Connect a Steam account to load inventory items and enable name-tag editing.</Alert>;
+  return (
+    <Alert variant="warning">
+      Connect a Steam account to load inventory items and enable name-tag
+      editing.
+    </Alert>
+  );
 }
 
-function ErrorAlert(props: Pick<InventoryViewContentProps, 'inventory' | 'inventoryDiagnostics' | 'inventoryError'>): JSX.Element | null {
+function ErrorAlert(
+  props: Pick<
+    InventoryViewContentProps,
+    "inventory" | "inventoryDiagnostics" | "inventoryError"
+  >,
+): JSX.Element | null {
   if (props.inventory?.status !== "error") {
     return null;
   }
@@ -92,7 +130,9 @@ function ErrorAlert(props: Pick<InventoryViewContentProps, 'inventory' | 'invent
             <summary class="cursor-pointer">Diagnostics</summary>
             <div class="mt-1 space-y-1 font-mono">
               <p>{props.inventoryError}</p>
-        {props.inventoryDiagnostics.map((line) => <p>{line}</p>)}
+              {props.inventoryDiagnostics.map((line) => (
+                <p>{line}</p>
+              ))}
             </div>
           </details>
         </Show>
@@ -101,8 +141,13 @@ function ErrorAlert(props: Pick<InventoryViewContentProps, 'inventory' | 'invent
   );
 }
 
-function MetadataAlert(props: Pick<InventoryViewContentProps, 'inventory' | 'inventoryDiagnostics'>): JSX.Element | null {
-  if (props.inventory?.status !== "ready" || props.inventoryDiagnostics.length === 0) {
+function MetadataAlert(
+  props: Pick<InventoryViewContentProps, "inventory" | "inventoryDiagnostics">,
+): JSX.Element | null {
+  if (
+    props.inventory?.status !== "ready" ||
+    props.inventoryDiagnostics.length === 0
+  ) {
     return null;
   }
 
@@ -111,14 +156,18 @@ function MetadataAlert(props: Pick<InventoryViewContentProps, 'inventory' | 'inv
       <details class="text-xs text-amber-100/80">
         <summary class="cursor-pointer">Inventory metadata diagnostics</summary>
         <div class="mt-1 space-y-1 font-mono">
-        {props.inventoryDiagnostics.map((line) => <p>{line}</p>)}
+          {props.inventoryDiagnostics.map((line) => (
+            <p>{line}</p>
+          ))}
         </div>
       </details>
     </Alert>
   );
 }
 
-function StatusAlert(props: Pick<InventoryViewContentProps, 'statusMessage'>): JSX.Element | null {
+function StatusAlert(
+  props: Pick<InventoryViewContentProps, "statusMessage">,
+): JSX.Element | null {
   if (!props.statusMessage) {
     return null;
   }
@@ -126,24 +175,53 @@ function StatusAlert(props: Pick<InventoryViewContentProps, 'statusMessage'>): J
   return <Alert>{props.statusMessage}</Alert>;
 }
 
-function InventoryAlerts(props: Pick<InventoryViewContentProps, 'inventory' | 'inventoryDiagnostics' | 'inventoryError' | 'statusMessage' | 'selectionMode' | 'selectedItemIds' | 'connected'>): JSX.Element {
+function InventoryAlerts(
+  props: Pick<
+    InventoryViewContentProps,
+    | "inventory"
+    | "inventoryDiagnostics"
+    | "inventoryError"
+    | "statusMessage"
+    | "selectionMode"
+    | "selectedItemIds"
+    | "connected"
+  >,
+): JSX.Element {
   return (
     <>
-      <SelectionAlert selectionMode={props.selectionMode} selectedItemIds={props.selectedItemIds} />
-      <ConnectionAlert inventory={props.inventory} connected={props.connected} />
-      <ErrorAlert inventory={props.inventory} inventoryDiagnostics={props.inventoryDiagnostics} inventoryError={props.inventoryError} />
-      <MetadataAlert inventory={props.inventory} inventoryDiagnostics={props.inventoryDiagnostics} />
+      <SelectionAlert
+        selectionMode={props.selectionMode}
+        selectedItemIds={props.selectedItemIds}
+      />
+      <ConnectionAlert
+        inventory={props.inventory}
+        connected={props.connected}
+      />
+      <ErrorAlert
+        inventory={props.inventory}
+        inventoryDiagnostics={props.inventoryDiagnostics}
+        inventoryError={props.inventoryError}
+      />
+      <MetadataAlert
+        inventory={props.inventory}
+        inventoryDiagnostics={props.inventoryDiagnostics}
+      />
       <StatusAlert statusMessage={props.statusMessage} />
     </>
   );
 }
 
 export function InventoryViewContent(props: InventoryViewContentProps) {
-  const inventoryDebugEnabled = () => props.settings?.featureFlags.enableInventoryDebug ?? false;
+  const inventoryDebugEnabled = () =>
+    props.settings?.featureFlags.enableInventoryDebug ?? false;
   const detailsPanel = (
     <InventoryDetailsPanel
       selectedItem={props.selectedItem}
-      steamId={props.connection?.state === "connected" ? props.connection.steamId : undefined}
+      steamId={
+        props.connection?.state === "connected"
+          ? props.connection.steamId
+          : undefined
+      }
       settings={props.settings}
       pending={props.pending}
       renameOpen={props.renameOpen}
@@ -175,8 +253,36 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
 
   return (
     <div class="flex h-full min-h-0 flex-col gap-4">
-      <InventoryAlerts inventory={props.inventory} inventoryDiagnostics={props.inventoryDiagnostics} inventoryError={props.inventoryError} selectionMode={props.selectionMode} selectedItemIds={props.selectedItemIds} statusMessage={props.statusMessage} connected={props.connected} />
-      <InventoryGrid inventory={props.inventory} inventoryLoading={props.inventoryLoading} filteredItems={props.filteredItems} selectionMode={props.selectionMode} selectedItem={props.selectedItem} selectedItemIds={props.selectedItemIds} compactMode={props.compactMode} marketPrices={props.marketPrices} onSelectItem={props.onSelectItem} onRefresh={props.onRefresh} detailsPanel={detailsPanel} browsingStorageUnit={props.browsingStorageUnit} removeFromStorageMode={props.removeFromStorageMode} storageSelectedItemIds={props.storageSelectedItemIds} storageRetrieval={props.storageRetrieval} onBackFromStorage={props.onBackFromStorage} onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode} onRetrieveFromStorage={props.onRetrieveFromStorage} onRetrieveAllFromStorage={props.onRetrieveAllFromStorage} />
+      <InventoryAlerts
+        inventory={props.inventory}
+        inventoryDiagnostics={props.inventoryDiagnostics}
+        inventoryError={props.inventoryError}
+        selectionMode={props.selectionMode}
+        selectedItemIds={props.selectedItemIds}
+        statusMessage={props.statusMessage}
+        connected={props.connected}
+      />
+      <InventoryGrid
+        inventory={props.inventory}
+        inventoryLoading={props.inventoryLoading}
+        filteredItems={props.filteredItems}
+        selectionMode={props.selectionMode}
+        selectedItem={props.selectedItem}
+        selectedItemIds={props.selectedItemIds}
+        compactMode={props.compactMode}
+        marketPrices={props.marketPrices}
+        onSelectItem={props.onSelectItem}
+        onRefresh={props.onRefresh}
+        detailsPanel={detailsPanel}
+        browsingStorageUnit={props.browsingStorageUnit}
+        removeFromStorageMode={props.removeFromStorageMode}
+        storageSelectedItemIds={props.storageSelectedItemIds}
+        storageRetrieval={props.storageRetrieval}
+        onBackFromStorage={props.onBackFromStorage}
+        onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode}
+        onRetrieveFromStorage={props.onRetrieveFromStorage}
+        onRetrieveAllFromStorage={props.onRetrieveAllFromStorage}
+      />
     </div>
   );
 }

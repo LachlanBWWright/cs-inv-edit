@@ -18,7 +18,11 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/health", healthTestSchema);
+    const result = await requestJsonResult(
+      "https://example.test",
+      "/health",
+      healthTestSchema,
+    );
 
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
@@ -37,7 +41,11 @@ describe("requestJsonResult", () => {
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/health", healthTestSchema);
+    const result = await requestJsonResult(
+      "https://example.test",
+      "/health",
+      healthTestSchema,
+    );
 
     expect(result.isOk()).toBe(false);
     if (result.isErr()) {
@@ -53,11 +61,17 @@ describe("requestJsonResult", () => {
         ok: false,
         status: 400,
         statusText: "Bad Request",
-        text: vi.fn().mockResolvedValue(JSON.stringify({ error: "Steam Guard failed" })),
+        text: vi
+          .fn()
+          .mockResolvedValue(JSON.stringify({ error: "Steam Guard failed" })),
       }),
     );
 
-    const result = await requestJsonResult("https://example.test", "/steam/guard", healthTestSchema);
+    const result = await requestJsonResult(
+      "https://example.test",
+      "/steam/guard",
+      healthTestSchema,
+    );
 
     expect(result.isOk()).toBe(false);
     if (result.isErr()) {
@@ -66,9 +80,23 @@ describe("requestJsonResult", () => {
   });
 
   it("returns an error when successful JSON fails runtime validation", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ status: null }) }));
-    const result = await requestJsonResult("https://example.test", "/health", healthTestSchema);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ status: null }),
+        }),
+    );
+    const result = await requestJsonResult(
+      "https://example.test",
+      "/health",
+      healthTestSchema,
+    );
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.message).toContain("Invalid response payload");
+    if (result.isErr())
+      expect(result.error.message).toContain("Invalid response payload");
   });
 });

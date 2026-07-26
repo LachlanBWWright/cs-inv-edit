@@ -20,10 +20,11 @@ func TestNameTagPurchasePayloadMatchesGameTrackingWireLayout(t *testing.T) {
 		t.Fatalf("marshal purchase: %v", err)
 	}
 	// base_gcmessages.proto:
-	// country=1, language=2, currency=3, line_items=4; within the line item:
+	// country=1 and language=2 are absent at their client-default values;
+	// currency=3, line_items=4; within the line item:
 	// item_def_id=1, quantity=2, cost_in_local_currency=3,
 	// purchase_type=4 (absent), supplemental_data=5 (present with zero).
-	want, _ := hex.DecodeString("0a0010001802220a08b009100118af012800")
+	want, _ := hex.DecodeString("1802220a08b009100118af012800")
 	if !bytes.Equal(body, want) {
 		t.Fatalf("Name Tag purchase wire bytes = %x, want %x", body, want)
 	}
@@ -45,6 +46,7 @@ func TestStorePurchaseResultUsesCS2PurchaseEnum(t *testing.T) {
 		8:   "WrongCurrency",
 		10:  "InvalidItem",
 		150: "OldPriceSheet",
+		200: "PurchaseExpiredItemsUnavailable",
 	}
 	for result, expected := range tests {
 		rejected := StorePurchaseRejectedError{Result: result}
@@ -79,6 +81,15 @@ func TestValidateSteamCheckoutURL(t *testing.T) {
 		if err := ValidateSteamCheckoutURL(candidate); err == nil {
 			t.Errorf("expected %q invalid", candidate)
 		}
+	}
+}
+
+func TestConventionalCS2StoreCheckoutRejectsBuyItemFallback(t *testing.T) {
+	// Keys and other native CS2 price-sheet offers must remain on the
+	// GC-order -> ClientMicroTxnAuthRequest -> approvetxn path.
+	buyItem := "https://store.steampowered.com/buyitem/730/1203/1"
+	if err := ValidateSteamCheckoutURL(buyItem); err == nil {
+		t.Fatalf("native CS2 checkout accepted forbidden BuyItem fallback %q", buyItem)
 	}
 }
 

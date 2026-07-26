@@ -72,41 +72,94 @@ func (s *Service) ConnectSteam(input map[string]any) domain.ConnectionStatus {
 
 func (s *Service) StartSteamQR() domain.ConnectionStatus {
 	s.prepareAdditionalSteamSession()
-	if err := s.gcClient.Connect(context.Background()); err != nil {
-		return domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam CM connect", err), Diagnostics: transport.DiagnosticsFromError(err)}
-	}
-	session, err := s.gcClient.BeginQRAuth(context.Background())
-	if err != nil {
-		return domain.ConnectionStatus{State: "error", Detail: steamErrorDetail("Steam QR login", err), Diagnostics: transport.DiagnosticsFromError(err)}
-	}
-	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	if s.authCancel != nil {
 		s.authCancel()
 	}
+	s.authEpoch++
+	epoch := s.authEpoch
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	s.authCancel = cancel
+	s.connection = domain.ConnectionStatus{State: "connecting", Detail: "Connecting to Steam and creating a QR sign-in session"}
+	s.mu.Unlock()
+
+	if err := s.gcClient.Connect(ctx); err != nil {
+		cancel()
+		return s.setQRAuthError(epoch, "Steam CM connect", err)
+	}
+	session, err := s.gcClient.BeginQRAuth(ctx)
+	if err != nil {
+		cancel()
+		return s.setQRAuthError(epoch, "Steam QR login", err)
+	}
+	s.mu.Lock()
+	if s.authEpoch != epoch {
+		s.mu.Unlock()
+		cancel()
+		return s.ConnectionStatus()
+	}
 	s.connection = domain.ConnectionStatus{State: "awaiting_qr", Detail: "Scan this QR code with the Steam mobile app", QRChallengeURL: session.ChallengeURL}
 	status := s.connection
 	s.mu.Unlock()
-	go s.completeQRLogin(ctx, session)
+	go s.completeQRLogin(ctx, session, epoch)
 	return status
 }
 
-func (s *Service) completeQRLogin(ctx context.Context, session transport.QRAuthSession) {
+func (s *Service) completeQRLogin(ctx context.Context, session transport.QRAuthSession, epoch uint64) {
 	auth, err := s.gcClient.CompleteQRAuth(ctx, session)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return
 		}
-		s.setAuthError("Steam QR login", err)
+		s.setQRAuthError(epoch, "Steam QR login", err)
 		return
 	}
+	s.mu.Lock()
+	if s.authEpoch != epoch {
+		s.mu.Unlock()
+		return
+	}
+	s.connection = domain.ConnectionStatus{State: "connecting", Detail: "Sign-in approved. Finishing your Steam session…", AccountName: auth.AccountName}
+	s.mu.Unlock()
 	result, err := s.gcClient.LogOn(ctx, transport.LogonCredentials{Username: auth.AccountName, AccessToken: auth.RefreshToken, WebAccessToken: auth.AccessToken})
 	if err != nil {
-		s.setAuthError("Steam QR CM logon", err)
+		s.setQRAuthError(epoch, "Steam QR CM logon", err)
 		return
 	}
-	s.finishSteamLogin(auth.AccountName, result)
+	s.finishQRSteamLogin(epoch, auth.AccountName, result)
+}
+
+func (s *Service) setQRAuthError(epoch uint64, stage string, err error) domain.ConnectionStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.authEpoch != epoch {
+		return s.connection
+	}
+	s.connection = domain.ConnectionStatus{State: "error", Detail: steamErrorDetail(stage, err), Diagnostics: transport.DiagnosticsFromError(err)}
+	s.authCancel = nil
+	return s.connection
+}
+
+func (s *Service) finishQRSteamLogin(epoch uint64, username string, result transport.LogonResult) {
+	s.mu.Lock()
+	presenceApps := enabledPresenceApps(s.settings.FeatureFlags)
+	s.mu.Unlock()
+	if err := s.gcClient.SetGamesPlayed(context.Background(), presenceApps); err != nil {
+		s.setQRAuthError(epoch, "Steam game coordinator presence", err)
+		return
+	}
+	s.mu.Lock()
+	if s.authEpoch != epoch {
+		s.mu.Unlock()
+		return
+	}
+	steamID := fmt.Sprintf("%d", result.SteamID)
+	s.activateAccountSessionLocked(steamID)
+	s.pendingUsername, s.pendingPassword = "", ""
+	s.authCancel = nil
+	s.registerSteamSessionLocked(domain.ConnectionStatus{State: "connected", Detail: "authenticated Steam CM logon ready for CS2 GC", SteamID: steamID, AccountName: username}, result.WebAccessToken)
+	s.mu.Unlock()
+	s.resolveSteamAvatar(steamID)
 }
 
 func (s *Service) completeCredentialMobileApproval(ctx context.Context, username, password string) {

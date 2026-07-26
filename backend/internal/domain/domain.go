@@ -1,5 +1,21 @@
 package domain
 
+type SteamInventoryServiceGame struct {
+	AppID           uint32 `json:"appId"`
+	Name            string `json:"name"`
+	PlaytimeMinutes uint32 `json:"playtimeMinutes"`
+	LastPlayed      uint32 `json:"lastPlayed"`
+	HasMarket       bool   `json:"hasMarket"`
+}
+
+type SteamInventoryServiceGames struct {
+	Games       []SteamInventoryServiceGame `json:"games"`
+	RefreshedAt string                      `json:"refreshedAt"`
+	Status      string                      `json:"status"`
+	Message     string                      `json:"message,omitempty"`
+	Diagnostics []string                    `json:"diagnostics"`
+}
+
 type ConnectionStatus struct {
 	State          string   `json:"state"`
 	Detail         string   `json:"detail,omitempty"`
@@ -219,46 +235,53 @@ type EconomyTag struct {
 }
 
 type EconomyItemDetails struct {
-	Game              string            `json:"game"`
-	Level             uint32            `json:"level"`
-	QualityID         uint32            `json:"qualityId"`
-	InventoryPosition uint32            `json:"inventoryPosition"`
-	OriginID          uint32            `json:"originId"`
-	Style             uint32            `json:"style"`
-	Flags             uint32            `json:"flags"`
-	CustomName        string            `json:"customName,omitempty"`
-	CustomDescription string            `json:"customDescription,omitempty"`
-	Attributes        map[string]uint32 `json:"attributes"`
-	AttributeBytes    map[string]string `json:"attributeBytes,omitempty"`
-	EquippedStates    []EquippedState   `json:"equippedStates,omitempty"`
-	InteriorItemID    string            `json:"interiorItemId,omitempty"`
-	SchemaQuality     string            `json:"schemaQuality,omitempty"`
-	EquipSlot         string            `json:"equipSlot,omitempty"`
-	UsableClasses     []string          `json:"usableClasses,omitempty"`
-	Capabilities      map[string]string `json:"capabilities,omitempty"`
-	ItemKind          string            `json:"itemKind,omitempty"`
-	ItemClass         string            `json:"itemClass,omitempty"`
-	CraftClass        string            `json:"craftClass,omitempty"`
-	CraftMaterialType string            `json:"craftMaterialType,omitempty"`
-	ToolType          string            `json:"toolType,omitempty"`
-	Description       string            `json:"description,omitempty"`
-	Collection        string            `json:"collection,omitempty"`
-	EquipRegions      []string          `json:"equipRegions,omitempty"`
-	SchemaTags        []string          `json:"schemaTags,omitempty"`
-	MinLevel          uint32            `json:"minLevel,omitempty"`
-	MaxLevel          uint32            `json:"maxLevel,omitempty"`
-	ProperName        bool              `json:"properName,omitempty"`
-	BaseItem          bool              `json:"baseItem,omitempty"`
-	Hidden            bool              `json:"hidden,omitempty"`
-	StaticAttributes  map[string]string `json:"staticAttributes,omitempty"`
-	Rarity            string            `json:"rarity,omitempty"`
-	EquipConflicts    []string          `json:"equipConflicts,omitempty"`
-	LoadoutSlots      map[string]string `json:"loadoutSlots,omitempty"`
-	PrefabChain       []string          `json:"prefabChain,omitempty"`
-	ContainerItems    []TF2RelatedItem  `json:"containerItems,omitempty"`
-	DecodedAttributes []TF2Attribute    `json:"decodedAttributes,omitempty"`
-	Hero              string            `json:"hero,omitempty"`
-	Slot              string            `json:"slot,omitempty"`
+	Game                string            `json:"game"`
+	Level               uint32            `json:"level"`
+	QualityID           uint32            `json:"qualityId"`
+	InventoryPosition   uint32            `json:"inventoryPosition"`
+	OriginID            uint32            `json:"originId"`
+	Style               uint32            `json:"style"`
+	Flags               uint32            `json:"flags"`
+	CustomName          string            `json:"customName,omitempty"`
+	CustomDescription   string            `json:"customDescription,omitempty"`
+	Attributes          map[string]uint32 `json:"attributes"`
+	AttributeBytes      map[string]string `json:"attributeBytes,omitempty"`
+	EquippedStates      []EquippedState   `json:"equippedStates,omitempty"`
+	InteriorItemID      string            `json:"interiorItemId,omitempty"`
+	SchemaQuality       string            `json:"schemaQuality,omitempty"`
+	EquipSlot           string            `json:"equipSlot,omitempty"`
+	UsableClasses       []string          `json:"usableClasses,omitempty"`
+	Capabilities        map[string]string `json:"capabilities,omitempty"`
+	ItemKind            string            `json:"itemKind,omitempty"`
+	ItemClass           string            `json:"itemClass,omitempty"`
+	CraftClass          string            `json:"craftClass,omitempty"`
+	CraftMaterialType   string            `json:"craftMaterialType,omitempty"`
+	ToolType            string            `json:"toolType,omitempty"`
+	Description         string            `json:"description,omitempty"`
+	Collection          string            `json:"collection,omitempty"`
+	EquipRegions        []string          `json:"equipRegions,omitempty"`
+	SchemaTags          []string          `json:"schemaTags,omitempty"`
+	MinLevel            uint32            `json:"minLevel,omitempty"`
+	MaxLevel            uint32            `json:"maxLevel,omitempty"`
+	ProperName          bool              `json:"properName,omitempty"`
+	BaseItem            bool              `json:"baseItem,omitempty"`
+	Hidden              bool              `json:"hidden,omitempty"`
+	StaticAttributes    map[string]string `json:"staticAttributes,omitempty"`
+	Rarity              string            `json:"rarity,omitempty"`
+	EquipConflicts      []string          `json:"equipConflicts,omitempty"`
+	LoadoutSlots        map[string]string `json:"loadoutSlots,omitempty"`
+	PrefabChain         []string          `json:"prefabChain,omitempty"`
+	ContainerItems      []TF2RelatedItem  `json:"containerItems,omitempty"`
+	DecodedAttributes   []TF2Attribute    `json:"decodedAttributes,omitempty"`
+	Hero                string            `json:"hero,omitempty"`
+	Slot                string            `json:"slot,omitempty"`
+	ServiceItemID       string            `json:"serviceItemId,omitempty"`
+	ServiceDefinitionID string            `json:"serviceDefinitionId,omitempty"`
+	AcquiredAt          string            `json:"acquiredAt,omitempty"`
+	StateChangedAt      string            `json:"stateChangedAt,omitempty"`
+	ServiceState        string            `json:"serviceState,omitempty"`
+	ServiceOrigin       string            `json:"serviceOrigin,omitempty"`
+	DynamicProperties   map[string]string `json:"dynamicProperties,omitempty"`
 }
 
 type TF2RelatedItem struct {
@@ -294,6 +317,7 @@ type EconomyInventoryItem struct {
 	Name          string             `json:"name"`
 	MarketName    string             `json:"marketName,omitempty"`
 	ImageURL      string             `json:"imageUrl,omitempty"`
+	InspectURL    string             `json:"inspectUrl,omitempty"`
 	Quantity      uint64             `json:"quantity"`
 	Type          string             `json:"type,omitempty"`
 	Rarity        string             `json:"rarity,omitempty"`

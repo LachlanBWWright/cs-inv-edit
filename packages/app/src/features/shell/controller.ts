@@ -1,6 +1,9 @@
 import { createSignal } from "solid-js";
 import type { Accessor, Setter } from "solid-js";
-import type { InventoryItemDto, SteamAccountProfile } from "@cs-inv-edit/contracts";
+import type {
+  InventoryItemDto,
+  SteamAccountProfile,
+} from "@cs-inv-edit/contracts";
 import type { AppScreen } from "../../view.js";
 
 export type ShellKindFilter = "all" | InventoryItemDto["kind"];
@@ -22,12 +25,18 @@ export interface ShellController {
   setAccountUsername: Setter<string>;
 }
 
-export function createShellController(initialView: AppScreen = "inventory"): ShellController {
+export function createShellController(
+  initialView: AppScreen = "inventory",
+): ShellController {
   const [view, setView] = createSignal<AppScreen>(initialView);
-  const [selectedItemId, setSelectedItemId] = createSignal<string | undefined>();
+  const [selectedItemId, setSelectedItemId] = createSignal<
+    string | undefined
+  >();
   const [query, setQuery] = createSignal("");
   const [kindFilter, setKindFilter] = createSignal<ShellKindFilter>("all");
-  const [compactMode, setCompactMode] = createSignal<"icons" | "concise" | "detailed">("concise");
+  const [compactMode, setCompactMode] = createSignal<
+    "icons" | "concise" | "detailed"
+  >("concise");
   const [accounts, setAccounts] = createSignal<SteamAccountProfile[]>([]);
   const [accountUsername, setAccountUsername] = createSignal("");
 

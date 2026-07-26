@@ -191,6 +191,7 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			InspectURL:            pending.inspectURL,
 			Kind:                  itemMetadata.Kind,
 			Defindex:              &defIndex,
+			PaintWear:             item.PaintWear,
 			PaintWearMin:          itemMetadata.PaintWearMin,
 			PaintWearMax:          itemMetadata.PaintWearMax,
 			Rarity:                itemMetadata.Rarity,
@@ -217,12 +218,14 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 				FauxItemID:    strconv.FormatUint(item.ID, 10),
 				PurchasePrice: item.Attributes[316],
 				Item: domain.RelatedItem{
+					Defindex:   item.DefIndex,
+					PaintKit:   item.PaintKit,
 					Name:       inventoryItem.Name,
 					MarketName: inventoryItem.MarketName,
 					Kind:       inventoryItem.Kind,
 					Rarity:     inventoryItem.Rarity,
 					ImageURL:   inventoryItem.ImageURL,
-					PaintWear:  inventoryItem.PaintWear,
+					PaintWear:  item.PaintWear,
 					WearMin:    inventoryItem.PaintWearMin,
 					WearMax:    inventoryItem.PaintWearMax,
 				},
@@ -237,14 +240,6 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			inventoryItem.Tradable = boolPointer(false)
 			if pointsRemaining, present := item.Attributes[169]; present {
 				inventoryItem.TerminalPointsRemaining = &pointsRemaining
-			}
-			for _, offer := range item.VolatileOffers {
-				related, _ := relatedItemForFauxID(offer.FauxItemID, inventoryItem.ContainerItems)
-				inventoryItem.TerminalOffers = append(inventoryItem.TerminalOffers, domain.TerminalOffer{
-					FauxItemID:     strconv.FormatUint(offer.FauxItemID, 10),
-					GenerationTime: offer.GenerationTime,
-					Item:           related,
-				})
 			}
 		}
 		if count := item.Attributes[270]; count > 0 {
@@ -282,19 +277,30 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 		}
 		items = append(items, inventoryItem)
 	}
+	s.mu.Lock()
+	existingOffers := make(map[string][]domain.TerminalOffer)
+	for _, item := range s.inventory.Items {
+		if len(item.TerminalOffers) > 0 {
+			existingOffers[item.ID] = item.TerminalOffers
+		}
+	}
+	s.mu.Unlock()
+
 	for index := range items {
 		if terminalID, parseErr := strconv.ParseUint(items[index].ID, 10, 64); parseErr == nil {
 			if len(terminalOffers[terminalID]) > 0 {
 				items[index].TerminalOffers = append([]domain.TerminalOffer(nil), terminalOffers[terminalID]...)
+			} else if saved, ok := existingOffers[items[index].ID]; ok && len(saved) > 0 {
+				items[index].TerminalOffers = append([]domain.TerminalOffer(nil), saved...)
 			}
-			if isTerminalInventoryItem(items[index]) && strings.HasPrefix(strings.ToLower(items[index].Name), "active ") {
+			if isTerminalInventoryItem(items[index]) {
 				items[index].Diagnostics = append(items[index].Diagnostics,
 					fmt.Sprintf("Terminal offer recovery: on-demand selection sends EMsg %d (CMsgCasketItem) with casket_item_id=%d and item_item_id=%d; this matches InventoryAPI.PerformItemCasketTransaction(0, terminal_id, terminal_id) on the CS2-current k_EMsgGCVolatileItemLoadContents route; the GC receiver remains active for CS2's five-second terminal-offer wait window", protocol.EMsgVolatileItemLoadContents, terminalID, terminalID),
 					fmt.Sprintf("Terminal offer recovery result: decoded_current_offers=%d, terminal_points_remaining=%s", len(items[index].TerminalOffers), optionalUint32String(items[index].TerminalPointsRemaining)),
 				)
 				if offerDiagnostics := terminalOfferDiagnostics[terminalID]; len(offerDiagnostics) > 0 {
 					items[index].Diagnostics = append(items[index].Diagnostics, offerDiagnostics...)
-				} else {
+				} else if len(items[index].TerminalOffers) == 0 {
 					items[index].Diagnostics = append(items[index].Diagnostics, "Terminal current offer: neither a CSOVolatileItemOffer shared object (SO type 20) nor a GC economy-item fallback with casket attributes #272/#273 was decoded after EMsg 2536")
 				}
 			}
@@ -340,7 +346,7 @@ func activeTerminalStateDiagnostics(item transport.GCInventoryItem) []string {
 	}
 	return []string{
 		fmt.Sprintf(
-			"Terminal classification: active=true because schema identity contains terminal, inventory=%d (0x%08x; active-terminal/X-Ray special position=%d), quantity=%d, quality=%d; schema display name is intentionally overridden from sealed to active",
+			"Terminal classification: active=true because schema identity contains terminal and the GC instance is in the active-terminal slot, inventory=%d (0x%08x; active-terminal position=%d), quantity=%d, quality=%d; schema display name is intentionally overridden from sealed to active",
 			item.Inventory, item.Inventory, xRayScannerLoadedCaseInventoryPosition, item.Quantity, item.Quality,
 		),
 		fmt.Sprintf(
@@ -438,7 +444,9 @@ func isTerminalMetadata(metadata econ.Metadata) bool {
 }
 
 func isActiveTerminalGCItem(item transport.GCInventoryItem, metadata econ.Metadata) bool {
-	return isTerminalMetadata(metadata) && item.Quantity == 0 && item.Inventory == xRayScannerLoadedCaseInventoryPosition
+	return isTerminalMetadata(metadata) &&
+		item.Quantity == 0 &&
+		item.Inventory == xRayScannerLoadedCaseInventoryPosition
 }
 
 func activeTerminalName(name string) string {

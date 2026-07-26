@@ -12,11 +12,15 @@ const patchedNeverthrowRule = {
   create(context) {
     const parserServices = context.sourceCode.parserServices;
     if (!parserServices) {
-      throw new Error("types not available, maybe you need set the parser to @typescript-eslint/parser");
+      throw new Error(
+        "types not available, maybe you need set the parser to @typescript-eslint/parser",
+      );
     }
     const legacyContext = new Proxy(context, {
       get(target, property, receiver) {
-        return property === "parserServices" ? parserServices : Reflect.get(target, property, receiver);
+        return property === "parserServices"
+          ? parserServices
+          : Reflect.get(target, property, receiver);
       },
     });
     return neverthrowRule.create(legacyContext);
@@ -32,7 +36,16 @@ const patchedNeverthrow = fixupPluginRules({
 
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "backend/**", "**/*.d.ts", "**/coverage/**", "**/*.config.{ts,js,mjs,cjs}", "**/vite.config.ts", "**/vitest.config.ts"],
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "backend/**",
+      "**/*.d.ts",
+      "**/coverage/**",
+      "**/*.config.{ts,js,mjs,cjs}",
+      "**/vite.config.ts",
+      "**/vitest.config.ts",
+    ],
   },
   {
     files: ["packages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}"],
@@ -71,9 +84,15 @@ export default [
       ...js.configs.recommended.rules,
       ...tsPlugin.configs.recommended.rules,
       "max-depth": ["error", 3],
-      "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
+      "max-lines": [
+        "error",
+        { max: 400, skipBlankLines: true, skipComments: true },
+      ],
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "neverthrow/must-use-result": "error",
       "no-restricted-syntax": [
         "error",
@@ -85,7 +104,11 @@ export default [
     },
   },
   {
-    files: ["packages/**/*.{test,spec}.{ts,tsx}", "apps/**/*.{test,spec}.{ts,tsx}", "**/*.config.{ts,js,mjs,cjs}"],
+    files: [
+      "packages/**/*.{test,spec}.{ts,tsx}",
+      "apps/**/*.{test,spec}.{ts,tsx}",
+      "**/*.config.{ts,js,mjs,cjs}",
+    ],
     rules: {
       "neverthrow/must-use-result": "off",
     },

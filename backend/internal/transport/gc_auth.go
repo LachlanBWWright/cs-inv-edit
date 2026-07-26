@@ -160,8 +160,9 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 	if interval <= 0 {
 		interval = time.Second
 	}
-	ticker := time.NewTimer(interval)
+	ticker := time.NewTimer(0)
 	defer ticker.Stop()
+	consecutiveFailures := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -169,8 +170,19 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 		case <-ticker.C:
 			response, err := pollSteamQRViaWebAPI(ctx, session)
 			if err != nil {
-				return QRAuthResult{}, trace.Error(err)
+				consecutiveFailures++
+				trace.Add(fmt.Sprintf("steam qr auth poll transient failure=%d/5 error=%v", consecutiveFailures, err))
+				if consecutiveFailures >= 5 {
+					return QRAuthResult{}, trace.Error(fmt.Errorf("steam qr auth polling failed after %d consecutive attempts: %w", consecutiveFailures, err))
+				}
+				retryDelay := time.Duration(consecutiveFailures) * interval
+				if retryDelay > 5*time.Second {
+					retryDelay = 5 * time.Second
+				}
+				ticker.Reset(retryDelay)
+				continue
 			}
+			consecutiveFailures = 0
 			token := response.RefreshToken
 			if token == "" {
 				token = response.AccessToken

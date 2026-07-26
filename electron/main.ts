@@ -1,5 +1,5 @@
-import { app, BrowserWindow, shell } from 'electron'
-import { join } from 'node:path'
+import { app, BrowserWindow, shell } from "electron";
+import { join } from "node:path";
 
 const createWindow = async (): Promise<void> => {
   const mainWindow = new BrowserWindow({
@@ -7,45 +7,45 @@ const createWindow = async (): Promise<void> => {
     height: 1024,
     minWidth: 1180,
     minHeight: 840,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#020617',
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#020617",
     webPreferences: {
-      preload: join(__dirname, 'preload.cjs'),
+      preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
-  })
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    void shell.openExternal(url);
 
-    return { action: 'deny' }
-  })
+    return { action: "deny" };
+  });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
   if (devServerUrl !== undefined) {
-    await mainWindow.loadURL(devServerUrl)
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
-    return
+    await mainWindow.loadURL(devServerUrl);
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+    return;
   }
 
-  await mainWindow.loadFile(join(__dirname, '../dist/index.html'))
-}
+  await mainWindow.loadFile(join(__dirname, "../dist/index.html"));
+};
 
 void app.whenReady().then(async () => {
-  await createWindow()
+  await createWindow();
 
-  app.on('activate', () => {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void createWindow()
+      void createWindow();
     }
-  })
-})
+  });
+});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
   }
-})
+});

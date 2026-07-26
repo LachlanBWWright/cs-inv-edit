@@ -1,13 +1,39 @@
 import { createEffect, createMemo, createSignal, on } from "solid-js";
-import type { ConnectionStatus, InitializeStorePurchaseRequest, InventoryItemDto, InventorySnapshot, OpenContainerRequest, OperationReceipt, PriceScanResult, PurchaseSession, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
+import type {
+  ConnectionStatus,
+  InitializeStorePurchaseRequest,
+  InventoryItemDto,
+  InventorySnapshot,
+  OpenContainerRequest,
+  OperationReceipt,
+  PriceScanResult,
+  PurchaseSession,
+  RelatedItemDto,
+  SettingsData,
+} from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
 import { RevealAnimation, type RevealItem } from "./ui/RevealAnimation.js";
-import { isActiveTerminal, isOpenableContainer, isTerminal, itemDisplayName, itemKey, itemKindLabel, itemWeaponName, resolveSelectedInventoryItem, sortInventoryItems, type InventorySort } from "./inventory-view-utils.js";
+import {
+  isActiveTerminal,
+  isOpenableContainer,
+  isTerminal,
+  itemDisplayName,
+  itemKey,
+  itemKindLabel,
+  itemWeaponName,
+  resolveSelectedInventoryItem,
+  sortInventoryItems,
+  type InventorySort,
+} from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 import type { InventoryMode } from "../view.js";
 import { formatUSDMinor } from "./ItemMarketBadges.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
-import { expectedReturn, scanPriceMap, type ReturnEstimate } from "./roi-utils.js";
+import {
+  expectedReturn,
+  scanPriceMap,
+  type ReturnEstimate,
+} from "./roi-utils.js";
 
 export interface InventoryViewProps {
   mode: InventoryMode;
@@ -26,16 +52,35 @@ export interface InventoryViewProps {
   marketPrices: ReadonlyMap<string, number>;
   compactMode: "icons" | "concise" | "detailed";
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
-  onScanPrices: (marketNames: string[], appId?: number) => Promise<PriceScanResult | undefined>;
-  onRename: (input: { subjectItemId: string; toolItemId: string; name: string }) => Promise<unknown>;
+  onScanPrices: (
+    marketNames: string[],
+    appId?: number,
+  ) => Promise<PriceScanResult | undefined>;
+  onRename: (input: {
+    subjectItemId: string;
+    toolItemId: string;
+    name: string;
+  }) => Promise<unknown>;
   onRemoveName: (input: { itemId: string }) => Promise<unknown>;
-  onOpenContainer: (input: OpenContainerRequest, suppressToast?: boolean) => Promise<unknown>;
-  onTerminalPurchase: (input: InitializeStorePurchaseRequest) => Promise<PurchaseSession>;
+  onOpenContainer: (
+    input: OpenContainerRequest,
+    suppressToast?: boolean,
+  ) => Promise<unknown>;
+  onTerminalPurchase: (
+    input: InitializeStorePurchaseRequest,
+  ) => Promise<PurchaseSession>;
   onLoadTerminalOffer: (terminalId: string) => Promise<OperationReceipt>;
   onLoadStorageContents: (casketId: string) => Promise<OperationReceipt>;
-  onMoveFromStorage: (input: { casketId: string; itemId: string }) => Promise<OperationReceipt>;
+  onMoveFromStorage: (input: {
+    casketId: string;
+    itemId: string;
+  }) => Promise<OperationReceipt>;
   onRefresh: () => void;
-  onToast?: (toast: { title: string; description?: string; variant?: "default" | "success" | "warning" | "danger" }) => void;
+  onToast?: (toast: {
+    title: string;
+    description?: string;
+    variant?: "default" | "success" | "warning" | "danger";
+  }) => void;
 }
 
 export function InventoryView(props: InventoryViewProps) {
@@ -47,17 +92,35 @@ export function InventoryView(props: InventoryViewProps) {
   const [statusMessage, setStatusMessage] = createSignal("");
   const [containerStatusMessage, setContainerStatusMessage] = createSignal("");
   const [pending, setPending] = createSignal(false);
-  const [reveal, setReveal] = createSignal<{ result: RevealItem; ready: boolean; candidates: RevealItem[]; complete: () => void }>();
+  const [reveal, setReveal] = createSignal<{
+    result: RevealItem;
+    ready: boolean;
+    candidates: RevealItem[];
+    complete: () => void;
+  }>();
   const [containerReturn, setContainerReturn] = createSignal<ReturnEstimate>();
-  const [containerReturnLoading, setContainerReturnLoading] = createSignal(false);
+  const [containerReturnLoading, setContainerReturnLoading] =
+    createSignal(false);
   const [selectedItemIds, setSelectedItemIds] = createSignal<string[]>([]);
-  const [browsingStorageUnit, setBrowsingStorageUnit] = createSignal<InventoryItemDto>();
+  const [browsingStorageUnit, setBrowsingStorageUnit] =
+    createSignal<InventoryItemDto>();
   const [removeFromStorageMode, setRemoveFromStorageMode] = createSignal(false);
-  const [storageSelectedItemIds, setStorageSelectedItemIds] = createSignal<string[]>([]);
-  const [storageSelectionAnchorId, setStorageSelectionAnchorId] = createSignal<string>();
-  const [storageRetrieval, setStorageRetrieval] = createSignal<{ completed: number; total: number }>();
-  const [terminalOfferRequestId, setTerminalOfferRequestId] = createSignal<string>();
-  const [terminalOfferState, setTerminalOfferState] = createSignal<{ terminalId: string; state: "loading" | "error"; message: string }>();
+  const [storageSelectedItemIds, setStorageSelectedItemIds] = createSignal<
+    string[]
+  >([]);
+  const [storageSelectionAnchorId, setStorageSelectionAnchorId] =
+    createSignal<string>();
+  const [storageRetrieval, setStorageRetrieval] = createSignal<{
+    completed: number;
+    total: number;
+  }>();
+  const [terminalOfferRequestId, setTerminalOfferRequestId] =
+    createSignal<string>();
+  const [terminalOfferState, setTerminalOfferState] = createSignal<{
+    terminalId: string;
+    state: "loading" | "error";
+    message: string;
+  }>();
   const filteredItems = () => {
     const q = props.query.toLowerCase();
     const matches = (props.inventory?.items ?? []).filter((item) => {
@@ -79,49 +142,91 @@ export function InventoryView(props: InventoryViewProps) {
         .join(" ")
         .toLowerCase();
       const matchesQuery = !q || searchable.includes(q);
-      const matchesKind = props.kindFilter === "all" || item.kind === props.kindFilter;
-      const matchesRarity = props.rarityFilter === "all" || item.rarity === props.rarityFilter;
-      const matchesWeapon = props.weaponFilter === "all" || itemWeaponName(item) === props.weaponFilter;
-      const matchesCollection = props.collectionFilter === "all" || item.collection === props.collectionFilter;
-      return matchesQuery && matchesKind && matchesRarity && matchesWeapon && matchesCollection;
+      const matchesKind =
+        props.kindFilter === "all" || item.kind === props.kindFilter;
+      const matchesRarity =
+        props.rarityFilter === "all" || item.rarity === props.rarityFilter;
+      const matchesWeapon =
+        props.weaponFilter === "all" ||
+        itemWeaponName(item) === props.weaponFilter;
+      const matchesCollection =
+        props.collectionFilter === "all" ||
+        item.collection === props.collectionFilter;
+      return (
+        matchesQuery &&
+        matchesKind &&
+        matchesRarity &&
+        matchesWeapon &&
+        matchesCollection
+      );
     });
     return sortInventoryItems(matches, props.sort, props.marketPrices);
   };
 
-  const visibleItems = () => browsingStorageUnit()
-    ? (props.inventory?.items ?? []).filter((item) => item.casketId === browsingStorageUnit()!.id)
-    : filteredItems();
-  const selectedItem = () => resolveSelectedInventoryItem(visibleItems(), props.selectedItemId);
+  const visibleItems = () =>
+    browsingStorageUnit()
+      ? (props.inventory?.items ?? []).filter(
+          (item) => item.casketId === browsingStorageUnit()!.id,
+        )
+      : filteredItems();
+  const selectedItem = () =>
+    resolveSelectedInventoryItem(visibleItems(), props.selectedItemId);
   createEffect(() => {
     const selected = selectedItem();
-    if (!selected || !isActiveTerminal(selected) || (selected.terminalOffers?.length ?? 0) > 0) {
-      if (!selected || !isActiveTerminal(selected)) {
-        setTerminalOfferRequestId(undefined);
-        setTerminalOfferState(undefined);
-      } else {
-        setTerminalOfferState(undefined);
-      }
+    if (!selected || !isActiveTerminal(selected)) {
+      setTerminalOfferRequestId(undefined);
+      setTerminalOfferState(undefined);
       return;
     }
     if (terminalOfferRequestId() === selected.id) return;
     setTerminalOfferRequestId(selected.id);
-    setTerminalOfferState({ terminalId: selected.id, state: "loading", message: "Loading the current offer from CS2…" });
-    void fromAppPromise(props.onLoadTerminalOffer(selected.id), "Failed to load terminal offer").match((receipt) => {
-      if (receipt.state === "failed") {
-        setTerminalOfferState({ terminalId: selected.id, state: "error", message: receipt.message ?? "CS2 did not load the terminal offer." });
-      } else {
-        setTerminalOfferState(undefined);
-      }
-    }, (error) => {
-      const message = appErrorMessage(error, "Failed to load terminal offer.");
-      setTerminalOfferState({ terminalId: selected.id, state: "error", message });
+    setTerminalOfferState({
+      terminalId: selected.id,
+      state: "loading",
+      message: "Loading the current offer from CS2…",
     });
+    void fromAppPromise(
+      props.onLoadTerminalOffer(selected.id),
+      "Failed to load terminal offer",
+    ).match(
+      (receipt) => {
+        if (receipt.state === "completed") {
+          setTerminalOfferState(undefined);
+        } else {
+          setTerminalOfferState({
+            terminalId: selected.id,
+            state: "error",
+            message:
+              receipt.message ??
+              "CS2 did not confirm the current terminal offer.",
+          });
+        }
+      },
+      (error) => {
+        const message = appErrorMessage(
+          error,
+          "Failed to load terminal offer.",
+        );
+        setTerminalOfferState({
+          terminalId: selected.id,
+          state: "error",
+          message,
+        });
+      },
+    );
   });
   const selectedItemWithPrice = () => {
     const item = selectedItem();
     if (!item) return undefined;
     const amount = props.marketPrices.get(item.marketName ?? "");
-    return { ...item, marketPrice: item.marketPrice || (amount !== undefined && amount > 0 ? formatUSDMinor(amount) : undefined) };
+    return {
+      ...item,
+      marketPrice:
+        item.marketPrice ||
+        (amount !== undefined && amount > 0
+          ? formatUSDMinor(amount)
+          : undefined),
+    };
   };
 
   const selectedItemKey = () => {
@@ -132,44 +237,75 @@ export function InventoryView(props: InventoryViewProps) {
   };
 
   const selectItem = (item: InventoryItemDto, options?: { range: boolean }) => {
-	if (browsingStorageUnit() && removeFromStorageMode()) {
-		const anchorId = storageSelectionAnchorId();
-		if (options?.range && anchorId) {
-			const items = visibleItems();
-			const anchorIndex = items.findIndex((candidate) => candidate.id === anchorId);
-			const itemIndex = items.findIndex((candidate) => candidate.id === item.id);
-			if (anchorIndex >= 0 && itemIndex >= 0) {
-				const start = Math.min(anchorIndex, itemIndex);
-				const end = Math.max(anchorIndex, itemIndex);
-				const rangeIds = items.slice(start, end + 1).map((candidate) => candidate.id);
-				setStorageSelectedItemIds((current) => [...new Set([...current, ...rangeIds])]);
-				return;
-			}
-		}
-		setStorageSelectedItemIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]);
-		setStorageSelectionAnchorId(item.id);
-		return;
-	}
-	if (mode() !== "inventory") {
-		setSelectedItemIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]);
-		props.setSelectedItemId(item.id);
-		return;
-	}
-	setSelectedItemIds([]);
+    if (browsingStorageUnit() && removeFromStorageMode()) {
+      const anchorId = storageSelectionAnchorId();
+      if (options?.range && anchorId) {
+        const items = visibleItems();
+        const anchorIndex = items.findIndex(
+          (candidate) => candidate.id === anchorId,
+        );
+        const itemIndex = items.findIndex(
+          (candidate) => candidate.id === item.id,
+        );
+        if (anchorIndex >= 0 && itemIndex >= 0) {
+          const start = Math.min(anchorIndex, itemIndex);
+          const end = Math.max(anchorIndex, itemIndex);
+          const rangeIds = items
+            .slice(start, end + 1)
+            .map((candidate) => candidate.id);
+          setStorageSelectedItemIds((current) => [
+            ...new Set([...current, ...rangeIds]),
+          ]);
+          return;
+        }
+      }
+      setStorageSelectedItemIds((current) =>
+        current.includes(item.id)
+          ? current.filter((id) => id !== item.id)
+          : [...current, item.id],
+      );
+      setStorageSelectionAnchorId(item.id);
+      return;
+    }
+    if (mode() !== "inventory") {
+      setSelectedItemIds((current) =>
+        current.includes(item.id)
+          ? current.filter((id) => id !== item.id)
+          : [...current, item.id],
+      );
+      props.setSelectedItemId(item.id);
+      return;
+    }
+    setSelectedItemIds([]);
     props.setSelectedItemId(item.id);
   };
 
-  const nameTagTools = () => (props.inventory?.items ?? []).filter((item) => item.isNameTagTool);
+  const nameTagTools = () =>
+    (props.inventory?.items ?? []).filter((item) => item.isNameTagTool);
   const compatibleContainerKeys = () => {
     const required = selectedItem()?.requiredKeyDefIndexes ?? [];
-    return (props.inventory?.items ?? []).filter((item) => item.defindex !== undefined && required.includes(item.defindex));
+    return (props.inventory?.items ?? []).filter(
+      (item) => item.defindex !== undefined && required.includes(item.defindex),
+    );
   };
-  const compatibleContainerKey = () => compatibleContainerKeys().find((item) => item.id === selectedContainerKeyId());
-  createEffect(on(() => selectedItem()?.id, () => setSelectedContainerKeyId("")));
+  const compatibleContainerKey = () =>
+    compatibleContainerKeys().find(
+      (item) => item.id === selectedContainerKeyId(),
+    );
+  createEffect(
+    on(
+      () => selectedItem()?.id,
+      () => setSelectedContainerKeyId(""),
+    ),
+  );
   const connected = () => props.connection?.state === "connected";
-  const inventoryError = () => props.inventory?.error || props.inventory?.message;
+  const inventoryError = () =>
+    props.inventory?.error || props.inventory?.message;
   const inventoryDiagnostics = () => props.inventory?.diagnostics ?? [];
-  const inventoryLoading = () => !!props.loading || props.inventory?.status === "loading" || (connected() && props.inventory?.status === "requires_connection");
+  const inventoryLoading = () =>
+    !!props.loading ||
+    props.inventory?.status === "loading" ||
+    (connected() && props.inventory?.status === "requires_connection");
 
   const openRenameEditor = (item: InventoryItemDto) => {
     setDraftName(item.customName || item.name);
@@ -185,27 +321,53 @@ export function InventoryView(props: InventoryViewProps) {
     if (!connected()) {
       const message = "Connect to Steam before editing inventory.";
       setStatusMessage(message);
-      props.onToast?.({ title: "Account required", description: message, variant: "warning" });
+      props.onToast?.({
+        title: "Account required",
+        description: message,
+        variant: "warning",
+      });
       return;
     }
     const toolId = selectedToolId() || nameTagTools()[0]?.id || "";
     if (!toolId) {
       const message = "No compatible name tag tool is currently available.";
       setStatusMessage(message);
-      props.onToast?.({ title: "No tool available", description: message, variant: "warning" });
+      props.onToast?.({
+        title: "No tool available",
+        description: message,
+        variant: "warning",
+      });
       return;
     }
     setPending(true);
     setStatusMessage("Applying custom name...");
-    await fromAppPromise(props.onRename({ subjectItemId: item.id, toolItemId: toolId, name: draftName() }), "Failed to apply custom name").match(() => {
-      setStatusMessage("Custom name updated.");
-      setRenameOpen(false);
-      props.onToast?.({ title: "Custom name applied", description: `${item.name} now has a custom label.`, variant: "success" });
-    }, (error) => {
-      const message = appErrorMessage(error, "Failed to apply custom name.");
-      setStatusMessage(message);
-      props.onToast?.({ title: "Rename failed", description: message, variant: "danger" });
-    });
+    await fromAppPromise(
+      props.onRename({
+        subjectItemId: item.id,
+        toolItemId: toolId,
+        name: draftName(),
+      }),
+      "Failed to apply custom name",
+    ).match(
+      () => {
+        setStatusMessage("Custom name updated.");
+        setRenameOpen(false);
+        props.onToast?.({
+          title: "Custom name applied",
+          description: `${item.name} now has a custom label.`,
+          variant: "success",
+        });
+      },
+      (error) => {
+        const message = appErrorMessage(error, "Failed to apply custom name.");
+        setStatusMessage(message);
+        props.onToast?.({
+          title: "Rename failed",
+          description: message,
+          variant: "danger",
+        });
+      },
+    );
     setPending(false);
   };
 
@@ -215,23 +377,44 @@ export function InventoryView(props: InventoryViewProps) {
     if (!connected()) {
       const message = "Connect to Steam before editing inventory.";
       setStatusMessage(message);
-      props.onToast?.({ title: "Account required", description: message, variant: "warning" });
+      props.onToast?.({
+        title: "Account required",
+        description: message,
+        variant: "warning",
+      });
       return;
     }
     setPending(true);
     setStatusMessage("Removing custom name...");
-    await fromAppPromise(props.onRemoveName({ itemId: item.id }), "Failed to remove custom name").match(() => {
-      setStatusMessage("Custom name removed.");
-      props.onToast?.({ title: "Custom name removed", description: `${item.name} is back to its original label.`, variant: "success" });
-    }, (error) => {
-      const message = appErrorMessage(error, "Failed to remove custom name.");
-      setStatusMessage(message);
-      props.onToast?.({ title: "Remove-name failed", description: message, variant: "danger" });
-    });
+    await fromAppPromise(
+      props.onRemoveName({ itemId: item.id }),
+      "Failed to remove custom name",
+    ).match(
+      () => {
+        setStatusMessage("Custom name removed.");
+        props.onToast?.({
+          title: "Custom name removed",
+          description: `${item.name} is back to its original label.`,
+          variant: "success",
+        });
+      },
+      (error) => {
+        const message = appErrorMessage(error, "Failed to remove custom name.");
+        setStatusMessage(message);
+        props.onToast?.({
+          title: "Remove-name failed",
+          description: message,
+          variant: "danger",
+        });
+      },
+    );
     setPending(false);
   };
 
-  const handleOpenContainer = async (terminalSelection?: { pointsRemaining?: number; volatileLimit?: number }) => {
+  const handleOpenContainer = async (terminalSelection?: {
+    pointsRemaining?: number;
+    volatileLimit?: number;
+  }) => {
     const item = selectedItem();
     if (!item) return;
     if (!connected()) {
@@ -244,94 +427,262 @@ export function InventoryView(props: InventoryViewProps) {
       setContainerStatusMessage(message);
       return;
     }
-    if ((item.requiredKeyDefIndexes?.length ?? 0) > 0 && !compatibleContainerKey()) {
-      setContainerStatusMessage(compatibleContainerKeys().length > 0 ? "Select a compatible key before opening this container." : "This container requires a compatible key, but none is present in your inventory.");
+    if (
+      (item.requiredKeyDefIndexes?.length ?? 0) > 0 &&
+      !compatibleContainerKey()
+    ) {
+      setContainerStatusMessage(
+        compatibleContainerKeys().length > 0
+          ? "Select a compatible key before opening this container."
+          : "This container requires a compatible key, but none is present in your inventory.",
+      );
       return;
     }
     setPending(true);
     setContainerStatusMessage("Sending open request to CS2...");
     const keyItemId = compatibleContainerKey()?.id;
-    const isWeaponCase = /\bcase\b/i.test(`${item.name} ${item.marketName ?? ""}`) && !item.isSouvenir;
-    const isSouvenirPackage = /souvenir.*package|package.*souvenir/i.test(`${item.name} ${item.marketName ?? ""}`);
-    const candidates = (item.containerItems ?? []).map((candidate) => ({ name: candidate.marketName || candidate.name, marketName: candidate.marketName, price: candidate.price, imageUrl: candidate.imageUrl, rarity: candidate.rarity, kind: candidate.kind, wear: candidate.paintWear, wearMin: candidate.wearMin, wearMax: candidate.wearMax, supportsStatTrak: isWeaponCase && candidate.kind === "weapon_skin", supportsSouvenir: isSouvenirPackage && candidate.kind === "weapon_skin" }));
+    const isWeaponCase =
+      /\bcase\b/i.test(`${item.name} ${item.marketName ?? ""}`) &&
+      !item.isSouvenir;
+    const isSouvenirPackage = /souvenir.*package|package.*souvenir/i.test(
+      `${item.name} ${item.marketName ?? ""}`,
+    );
+    const candidates = (item.containerItems ?? []).map((candidate) => ({
+      name: candidate.marketName || candidate.name,
+      marketName: candidate.marketName,
+      price: candidate.price,
+      imageUrl: candidate.imageUrl,
+      rarity: candidate.rarity,
+      kind: candidate.kind,
+      wear: candidate.paintWear,
+      wearMin: candidate.wearMin,
+      wearMax: candidate.wearMax,
+      supportsStatTrak: isWeaponCase && candidate.kind === "weapon_skin",
+      supportsSouvenir: isSouvenirPackage && candidate.kind === "weapon_skin",
+    }));
     const terminal = isTerminal(item);
-    const activeTerminal = isActiveTerminal(item);
-    const animationMode = terminal ? (props.settings?.animations?.terminal ?? "slot-machine") : (props.settings?.animations?.container ?? "slot-machine");
+    const animationMode = terminal
+      ? (props.settings?.animations?.terminal ?? "slot-machine")
+      : (props.settings?.animations?.container ?? "slot-machine");
     setContainerReturn(undefined);
-    const priceNames = [...new Set([...(item.containerItems ?? []).map((candidate) => candidate.marketName), item.marketName, compatibleContainerKey()?.marketName].filter((name): name is string => !!name))];
+    const priceNames = [
+      ...new Set(
+        [
+          ...(item.containerItems ?? []).map(
+            (candidate) => candidate.marketName,
+          ),
+          item.marketName,
+          compatibleContainerKey()?.marketName,
+        ].filter((name): name is string => !!name),
+      ),
+    ];
     setContainerReturnLoading(priceNames.length > 0);
-    if (priceNames.length > 0) void scanPriceMap(priceNames, props.onScanPrices).then((prices) => {
-      const odds = containerItemOdds(item.containerItems ?? []);
-      const cost = (prices.get(item.marketName ?? "") ?? 0) + (prices.get(compatibleContainerKey()?.marketName ?? "") ?? 0);
-      setContainerReturn(expectedReturn((item.containerItems ?? []).map((candidate) => ({ marketName: candidate.marketName, probability: odds.get(candidate) ?? 0 })), prices, cost || undefined));
-      setContainerReturnLoading(false);
-    });
-    if (activeTerminal && animationMode !== "none") setReveal({ result: candidates[0] ?? { name: "Awaiting item…" }, ready: false, candidates, complete: () => undefined });
-    await fromAppPromise(props.onOpenContainer({
-      itemId: item.id,
-      ...(keyItemId ? { keyItemId } : {}),
-      ...(terminal ? terminalSelection : {}),
-    }, terminal), terminal ? "Failed to generate terminal offer" : "Failed to open container").match(async (receipt) => {
-      if (typeof receipt === "object" && receipt && "state" in receipt && receipt.state !== "completed" && receipt.state !== "awaiting_gc_confirmation") {
-        const message = "message" in receipt && typeof receipt.message === "string" ? receipt.message : "Container open request was not accepted.";
-        const responseBody =
-        "result" in receipt && typeof receipt.result === "object" && receipt.result && "responseBodyHex" in receipt.result && typeof receipt.result.responseBodyHex === "string"
-        ? ` Response body: ${receipt.result.responseBodyHex}`
-        : "";
-        setContainerStatusMessage(`${message}${responseBody}`);
-      } else {
-        const openedItem =
-        typeof receipt === "object" && receipt && "result" in receipt && typeof receipt.result === "object" && receipt.result && "openedItem" in receipt.result
-        ? (receipt.result.openedItem as InventoryItemDto | undefined)
-        : undefined;
-        const terminalOffer =
-        typeof receipt === "object" && receipt && "result" in receipt && typeof receipt.result === "object" && receipt.result && "terminalOffer" in receipt.result
-        ? (receipt.result.terminalOffer as NonNullable<InventoryItemDto["terminalOffers"]>[number] | undefined)
-        : undefined;
-        const message = openedItem
-        ? `Received ${itemDisplayName(openedItem)}.`
-        : typeof receipt === "object" && receipt && "message" in receipt && typeof receipt.message === "string"
-        ? receipt.message
-        : "Container opened and inventory was reconciled.";
-        if (openedItem) {
-          const offeredItem = terminalOffer?.item;
-          const result = offeredItem
-            ? { name: offeredItem.marketName || offeredItem.name, marketName: offeredItem.marketName, price: offeredItem.price, imageUrl: offeredItem.imageUrl, rarity: offeredItem.rarity, kind: offeredItem.kind, wear: offeredItem.paintWear, wearMin: offeredItem.wearMin, wearMax: offeredItem.wearMax }
-            : { name: itemDisplayName(openedItem), marketName: openedItem.marketName, price: openedItem.marketPrice, imageUrl: openedItem.imageUrl, rarity: openedItem.rarity, kind: openedItem.kind, wear: openedItem.paintWear, wearMin: openedItem.paintWearMin, wearMax: openedItem.paintWearMax, isStatTrak: openedItem.isStatTrak, isSouvenir: openedItem.isSouvenir };
-          if (activeTerminal && animationMode !== "none") {
-            await new Promise<void>((resolve) => setReveal({ result, ready: true, candidates, complete: resolve }));
-          }
+    if (priceNames.length > 0)
+      void scanPriceMap(priceNames, props.onScanPrices).then((prices) => {
+        const odds = containerItemOdds(item.containerItems ?? []);
+        const cost =
+          (prices.get(item.marketName ?? "") ?? 0) +
+          (prices.get(compatibleContainerKey()?.marketName ?? "") ?? 0);
+        setContainerReturn(
+          expectedReturn(
+            (item.containerItems ?? []).map((candidate) => ({
+              marketName: candidate.marketName,
+              probability: odds.get(candidate) ?? 0,
+            })),
+            prices,
+            cost || undefined,
+          ),
+        );
+        setContainerReturnLoading(false);
+      });
+    if (terminal && animationMode !== "none")
+      setReveal({
+        result: candidates[0] ?? { name: "Awaiting item…" },
+        ready: false,
+        candidates,
+        complete: () => undefined,
+      });
+    await fromAppPromise(
+      props.onOpenContainer(
+        {
+          itemId: item.id,
+          ...(keyItemId ? { keyItemId } : {}),
+          ...(terminal ? terminalSelection : {}),
+        },
+        terminal,
+      ),
+      terminal
+        ? "Failed to generate terminal offer"
+        : "Failed to open container",
+    ).match(
+      async (receipt) => {
+        if (
+          typeof receipt === "object" &&
+          receipt &&
+          "state" in receipt &&
+          receipt.state !== "completed" &&
+          receipt.state !== "awaiting_gc_confirmation"
+        ) {
+          const message =
+            "message" in receipt && typeof receipt.message === "string"
+              ? receipt.message
+              : "Container open request was not accepted.";
+          const responseBody =
+            "result" in receipt &&
+            typeof receipt.result === "object" &&
+            receipt.result &&
+            "responseBodyHex" in receipt.result &&
+            typeof receipt.result.responseBodyHex === "string"
+              ? ` Response body: ${receipt.result.responseBodyHex}`
+              : "";
+          setContainerStatusMessage(`${message}${responseBody}`);
         } else {
-          setReveal(undefined);
+          const openedItem =
+            typeof receipt === "object" &&
+            receipt &&
+            "result" in receipt &&
+            typeof receipt.result === "object" &&
+            receipt.result &&
+            "openedItem" in receipt.result
+              ? (receipt.result.openedItem as InventoryItemDto | undefined)
+              : undefined;
+          const terminalOffer =
+            typeof receipt === "object" &&
+            receipt &&
+            "result" in receipt &&
+            typeof receipt.result === "object" &&
+            receipt.result &&
+            "terminalOffer" in receipt.result
+              ? (receipt.result.terminalOffer as
+                  | NonNullable<InventoryItemDto["terminalOffers"]>[number]
+                  | undefined)
+              : undefined;
+          const resolvedTerminalOffer =
+            typeof receipt === "object" &&
+            receipt &&
+            "result" in receipt &&
+            typeof receipt.result === "object" &&
+            receipt.result &&
+            "offer" in receipt.result
+              ? (receipt.result.offer as
+                  | NonNullable<InventoryItemDto["terminalOffers"]>[number]["item"]
+                  | undefined)
+              : terminalOffer?.item;
+          const resolvedTerminalItemId =
+            typeof receipt === "object" &&
+            receipt &&
+            "result" in receipt &&
+            typeof receipt.result === "object" &&
+            receipt.result &&
+            "terminalItemId" in receipt.result &&
+            typeof receipt.result.terminalItemId === "string"
+              ? receipt.result.terminalItemId
+              : undefined;
+          const message = openedItem
+            ? `Received ${itemDisplayName(openedItem)}.`
+            : typeof receipt === "object" &&
+                receipt &&
+                "message" in receipt &&
+                typeof receipt.message === "string"
+              ? receipt.message
+              : "Container opened and inventory was reconciled.";
+          if (openedItem || resolvedTerminalOffer) {
+            const result = resolvedTerminalOffer
+              ? {
+                  name:
+                    resolvedTerminalOffer.marketName ||
+                    resolvedTerminalOffer.name,
+                  marketName: resolvedTerminalOffer.marketName,
+                  price: resolvedTerminalOffer.price,
+                  imageUrl: resolvedTerminalOffer.imageUrl,
+                  rarity: resolvedTerminalOffer.rarity,
+                  kind: resolvedTerminalOffer.kind,
+                  wear: resolvedTerminalOffer.paintWear,
+                  wearMin: resolvedTerminalOffer.wearMin,
+                  wearMax: resolvedTerminalOffer.wearMax,
+                }
+              : {
+                  name: itemDisplayName(openedItem!),
+                  marketName: openedItem!.marketName,
+                  price: openedItem!.marketPrice,
+                  imageUrl: openedItem!.imageUrl,
+                  rarity: openedItem!.rarity,
+                  kind: openedItem!.kind,
+                  wear: openedItem!.paintWear,
+                  wearMin: openedItem!.paintWearMin,
+                  wearMax: openedItem!.paintWearMax,
+                  isStatTrak: openedItem!.isStatTrak,
+                  isSouvenir: openedItem!.isSouvenir,
+                };
+            if (terminal && animationMode !== "none") {
+              await new Promise<void>((resolve) =>
+                setReveal({
+                  result,
+                  ready: true,
+                  candidates,
+                  complete: resolve,
+                }),
+              );
+            }
+          } else {
+            setReveal(undefined);
+          }
+          setContainerStatusMessage(message);
+          if (openedItem?.id) {
+            props.setSelectedItemId(openedItem.id);
+          } else if (resolvedTerminalItemId) {
+            props.setSelectedItemId(resolvedTerminalItemId);
+          }
         }
-        setContainerStatusMessage(message);
-        if (openedItem?.id) {
-        props.setSelectedItemId(openedItem.id);
-        }
-      }
-    }, (error) => {
-      setReveal(undefined);
-      setContainerStatusMessage(appErrorMessage(error, "Failed to open container."));
-    });
+      },
+      (error) => {
+        setReveal(undefined);
+        setContainerStatusMessage(
+          appErrorMessage(error, "Failed to open container."),
+        );
+      },
+    );
     setPending(false);
   };
 
   const handleLoadStorageContents = async (casketId: string) => {
     setPending(true);
     setStatusMessage("Loading storage unit contents from CS2...");
-    const loaded = await fromAppPromise(props.onLoadStorageContents(casketId), "Failed to load storage unit contents").match((receipt) => {
-      const accepted = receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation";
-      setStatusMessage(accepted ? "Storage unit contents loaded." : receipt.message ?? "CS2 did not load the storage unit contents.");
-      return accepted;
-    }, (error) => {
-      const message = appErrorMessage(error, "Failed to load storage unit contents.");
-      setStatusMessage(message);
-      props.onToast?.({ title: "Storage load failed", description: message, variant: "danger" });
-      return false;
-    });
+    const loaded = await fromAppPromise(
+      props.onLoadStorageContents(casketId),
+      "Failed to load storage unit contents",
+    ).match(
+      (receipt) => {
+        const accepted =
+          receipt.state === "completed" ||
+          receipt.state === "awaiting_gc_confirmation";
+        setStatusMessage(
+          accepted
+            ? "Storage unit contents loaded."
+            : (receipt.message ??
+                "CS2 did not load the storage unit contents."),
+        );
+        return accepted;
+      },
+      (error) => {
+        const message = appErrorMessage(
+          error,
+          "Failed to load storage unit contents.",
+        );
+        setStatusMessage(message);
+        props.onToast?.({
+          title: "Storage load failed",
+          description: message,
+          variant: "danger",
+        });
+        return false;
+      },
+    );
     setPending(false);
     if (loaded) {
-      const unit = (props.inventory?.items ?? []).find((item) => item.id === casketId && item.kind === "storage_unit");
+      const unit = (props.inventory?.items ?? []).find(
+        (item) => item.id === casketId && item.kind === "storage_unit",
+      );
       if (unit) {
         setBrowsingStorageUnit(unit);
         setRemoveFromStorageMode(false);
@@ -353,77 +704,123 @@ export function InventoryView(props: InventoryViewProps) {
 
   const retrieveFromStorage = async (retrieveAll = false) => {
     const unit = browsingStorageUnit();
-    const itemIds = retrieveAll ? visibleItems().map((item) => item.id) : storageSelectedItemIds();
+    const itemIds = retrieveAll
+      ? visibleItems().map((item) => item.id)
+      : storageSelectedItemIds();
     if (!unit || itemIds.length === 0) return;
     setPending(true);
     setStorageRetrieval({ completed: 0, total: itemIds.length });
-    setStatusMessage(`Retrieving ${itemIds.length} item${itemIds.length === 1 ? "" : "s"} from ${itemDisplayName(unit)}...`);
+    setStatusMessage(
+      `Retrieving ${itemIds.length} item${itemIds.length === 1 ? "" : "s"} from ${itemDisplayName(unit)}...`,
+    );
     let completed = 0;
     for (const itemId of itemIds) {
-      await fromAppPromise(props.onMoveFromStorage({ casketId: unit.id, itemId }), "Failed to retrieve item from storage").match((receipt) => {
-        if (receipt.state === "completed" || receipt.state === "awaiting_gc_confirmation") completed++;
-      }, () => undefined);
+      await fromAppPromise(
+        props.onMoveFromStorage({ casketId: unit.id, itemId }),
+        "Failed to retrieve item from storage",
+      ).match(
+        (receipt) => {
+          if (
+            receipt.state === "completed" ||
+            receipt.state === "awaiting_gc_confirmation"
+          )
+            completed++;
+        },
+        () => undefined,
+      );
       setStorageRetrieval({ completed, total: itemIds.length });
     }
     setStorageSelectedItemIds([]);
     setStorageSelectionAnchorId(undefined);
-    setStatusMessage(`Retrieved ${completed} of ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.`);
+    setStatusMessage(
+      `Retrieved ${completed} of ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.`,
+    );
     setStorageRetrieval(undefined);
     setPending(false);
   };
 
-  return (<>
-    <InventoryViewContent
-      inventory={props.inventory}
-      selectionMode={mode()}
-	  selectedItemIds={selectedItemIds()}
-      connection={props.connection}
-      settings={props.settings}
-      filteredItems={visibleItems()}
-      selectedItem={selectedItemWithPrice()}
-      selectedItemKey={selectedItemKey()}
-      statusMessage={statusMessage()}
-      terminalOfferState={terminalOfferState()}
-      containerStatusMessage={containerStatusMessage()}
-      renameOpen={renameOpen()}
-      draftName={draftName()}
-      selectedToolId={selectedToolId()}
-      pending={pending()}
-      inventoryError={inventoryError() ?? ""}
-      inventoryDiagnostics={inventoryDiagnostics()}
-      inventoryLoading={inventoryLoading()}
-      connected={connected()}
-      nameTagTools={nameTagTools()}
-      compatibleContainerKey={compatibleContainerKey()}
-      compatibleContainerKeys={compatibleContainerKeys()}
-      selectedContainerKeyId={selectedContainerKeyId()}
-      canOpenContainer={isOpenableContainer(selectedItem())}
-      canUseNameTagOn={selectedItem()?.kind === "weapon_skin" && nameTagTools().length > 0}
-      onMarketPreview={props.onMarketPreview}
-      onScanPrices={props.onScanPrices}
-      compactMode={props.compactMode}
-      marketPrices={props.marketPrices}
-      onSelectItem={selectItem}
-      onOpenRenameEditor={openRenameEditor}
-      onRenameSubmit={handleRenameSubmit}
-      onRemoveName={handleRemoveName}
-      onOpenContainer={handleOpenContainer}
-      onTerminalPurchase={props.onTerminalPurchase}
-      onLoadStorageContents={handleLoadStorageContents}
-      browsingStorageUnit={browsingStorageUnit()}
-      removeFromStorageMode={removeFromStorageMode()}
-      storageSelectedItemIds={storageSelectedItemIds()}
-      storageRetrieval={storageRetrieval()}
-      onBackFromStorage={backFromStorage}
-      onToggleRemoveFromStorageMode={() => { setRemoveFromStorageMode((current) => !current); setStorageSelectedItemIds([]); setStorageSelectionAnchorId(undefined); }}
-      onRetrieveFromStorage={() => retrieveFromStorage(false)}
-      onRetrieveAllFromStorage={() => retrieveFromStorage(true)}
-      onCloseRename={() => setRenameOpen(false)}
-      onDraftNameChange={setDraftName}
-      onSelectedToolChange={setSelectedToolId}
-      onSelectedContainerKeyChange={setSelectedContainerKeyId}
-      onRefresh={props.onRefresh}
-    />
-    <RevealAnimation open={!!reveal()} ready={reveal()?.ready} mode={isTerminal(selectedItem()) ? (props.settings?.animations?.terminal ?? "slot-machine") : (props.settings?.animations?.container ?? "slot-machine")} title={isTerminal(selectedItem()) ? "Terminal offer" : "Container opening"} candidates={reveal()?.candidates ?? []} result={reveal()?.result ?? { name: "Item" }} returnEstimate={containerReturn()} returnEstimateLoading={containerReturnLoading()} returnEstimateCostLabel="Container + key" returnEstimateNote="Expected value uses schema odds and current market prices; Steam fees are excluded." onComplete={() => { const current = reveal(); setReveal(undefined); current?.complete(); }} />
-  </>);
+  return (
+    <>
+      <InventoryViewContent
+        inventory={props.inventory}
+        selectionMode={mode()}
+        selectedItemIds={selectedItemIds()}
+        connection={props.connection}
+        settings={props.settings}
+        filteredItems={visibleItems()}
+        selectedItem={selectedItemWithPrice()}
+        selectedItemKey={selectedItemKey()}
+        statusMessage={statusMessage()}
+        terminalOfferState={terminalOfferState()}
+        containerStatusMessage={containerStatusMessage()}
+        renameOpen={renameOpen()}
+        draftName={draftName()}
+        selectedToolId={selectedToolId()}
+        pending={pending()}
+        inventoryError={inventoryError() ?? ""}
+        inventoryDiagnostics={inventoryDiagnostics()}
+        inventoryLoading={inventoryLoading()}
+        connected={connected()}
+        nameTagTools={nameTagTools()}
+        compatibleContainerKey={compatibleContainerKey()}
+        compatibleContainerKeys={compatibleContainerKeys()}
+        selectedContainerKeyId={selectedContainerKeyId()}
+        canOpenContainer={isOpenableContainer(selectedItem())}
+        canUseNameTagOn={
+          selectedItem()?.kind === "weapon_skin" && nameTagTools().length > 0
+        }
+        onMarketPreview={props.onMarketPreview}
+        onScanPrices={props.onScanPrices}
+        compactMode={props.compactMode}
+        marketPrices={props.marketPrices}
+        onSelectItem={selectItem}
+        onOpenRenameEditor={openRenameEditor}
+        onRenameSubmit={handleRenameSubmit}
+        onRemoveName={handleRemoveName}
+        onOpenContainer={handleOpenContainer}
+        onTerminalPurchase={props.onTerminalPurchase}
+        onLoadStorageContents={handleLoadStorageContents}
+        browsingStorageUnit={browsingStorageUnit()}
+        removeFromStorageMode={removeFromStorageMode()}
+        storageSelectedItemIds={storageSelectedItemIds()}
+        storageRetrieval={storageRetrieval()}
+        onBackFromStorage={backFromStorage}
+        onToggleRemoveFromStorageMode={() => {
+          setRemoveFromStorageMode((current) => !current);
+          setStorageSelectedItemIds([]);
+          setStorageSelectionAnchorId(undefined);
+        }}
+        onRetrieveFromStorage={() => retrieveFromStorage(false)}
+        onRetrieveAllFromStorage={() => retrieveFromStorage(true)}
+        onCloseRename={() => setRenameOpen(false)}
+        onDraftNameChange={setDraftName}
+        onSelectedToolChange={setSelectedToolId}
+        onSelectedContainerKeyChange={setSelectedContainerKeyId}
+        onRefresh={props.onRefresh}
+      />
+      <RevealAnimation
+        open={!!reveal()}
+        ready={reveal()?.ready}
+        mode={
+          isTerminal(selectedItem())
+            ? (props.settings?.animations?.terminal ?? "slot-machine")
+            : (props.settings?.animations?.container ?? "slot-machine")
+        }
+        title={
+          isTerminal(selectedItem()) ? "Terminal offer" : "Container opening"
+        }
+        candidates={reveal()?.candidates ?? []}
+        result={reveal()?.result ?? { name: "Item" }}
+        returnEstimate={containerReturn()}
+        returnEstimateLoading={containerReturnLoading()}
+        returnEstimateCostLabel="Container + key"
+        returnEstimateNote="Expected value uses schema odds and current market prices; Steam fees are excluded."
+        onComplete={() => {
+          const current = reveal();
+          setReveal(undefined);
+          current?.complete();
+        }}
+      />
+    </>
+  );
 }

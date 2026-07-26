@@ -9,6 +9,7 @@ import (
 const (
 	EMsgSOCreate          uint32 = 21
 	EMsgSOUpdate          uint32 = 22
+	EMsgSOSingleObject    uint32 = 23
 	EMsgSOCacheSubscribed uint32 = 24
 	EMsgSOUpdateMultiple  uint32 = 26
 )
@@ -48,12 +49,15 @@ const (
 	EMsgGiftItem                      = uint32(cs2pb.EGCItemMsg_k_EMsgGCDeliverGift)
 	EMsgOpenCrate                     = uint32(cs2pb.EGCItemMsg_k_EMsgGCOpenCrate)
 	EMsgVolatileItemLoadContents      = uint32(cs2pb.EGCItemMsg_k_EMsgGCVolatileItemLoadContents)
+	EMsgVolatileItemClaimReward       = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_VolatileItemClaimReward)
+	EMsgVolatileShopSubscribe         = uint32(cs2pb.ECsgoGCMsg_k_EMsgGCCStrike15_v2_VolatileShopSubscribe)
 
 	CustomizationExtractSticker     = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_ExtractSticker)
 	CustomizationEncapsulateSticker = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_EncapsulateSticker)
 	CustomizationUnlockCrate        = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_UnlockCrate)
 	CustomizationXRayItemReveal     = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_XRayItemReveal)
 	CustomizationXRayItemClaim      = uint32(cs2pb.EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_XRayItemClaim)
+	CustomizationCasketContents     = uint32(1012)
 
 	EMsgGCClientWelcome          = uint32(cs2pb.EGCBaseClientMsg_k_EMsgGCClientWelcome)
 	EMsgGCClientHello            = uint32(cs2pb.EGCBaseClientMsg_k_EMsgGCClientHello)

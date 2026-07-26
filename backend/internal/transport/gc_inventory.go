@@ -21,7 +21,7 @@ import (
 
 // cs2ClientVersion must match game/csgo/steam.inf in the pinned
 // proto/vendor/gametracking-cs2 revision.
-const cs2ClientVersion uint32 = 2000875
+const cs2ClientVersion uint32 = 2000877
 
 func (s *SteamGCClient) SendGamesPlayed(_ context.Context, appID uint32) error {
 	return s.sendGamesPlayed([]uint32{appID})
@@ -1132,12 +1132,18 @@ func econPaintWear(item *cs2pb.CSOEconItem) *float64 {
 		if attribute.GetDefIndex() != 8 {
 			continue
 		}
-		value := attribute.GetValue()
-		if value == 0 && len(attribute.GetValueBytes()) >= 4 {
-			value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+		var rawBits uint32
+		if len(attribute.GetValueBytes()) >= 4 {
+			rawBits = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+		} else {
+			rawBits = attribute.GetValue()
 		}
-		wear := float64(math.Float32frombits(value))
-		return &wear
+		if rawBits != 0 {
+			wear := float64(math.Float32frombits(rawBits))
+			if wear >= 0.0 && wear <= 1.0 && !math.IsNaN(wear) {
+				return &wear
+			}
+		}
 	}
 	return nil
 }

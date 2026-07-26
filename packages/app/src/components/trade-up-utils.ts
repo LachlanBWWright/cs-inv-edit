@@ -10,19 +10,29 @@ export interface TradeUpResolutionRequest {
   outcomes: TradeUpOutcome[];
 }
 
-export type TradeUpResolver = (request: TradeUpResolutionRequest) => Promise<TradeUpOutcome>;
+export type TradeUpResolver = (
+  request: TradeUpResolutionRequest,
+) => Promise<TradeUpOutcome>;
 
-export const resolveTradeUpLocally = (request: TradeUpResolutionRequest, random = Math.random) => {
+export const resolveTradeUpLocally = (
+  request: TradeUpResolutionRequest,
+  random = Math.random,
+) => {
   const roll = random();
   let cumulative = 0;
-  return request.outcomes.find((outcome) => (cumulative += outcome.probability) >= roll)
-    ?? request.outcomes[request.outcomes.length - 1];
+  return (
+    request.outcomes.find(
+      (outcome) => (cumulative += outcome.probability) >= roll,
+    ) ?? request.outcomes[request.outcomes.length - 1]
+  );
 };
 
 export const tradeUpInputCount = (item: Pick<InventoryItemDto, "rarity">) =>
   item.rarity?.toLowerCase() === "covert" ? 5 : 10;
 
-export const effectiveFloat = (item: Pick<InventoryItemDto, "paintWear" | "paintWearMin" | "paintWearMax">) => {
+export const effectiveFloat = (
+  item: Pick<InventoryItemDto, "paintWear" | "paintWearMin" | "paintWearMax">,
+) => {
   const wear = item.paintWear ?? 0;
   const min = item.paintWearMin ?? 0;
   const max = item.paintWearMax ?? 1;
@@ -30,16 +40,22 @@ export const effectiveFloat = (item: Pick<InventoryItemDto, "paintWear" | "paint
   return Math.max(0, Math.min(1, (wear - min) / (max - min)));
 };
 
-export const compatibleTradeUpItem = (first: InventoryItemDto, candidate: InventoryItemDto) =>
-  candidate.kind === "weapon_skin"
-  && candidate.paintWear !== undefined
-  && (candidate.tradeUpItems?.length ?? 0) > 0
-  && candidate.rarity === first.rarity
-  && candidate.isStatTrak === first.isStatTrak;
+export const compatibleTradeUpItem = (
+  first: InventoryItemDto,
+  candidate: InventoryItemDto,
+) =>
+  candidate.kind === "weapon_skin" &&
+  candidate.paintWear !== undefined &&
+  (candidate.tradeUpItems?.length ?? 0) > 0 &&
+  candidate.rarity === first.rarity &&
+  candidate.isStatTrak === first.isStatTrak;
 
-export function calculateTradeUpOutcomes(items: InventoryItemDto[]): TradeUpOutcome[] {
+export function calculateTradeUpOutcomes(
+  items: InventoryItemDto[],
+): TradeUpOutcome[] {
   if (items.length === 0) return [];
-  const averageEffective = items.reduce((sum, item) => sum + effectiveFloat(item), 0) / items.length;
+  const averageEffective =
+    items.reduce((sum, item) => sum + effectiveFloat(item), 0) / items.length;
   const outcomes = new Map<string, TradeUpOutcome>();
 
   for (const input of items) {
@@ -52,14 +68,20 @@ export function calculateTradeUpOutcomes(items: InventoryItemDto[]): TradeUpOutc
       const probability = 1 / items.length / candidates.length;
       const existing = outcomes.get(key);
       if (existing) existing.probability += probability;
-      else outcomes.set(key, {
-        ...candidate,
-        probability,
-        predictedWear: min + averageEffective * (max - min),
-      });
+      else
+        outcomes.set(key, {
+          ...candidate,
+          probability,
+          predictedWear: min + averageEffective * (max - min),
+        });
     }
   }
 
-  return [...outcomes.values()].sort((left, right) =>
-    right.probability - left.probability || (left.marketName ?? left.name).localeCompare(right.marketName ?? right.name));
+  return [...outcomes.values()].sort(
+    (left, right) =>
+      right.probability - left.probability ||
+      (left.marketName ?? left.name).localeCompare(
+        right.marketName ?? right.name,
+      ),
+  );
 }

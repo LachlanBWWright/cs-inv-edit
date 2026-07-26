@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { generateLandingJitter, LANDING_EDGE_BIAS_EXPONENT } from "./RevealAnimation.js";
+import {
+  generateLandingDuration,
+  generateLandingJitter,
+  LANDING_EDGE_BIAS_EXPONENT,
+  landingProgress,
+} from "./RevealAnimation.js";
 
 describe("slot-machine landing jitter", () => {
   it("uses a fourth-root distribution to bias landings strongly toward item edges", () => {
@@ -17,5 +22,25 @@ describe("slot-machine landing jitter", () => {
 
     expect(generateLandingJitter(() => leftValues.shift() ?? 0)).toBe(-88);
     expect(generateLandingJitter(() => rightValues.shift() ?? 0)).toBe(88);
+  });
+});
+
+describe("slot-machine landing timing", () => {
+  it("randomizes the deceleration after the result becomes available", () => {
+    expect(generateLandingDuration(() => 0)).toBe(2_400);
+    expect(generateLandingDuration(() => 0.5)).toBe(3_000);
+    expect(generateLandingDuration(() => 0.999)).toBe(3_598);
+  });
+
+  it("does not derive landing time from how long the waiting floor was active", () => {
+    const duration = generateLandingDuration(() => 0.25);
+    expect(duration).toBe(2_700);
+  });
+
+  it("brakes visibly as soon as landing starts", () => {
+    expect(landingProgress(0)).toBe(0);
+    expect(landingProgress(0.25)).toBeCloseTo(0.578);
+    expect(landingProgress(0.5)).toBe(0.875);
+    expect(landingProgress(1)).toBe(1);
   });
 });
