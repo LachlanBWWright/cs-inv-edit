@@ -31,13 +31,13 @@ func TestLoadMapsPendingOffersAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Received) != 1 || snapshot.Received[0].Direction != "received" || snapshot.Received[0].PartnerSteamID != "76561197960265851" {
+	if len(snapshot.Received) != 1 || snapshot.Received[0].Direction != TradeDirectionReceived || snapshot.Received[0].PartnerSteamID != "76561197960265851" {
 		t.Fatalf("offer = %#v", snapshot.Received)
 	}
 	if got := snapshot.Received[0].ItemsToGive[0]; got.MarketName != "Item (Factory New)" || got.ImageURL == "" || !got.Tradable || !got.Marketable {
 		t.Fatalf("item = %#v", got)
 	}
-	if len(snapshot.History) != 1 || snapshot.History[0].State != "accepted" {
+	if len(snapshot.History) != 1 || snapshot.History[0].State != TradeStateAccepted {
 		t.Fatalf("history = %#v", snapshot.History)
 	}
 	if snapshot.Received[0].PartnerName != "Trade Partner" || snapshot.Received[0].PartnerAvatarURL == "" || snapshot.History[0].PartnerName != "History Partner" {

@@ -7,11 +7,10 @@ import (
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
-	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
 	"cs-inv-edit/backend/internal/proto/tf2tracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestTF2PermanentOperationsAreBackendBlockedByDefault(t *testing.T) {
@@ -27,7 +26,7 @@ func TestTF2PermanentOperationsAreBackendBlockedByDefault(t *testing.T) {
 		"tf2.tools.strange-reset",
 	} {
 		receipt := service.SubmitOperation(operation, map[string]any{})
-		if receipt.State != "blocked_by_feature_flag" {
+		if receipt.State != operations.StateBlockedByFeatureFlag {
 			t.Fatalf("%s state = %q, want blocked_by_feature_flag", operation, receipt.State)
 		}
 	}
@@ -50,7 +49,7 @@ func TestTF2LegacyPermanentOperationCannotSendEvenWhenFlagEnabled(t *testing.T) 
 			test.enable(&settings.FeatureFlags)
 			service.UpdateSettings(settings)
 			receipt := service.SubmitOperation(test.operation, map[string]any{"itemId": "1", "itemIds": []any{"1"}})
-			if receipt.State != "blocked_by_feature_flag" {
+			if receipt.State != operations.StateBlockedByFeatureFlag {
 				t.Fatalf("state = %q, want blocked_by_feature_flag", receipt.State)
 			}
 			if len(client.SentProtoMessages) != 0 {
@@ -72,7 +71,7 @@ func TestTF2StrangePartUsesAppIDScopedAuthoritativeProtobuf(t *testing.T) {
 		Items: []domain.EconomyInventoryItem{{Game: "tf2", AppID: protocol.AppIDTF2, AssetID: "11"}, {Game: "tf2", AppID: protocol.AppIDTF2, AssetID: "22"}},
 	}
 	receipt := service.SubmitOperation("tf2.tools.strange-part", map[string]any{"toolItemId": "11", "targetItemId": "22"})
-	if receipt.State != "awaiting_gc_confirmation" {
+	if receipt.State != operations.StateAwaitingGCConfirmation {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 	if len(client.SentProtoMessages) != 1 {
@@ -82,11 +81,11 @@ func TestTF2StrangePartUsesAppIDScopedAuthoritativeProtobuf(t *testing.T) {
 	if sent.AppID != protocol.AppIDTF2 || sent.EMsg != protocol.TF2EMsgApplyStrangePart {
 		t.Fatalf("sent message = %#v", sent)
 	}
-	decoded := new(multigamepb.CMsgApplyStrangePart)
-	if err := proto.Unmarshal(sent.Body, decoded); err != nil {
+	decoded, err := tf2tracking.UnmarshalMessage("CMsgApplyStrangePart", sent.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.GetStrangePartItemId() != 11 || decoded.GetItemItemId() != 22 {
+	if tracking.Uint(decoded, "strange_part_item_id") != 11 || tracking.Uint(decoded, "item_item_id") != 22 {
 		t.Fatalf("decoded = %#v", decoded)
 	}
 }
@@ -100,7 +99,7 @@ func TestTF2OperationRejectsCommunityOnlyItem(t *testing.T) {
 	service.settings.ValidationMode = false
 	service.gameInventories[gameInventoryKey("7656119", "tf2")] = domain.GameInventorySnapshot{Game: "tf2", AppID: protocol.AppIDTF2, Status: "ready", Items: []domain.EconomyInventoryItem{{Game: "tf2", AppID: protocol.AppIDTF2, AssetID: "11"}}}
 	receipt := service.SubmitOperation("tf2.tools.strange-part", map[string]any{"toolItemId": "11", "targetItemId": "22"})
-	if receipt.State != "failed" || len(client.SentProtoMessages) != 0 {
+	if receipt.State != operations.StateFailed || len(client.SentProtoMessages) != 0 {
 		t.Fatalf("unsafe receipt=%#v sends=%d", receipt, len(client.SentProtoMessages))
 	}
 }
@@ -110,7 +109,7 @@ func TestTF2PermanentOperationRequiresExplicitConfirmationInValidationMode(t *te
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
 	service.settings.FeatureFlags.EnableTF2ItemUse = true
 	receipt := service.SubmitOperation("tf2.items.use", map[string]any{"game": "tf2", "itemId": "11"})
-	if receipt.State != "requires_validation" {
+	if receipt.State != operations.StateRequiresValidation {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 }
@@ -192,7 +191,7 @@ func TestTF2LoadoutReceiptCompletesOnlyAfterMatchingAuthoritativeState(t *testin
 	receipt := service.SubmitOperation("tf2.loadout.set-preset-item", map[string]any{
 		"game": "tf2", "itemId": "99", "classId": float64(3), "presetId": float64(2), "slotId": float64(7),
 	})
-	if receipt.State != "awaiting_gc_confirmation" {
+	if receipt.State != operations.StateAwaitingGCConfirmation {
 		t.Fatalf("receipt=%#v", receipt)
 	}
 	client.TF2FeatureResult = transport.TF2FeatureSnapshot{
@@ -200,18 +199,18 @@ func TestTF2LoadoutReceiptCompletesOnlyAfterMatchingAuthoritativeState(t *testin
 		PresetItems: []transport.TF2PresetItem{{ClassID: 3, PresetID: 2, SlotID: 7, ItemID: "98"}},
 	}
 	service.TF2Features()
-	if state := latestOperationState(service.Operations(), receipt.OperationID); state != "awaiting_gc_confirmation" {
+	if state := latestOperationState(service.Operations(), receipt.OperationID); state != operations.StateAwaitingGCConfirmation {
 		t.Fatalf("mismatched state completed receipt: %q", state)
 	}
 	client.TF2FeatureResult.PresetItems[0].ItemID = "99"
 	service.TF2Features()
-	if state := latestOperationState(service.Operations(), receipt.OperationID); state != "completed" {
+	if state := latestOperationState(service.Operations(), receipt.OperationID); state != operations.StateCompleted {
 		t.Fatalf("matching state did not complete receipt: %q", state)
 	}
 }
 
-func latestOperationState(receipts []operations.Receipt, operationID string) string {
-	state := ""
+func latestOperationState(receipts []operations.Receipt, operationID string) operations.State {
+	var state operations.State
 	for _, receipt := range receipts {
 		if receipt.OperationID == operationID {
 			state = receipt.State

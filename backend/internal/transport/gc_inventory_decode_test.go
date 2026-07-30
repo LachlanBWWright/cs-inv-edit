@@ -7,11 +7,21 @@ import (
 	"strings"
 	"testing"
 
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
-	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
+	"cs-inv-edit/backend/internal/proto/dota2tracking"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/proto/tf2tracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
-	"google.golang.org/protobuf/proto"
 )
+
+func mustCS2TestMessage(t *testing.T, name string, fields map[string]any) []byte {
+	t.Helper()
+	body, err := cs2pb.MarshalMessage(name, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
 
 func TestMergeGamesPlayedPreservesAllGameCoordinatorPresence(t *testing.T) {
 	got := mergeGamesPlayed([]uint32{730, 440}, []uint32{730, 570, 440})
@@ -22,21 +32,12 @@ func TestMergeGamesPlayedPreservesAllGameCoordinatorPresence(t *testing.T) {
 }
 
 func TestDecodeInventoryIgnoresNonEconSOCacheTypes(t *testing.T) {
-	foreign, err := proto.Marshal(&cs2pb.CSOAccountItemPersonalStore{GenerationTime: proto.Uint32(4001), Items: []uint64{36}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	econ, err := proto.Marshal(&cs2pb.CSOEconItem{Id: proto.Uint64(1234), DefIndex: proto.Uint32(7), Inventory: proto.Uint32(1), Quantity: proto.Uint32(1)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := proto.Marshal(&cs2pb.CMsgClientWelcome{OutofdateSubscribedCaches: []*cs2pb.CMsgSOCacheSubscribed{{Objects: []*cs2pb.CMsgSOCacheSubscribed_SubscribedType{
-		{TypeId: proto.Int32(41), ObjectData: [][]byte{foreign}},
-		{TypeId: proto.Int32(1), ObjectData: [][]byte{econ}},
+	foreign := mustCS2TestMessage(t, "CSOAccountItemPersonalStore", map[string]any{"generation_time": uint32(4001), "items": []any{uint64(36)}})
+	econ := mustCS2TestMessage(t, "CSOEconItem", map[string]any{"id": uint64(1234), "def_index": uint32(7), "inventory": uint32(1), "quantity": uint32(1)})
+	body := mustCS2TestMessage(t, "CMsgClientWelcome", map[string]any{"outofdate_subscribed_caches": []any{map[string]any{"objects": []any{
+		map[string]any{"type_id": int32(41), "object_data": []any{foreign}},
+		map[string]any{"type_id": int32(1), "object_data": []any{econ}},
 	}}}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	items, err := decodeInventoryFromClientWelcome(body)
 	if err != nil {
 		t.Fatal(err)
@@ -47,22 +48,12 @@ func TestDecodeInventoryIgnoresNonEconSOCacheTypes(t *testing.T) {
 }
 
 func TestDecodeCS2IncrementalInventoryRetainsTerminalOfferSOCreate(t *testing.T) {
-	offerBody, err := proto.Marshal(&cs2pb.CSOEconItem{
-		Id:       proto.Uint64(700),
-		DefIndex: proto.Uint32(8),
-		Attribute: []*cs2pb.CSOEconItem_Attribute{
-			{DefIndex: proto.Uint32(272), Value: proto.Uint32(0x89abcdef)},
-			{DefIndex: proto.Uint32(273), Value: proto.Uint32(0x01234567)},
-			{DefIndex: proto.Uint32(316), Value: proto.Uint32(1299), ValueBytes: []byte{0x13, 0x05, 0, 0}},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	messageBody, err := proto.Marshal(&cs2pb.CMsgSOSingleObject{TypeId: proto.Int32(1), ObjectData: offerBody})
-	if err != nil {
-		t.Fatal(err)
-	}
+	offerBody := mustCS2TestMessage(t, "CSOEconItem", map[string]any{"id": uint64(700), "def_index": uint32(8), "attribute": []any{
+		map[string]any{"def_index": uint32(272), "value": uint32(0x89abcdef)},
+		map[string]any{"def_index": uint32(273), "value": uint32(0x01234567)},
+		map[string]any{"def_index": uint32(316), "value": uint32(1299), "value_bytes": []byte{0x13, 0x05, 0, 0}},
+	}})
+	messageBody := mustCS2TestMessage(t, "CMsgSOSingleObject", map[string]any{"type_id": int32(1), "object_data": offerBody})
 	update, found, err := decodeCS2IncrementalInventory(GCMessage{AppID: 730, EMsg: protocol.EMsgSOCreate, Body: messageBody})
 	if err != nil {
 		t.Fatal(err)
@@ -94,18 +85,8 @@ func TestMergeInventoryItemMapAddsVolatileOfferAndUpdatesTerminal(t *testing.T) 
 }
 
 func TestDecodeCS2IncrementalInventoryRetainsDedicatedVolatileOfferSO(t *testing.T) {
-	offerBody, err := proto.Marshal(&cs2pb.CSOVolatileItemOffer{
-		Defidx:         proto.Uint32(5176),
-		FauxItemid:     []uint64{0xf000000003e70007},
-		GenerationTime: []uint32{1784820000},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	messageBody, err := proto.Marshal(&cs2pb.CMsgSOSingleObject{TypeId: proto.Int32(cs2VolatileItemOfferSOTypeID), ObjectData: offerBody})
-	if err != nil {
-		t.Fatal(err)
-	}
+	offerBody := mustCS2TestMessage(t, "CSOVolatileItemOffer", map[string]any{"defidx": uint32(5176), "faux_itemid": []any{uint64(0xf000000003e70007)}, "generation_time": []any{uint32(1784820000)}})
+	messageBody := mustCS2TestMessage(t, "CMsgSOSingleObject", map[string]any{"type_id": cs2VolatileItemOfferSOTypeID, "object_data": offerBody})
 	update, found, err := decodeCS2IncrementalInventory(GCMessage{AppID: 730, EMsg: protocol.EMsgSOUpdate, Body: messageBody})
 	if err != nil {
 		t.Fatal(err)
@@ -118,14 +99,14 @@ func TestDecodeCS2IncrementalInventoryRetainsDedicatedVolatileOfferSO(t *testing
 
 func TestEconPaintKitReadsValueBytes(t *testing.T) {
 	// Attribute 6 stores the numeric paint-kit ID as float bits.
-	item := &cs2pb.CSOEconItem{Attribute: []*cs2pb.CSOEconItem_Attribute{{DefIndex: proto.Uint32(6), ValueBytes: []byte{0x00, 0x00, 0xc8, 0x42}}}}
+	item := cs2pb.EconItem{Attributes: []cs2pb.EconAttribute{{DefIndex: 6, ValueBytes: []byte{0x00, 0x00, 0xc8, 0x42}}}}
 	if got := econPaintKit(item); got != 100 {
 		t.Fatalf("paint kit = %d", got)
 	}
 }
 
 func TestEconPaintKitAcceptsNormalizedValue(t *testing.T) {
-	item := &cs2pb.CSOEconItem{Attribute: []*cs2pb.CSOEconItem_Attribute{{DefIndex: proto.Uint32(6), Value: proto.Uint32(100)}}}
+	item := cs2pb.EconItem{Attributes: []cs2pb.EconAttribute{{DefIndex: 6, Value: 100}}}
 	if got := econPaintKit(item); got != 100 {
 		t.Fatalf("paint kit = %d", got)
 	}
@@ -159,11 +140,15 @@ func TestDecodeGenericSubscribedInventoryUsesOnlyAuthoritativeEconType(t *testin
 }
 
 func TestDotaOmittedFieldsUseAuthoritativeProtoDefaults(t *testing.T) {
-	item, err := proto.Marshal(&multigamepb.CSOEconItem{Id: proto.Uint64(7), Attribute: []*multigamepb.CSOEconItemAttribute{{Value: proto.Uint32(9)}}})
+	item, err := dota2tracking.MarshalMessage("CSOEconItem", map[string]any{"id": uint64(7), "attribute": []any{map[string]any{"value": uint32(9)}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	items, found, err := decodeGenericSubscribedTypes(570, []*multigamepb.CMsgSOCacheSubscribed_SubscribedType{{TypeId: proto.Int32(1), ObjectData: [][]byte{item}}})
+	cache, err := dota2tracking.MarshalMessage("CMsgSOCacheSubscribed", map[string]any{"objects": []any{map[string]any{"type_id": int32(1), "object_data": []any{item}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, found, err := decodeGenericSubscribedInventory(570, cache)
 	if err != nil || !found || len(items) != 1 {
 		t.Fatalf("items=%#v found=%t err=%v", items, found, err)
 	}
@@ -182,34 +167,31 @@ func TestTF2WelcomeCountryIsNotDecodedAsDotaSOCache(t *testing.T) {
 }
 
 func TestTF2SOCacheSubscriptionCheckBuildsAuthoritativeRefresh(t *testing.T) {
-	checkBody, err := proto.Marshal(&multigamepb.CMsgSOCacheSubscriptionCheck{
-		Owner:     proto.Uint64(76561198813914865),
-		Version:   proto.Uint64(1),
-		OwnerSoid: &multigamepb.CMsgSOIDOwner{Type: proto.Uint32(1), Id: proto.Uint64(1234)},
+	checkBody, err := tf2tracking.MarshalFields("CMsgSOCacheSubscriptionCheck", map[string]any{
+		"owner": uint64(76561198813914865), "version": uint64(1),
+		"owner_soid": map[string]any{"type": uint32(1), "id": uint64(1234)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	refreshBody, err := gameSOCacheSubscriptionRefresh(checkBody)
+	refreshBody, err := gameSOCacheSubscriptionRefresh(440, checkBody)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var refresh multigamepb.CMsgSOCacheSubscriptionRefresh
-	if err := proto.Unmarshal(refreshBody, &refresh); err != nil {
+	refresh, err := tf2tracking.UnmarshalMessage("CMsgSOCacheSubscriptionRefresh", refreshBody)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if refresh.GetOwner() != 76561198813914865 || refresh.GetOwnerSoid().GetType() != 1 || refresh.GetOwnerSoid().GetId() != 1234 {
+	owner := refresh.Get(tracking.Field(refresh, "owner_soid")).Message()
+	if tracking.Uint(refresh, "owner") != 76561198813914865 || tracking.Uint(owner, "type") != 1 || tracking.Uint(owner, "id") != 1234 {
 		t.Fatalf("SOCache refresh=%#v", refresh)
 	}
 }
 
 func TestDotaWelcomeUpToDateSOCacheBuildsRefresh(t *testing.T) {
-	welcomeBody, err := proto.Marshal(&multigamepb.CMsgClientWelcome{
-		UptodateSubscribedCaches: []*multigamepb.CMsgSOCacheSubscriptionCheck{{
-			Version:   proto.Uint64(9),
-			OwnerSoid: &multigamepb.CMsgSOIDOwner{Type: proto.Uint32(1), Id: proto.Uint64(7656119)},
-		}},
-	})
+	welcomeBody, err := dota2tracking.MarshalMessage("CMsgClientWelcome", map[string]any{"uptodate_subscribed_caches": []any{
+		map[string]any{"version": uint64(9), "owner_soid": map[string]any{"type": uint32(1), "id": uint64(7656119)}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,21 +199,25 @@ func TestDotaWelcomeUpToDateSOCacheBuildsRefresh(t *testing.T) {
 	if err != nil || len(refreshBodies) != 1 {
 		t.Fatalf("refreshes=%d err=%v", len(refreshBodies), err)
 	}
-	var refresh multigamepb.CMsgSOCacheSubscriptionRefresh
-	if err := proto.Unmarshal(refreshBodies[0], &refresh); err != nil {
+	refresh, err := dota2tracking.UnmarshalMessage("CMsgSOCacheSubscriptionRefresh", refreshBodies[0])
+	if err != nil {
 		t.Fatal(err)
 	}
-	if refresh.Owner != nil || refresh.GetOwnerSoid().GetType() != 1 || refresh.GetOwnerSoid().GetId() != 7656119 {
+	ownerField := tracking.Field(refresh, "owner_soid")
+	owner := refresh.Get(ownerField).Message()
+	if tracking.Has(refresh, "owner") || tracking.Uint(owner, "type") != 1 || tracking.Uint(owner, "id") != 7656119 {
 		t.Fatalf("Dota SOCache refresh=%#v", refresh)
 	}
 }
 
 func TestDotaWelcomeOutOfDateInventoryDoesNotRequestRedundantRefresh(t *testing.T) {
-	itemBody, err := proto.Marshal(&multigamepb.CSOEconItem{Id: proto.Uint64(42), DefIndex: proto.Uint32(7)})
+	itemBody, err := dota2tracking.MarshalMessage("CSOEconItem", map[string]any{"id": uint64(42), "def_index": uint32(7)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	welcomeBody, err := proto.Marshal(&multigamepb.CMsgClientWelcome{OutofdateSubscribedCaches: []*multigamepb.CMsgSOCacheSubscribed{{Objects: []*multigamepb.CMsgSOCacheSubscribed_SubscribedType{{TypeId: proto.Int32(1), ObjectData: [][]byte{itemBody}}}}}})
+	welcomeBody, err := dota2tracking.MarshalMessage("CMsgClientWelcome", map[string]any{"outofdate_subscribed_caches": []any{
+		map[string]any{"objects": []any{map[string]any{"type_id": int32(1), "object_data": []any{itemBody}}}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,16 +236,16 @@ func TestGameClientHelloUsesPinnedVersionsAndDotaSource2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var tf2 multigamepb.CMsgClientHello
-	if err := proto.Unmarshal(tf2Body, &tf2); err != nil || tf2.GetVersion() != 10815139 || tf2.Engine != nil {
+	tf2, err := tf2tracking.UnmarshalMessage("CMsgClientHello", tf2Body)
+	if err != nil || tracking.Uint(tf2, "version") != 10815139 || tracking.Has(tf2, "engine") {
 		t.Fatalf("TF2 hello=%#v err=%v", tf2, err)
 	}
 	dotaBody, err := gameClientHello(570)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var dota multigamepb.CMsgClientHello
-	if err := proto.Unmarshal(dotaBody, &dota); err != nil || dota.GetVersion() != 6859 || dota.GetEngine() != 1 {
+	dota, err := dota2tracking.UnmarshalMessage("CMsgClientHello", dotaBody)
+	if err != nil || tracking.Uint(dota, "version") != 6859 || tracking.Uint(dota, "engine") != 1 {
 		t.Fatalf("Dota hello=%#v err=%v", dota, err)
 	}
 }
@@ -269,11 +255,15 @@ func TestCS2ClientHelloUsesPinnedGameTrackingVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hello cs2pb.CMsgClientHello
-	if err := proto.Unmarshal(body, &hello); err != nil {
+	hello, err := cs2pb.UnmarshalMessage("CMsgClientHello", body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if hello.GetVersion() != cs2ClientVersion || hello.GetVersion() != 2000877 {
-		t.Fatalf("CS2 ClientHello version = %d, want pinned steam.inf version %d", hello.GetVersion(), cs2ClientVersion)
+	version := uint32(tracking.Uint(hello, "version"))
+	if version != cs2ClientVersion {
+		t.Fatalf("CS2 ClientHello version = %d, want pinned steam.inf version %d", version, cs2ClientVersion)
+	}
+	if cs2ClientVersion != 2000877 {
+		t.Fatalf("pinned CS2 client version changed to %d", cs2ClientVersion)
 	}
 }

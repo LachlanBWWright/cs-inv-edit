@@ -9,7 +9,8 @@ import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 import { Card } from "./ui/Card.js";
 import { Dialog } from "./ui/Dialog.js";
-import { LoadingProgress } from "./ui/LoadingProgress.js";
+import { StoreContentsDialog } from "./store-contents-dialog.js";
+import { StoreHeader } from "./store-header.js";
 
 type StoreOffer = StoreSnapshot["offers"][number];
 
@@ -87,55 +88,11 @@ export function StoreView(props: {
   return (
     <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="mx-auto flex max-w-6xl flex-col gap-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
-              CS2 Store
-            </p>
-            <h1 class="mt-1 text-3xl font-semibold">Cash store</h1>
-            <p class="mt-2 text-sm text-slate-400">
-              Offers and account-local prices come from the CS2 Game
-              Coordinator. Payment is completed on Steam.
-            </p>
-          </div>
-          <Button onClick={() => void props.onRefresh()}>Refresh Store</Button>
-        </div>
-
-        <Show when={!props.store || props.store.status === "loading"}>
-          <LoadingProgress
-            active
-            title="Loading CS2 Store"
-            stages={[
-              {
-                afterSeconds: 0,
-                label: "Requesting the GC price sheet",
-                detail: "Loading current offers and account-local currency.",
-              },
-              {
-                afterSeconds: 10,
-                label: "Parsing store data",
-                detail: "Matching the price sheet with live CS2 item metadata.",
-              },
-            ]}
-            currentStage={props.store?.message}
-          />
-        </Show>
-        <Show when={props.store?.status === "requires_connection"}>
-          <Alert variant="warning">
-            {props.store?.message ||
-              "Connect Steam to load the CS2 cash store."}
-          </Alert>
-        </Show>
-        <Show when={props.store?.status === "error"}>
-          <Alert variant="danger">{props.store?.message}</Alert>
-        </Show>
-        <Show when={props.store?.status === "ready" && !purchaseEnabled()}>
-          <Alert variant="warning">
-            Browsing is enabled, but purchases are locked. Enable{" "}
-            <code>enableStorePurchases</code> in Settings before confirming a
-            real-money transaction.
-          </Alert>
-        </Show>
+        <StoreHeader
+          store={props.store}
+          purchaseEnabled={purchaseEnabled()}
+          onRefresh={props.onRefresh}
+        />
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <For each={props.store?.offers ?? []}>
             {(offer) => (
@@ -417,42 +374,10 @@ export function StoreView(props: {
         </div>
       </Dialog>
 
-      <Dialog
-        open={!!contentsOffer()}
-        title={contentsOffer()?.name || "Store item"}
-        description="Item delivered by this store offer"
-        onOpenChange={(open) => {
-          if (!open) setContentsOffer(undefined);
-        }}
-      >
-        <Show
-          when={(contentsOffer()?.items?.length ?? 0) > 0}
-          fallback={
-            <p class="text-sm text-slate-400">
-              No separate produced-item preview is defined for this offer.
-            </p>
-          }
-        >
-          <div class="grid gap-3 sm:grid-cols-2">
-            <For each={contentsOffer()?.items ?? []}>
-              {(item) => (
-                <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
-                  <Show when={item.imageUrl}>
-                    <img
-                      class="mx-auto h-28 object-contain"
-                      src={item.imageUrl}
-                      alt=""
-                    />
-                  </Show>
-                  <p class="mt-2 text-sm font-medium">
-                    {item.marketName || item.name}
-                  </p>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
-      </Dialog>
+      <StoreContentsDialog
+        offer={contentsOffer()}
+        onClose={() => setContentsOffer(undefined)}
+      />
     </div>
   );
 }

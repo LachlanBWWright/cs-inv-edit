@@ -4,57 +4,23 @@ import type {
   InventoryItemDto,
   InventorySnapshot,
 } from "@cs-inv-edit/contracts";
-import { Alert } from "./ui/Alert.js";
 import {
   compactItemMeta,
   compactItemName,
   itemDisplayName,
-  itemInitials,
   itemKindLabel,
   itemSubtitle,
   rarityBorderClass,
 } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
-import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
 import { ItemMarketBadges } from "./ItemMarketBadges.js";
-import { WearRangeBar } from "./ui/WearRangeBar.js";
-import type { LoadingStage } from "./ui/LoadingProgress.js";
-import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
-import { ItemPreviewMedia } from "./ItemPreviewMedia.js";
-
-const inventoryLoadingStages: readonly LoadingStage[] = [
-  {
-    afterSeconds: 0,
-    label: "Contacting the CS2 Game Coordinator",
-    detail:
-      "Requesting the authoritative owned-item SOCache for this Steam account.",
-  },
-  {
-    afterSeconds: 8,
-    label: "Waiting for inventory data",
-    detail:
-      "The Game Coordinator can take several retries before it sends the inventory snapshot.",
-  },
-  {
-    afterSeconds: 20,
-    label: "Resolving current CS2 item metadata",
-    detail:
-      "Loading the live item schema, localization, and tracked image index.",
-  },
-  {
-    afterSeconds: 35,
-    label: "Enriching item previews",
-    detail:
-      "Matching names, images, collections, containers, and available Steam market metadata.",
-  },
-  {
-    afterSeconds: 65,
-    label: "Still working—Steam is responding slowly",
-    detail:
-      "The request remains active. Image and market lookups are bounded, but Steam may throttle metadata requests.",
-  },
-];
+import { ResponsiveInspector } from "./ui/ResponsiveInspector.js";
+import {
+  InventoryEmptyState,
+  InventoryItemIcon as ItemIcon,
+  InventoryItemWear as ItemWear,
+} from "./inventory-view-content-elements.js";
 
 export interface InventoryFiltersProps {
   class?: string;
@@ -169,6 +135,7 @@ export interface InventoryGridProps {
   filteredItems: InventoryItemDto[];
   selectionMode: "inventory" | "inventory-storage" | "inventory-tradeup";
   selectedItem: InventoryItemDto | undefined;
+  selectedItemExplicit: boolean;
   selectedItemIds: string[];
   compactMode: "icons" | "concise" | "detailed";
   marketPrices: ReadonlyMap<string, number>;
@@ -282,7 +249,7 @@ export function InventoryGrid(props: InventoryGridProps) {
   };
 
   return (
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
+    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
       <div class="flex min-h-0 flex-col">
         <Show when={props.browsingStorageUnit}>
           <div class="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 p-2.5">
@@ -340,7 +307,7 @@ export function InventoryGrid(props: InventoryGridProps) {
           </div>
         </Show>
         <PullToRefresh
-          class="relative min-h-0 flex-1 overflow-y-auto pr-1"
+          class="relative min-h-0 flex-1 overflow-y-auto pb-24 pr-1 lg:pb-0"
           onRefresh={props.onRefresh}
         >
           <Show
@@ -412,82 +379,29 @@ export function InventoryGrid(props: InventoryGridProps) {
           </Show>
         </PullToRefresh>
       </div>
-      <div class="min-h-0 overflow-hidden">{props.detailsPanel}</div>
-    </div>
-  );
-}
-
-function InventoryEmptyState(props: {
-  inventory: InventorySnapshot | undefined;
-  inventoryLoading: boolean;
-}) {
-  return (
-    <Show
-      when={props.inventoryLoading}
-      fallback={
-        <Alert class="flex h-full min-h-48 items-center justify-center">
-          <p>No inventory items are loaded.</p>
-        </Alert>
-      }
-    >
-      <InventoryLoadingState
-        active={props.inventoryLoading}
-        title="Loading CS2 inventory"
-        stages={inventoryLoadingStages}
-        currentStage={props.inventory?.message}
-      />
-    </Show>
-  );
-}
-
-function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
-  if (props.large)
-    return (
-      <ItemPreviewMedia
-        name={itemDisplayName(props.item)}
-        imageUrl={props.item.imageUrl}
-        variant="inventory-card"
-      />
-    );
-  const boxClass = () =>
-    props.large
-      ? "flex h-36 w-full items-center justify-center bg-transparent text-xl font-semibold text-slate-600"
-      : "flex h-16 w-20 shrink-0 items-center justify-center rounded bg-slate-950 text-sm font-semibold text-slate-600";
-  const imageClass = () =>
-    props.large
-      ? "h-36 w-full bg-transparent object-contain object-top"
-      : "h-16 w-20 shrink-0 rounded bg-slate-950 object-contain object-top";
-  return (
-    <div class={props.large ? "w-full" : "w-20 shrink-0"}>
-      <Show
-        when={props.item.imageUrl}
-        fallback={<div class={boxClass()}>{itemInitials(props.item)}</div>}
+      <ResponsiveInspector
+        open={
+          props.selectionMode === "inventory" &&
+          props.selectedItemExplicit &&
+          !!props.selectedItem
+        }
+        selectionKey={props.selectedItem?.id}
+        label="Selected CS2 item details"
+        summary={
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-slate-100">
+              {props.selectedItem
+                ? itemDisplayName(props.selectedItem)
+                : "Selected item"}
+            </p>
+            <p class="mt-0.5 truncate text-xs text-slate-500">
+              {props.selectedItem ? itemSubtitle(props.selectedItem) : ""}
+            </p>
+          </div>
+        }
       >
-        <img
-          class={imageClass()}
-          src={props.item.imageUrl}
-          alt={itemDisplayName(props.item)}
-          loading="lazy"
-        />
-      </Show>
+        {props.detailsPanel}
+      </ResponsiveInspector>
     </div>
-  );
-}
-
-function ItemWear(props: { item: InventoryItemDto }) {
-  return (
-    <Show when={hasSkinWearFloat(props.item)}>
-      <div class="mt-auto pt-3">
-        <WearRangeBar
-          compact
-          wear={props.item.paintWear}
-          min={props.item.paintWearMin}
-          max={props.item.paintWearMax}
-        />
-        <p class="mt-1 text-right font-mono text-[11px] text-slate-400">
-          {formatFloat(props.item.paintWear!)}
-        </p>
-      </div>
-    </Show>
   );
 }

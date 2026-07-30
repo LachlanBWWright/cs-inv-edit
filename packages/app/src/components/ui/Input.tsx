@@ -1,5 +1,7 @@
+import type { JSX } from "solid-js";
+
 export interface InputProps {
-  value?: string;
+  value?: string | number;
   class?: string;
   placeholder?: string;
   type?: string;
@@ -8,7 +10,7 @@ export interface InputProps {
   min?: string;
   max?: string;
   autocomplete?: string;
-  onInput?: (event: InputEvent) => void;
+  onInput?: JSX.EventHandler<HTMLInputElement, InputEvent>;
 }
 
 function cn(...values: Array<string | false | undefined>) {

@@ -34,6 +34,9 @@ type SteamGCClient struct {
 	protocolTrace     []ProtocolTraceEntry
 	tf2Mu             sync.Mutex
 	tf2Features       TF2FeatureSnapshot
+	cs2Mu             sync.Mutex
+	cs2Features       CS2FeatureSnapshot
+	cs2SOTypes        map[int32]string
 }
 
 func NewSteamGCClient() *SteamGCClient {
@@ -42,6 +45,8 @@ func NewSteamGCClient() *SteamGCClient {
 		microTxnAuth: make(chan []byte, 8),
 		state:        GCConnectionState{State: "disconnected"},
 		tf2Features:  emptyTF2FeatureSnapshot(),
+		cs2Features:  emptyCS2FeatureSnapshot(),
+		cs2SOTypes:   make(map[int32]string),
 	}
 }
 
@@ -178,6 +183,10 @@ func (s *SteamGCClient) activateAuthenticatedAccount(steamID uint64) {
 	s.tf2Mu.Lock()
 	s.tf2Features = emptyTF2FeatureSnapshot()
 	s.tf2Mu.Unlock()
+	s.cs2Mu.Lock()
+	s.cs2Features = emptyCS2FeatureSnapshot()
+	s.cs2SOTypes = make(map[int32]string)
+	s.cs2Mu.Unlock()
 }
 
 func (s *SteamGCClient) clearConn(conn *steamcm.SteamConnection) {

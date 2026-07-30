@@ -6,6 +6,9 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { formatState, formatTimestamp } from "../lib/format.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import { Button } from "./ui/Button.js";
+import { PageHeader } from "./ui/PageHeader.js";
+import { Surface } from "./ui/Surface.js";
 
 export interface StorageViewProps {
   inventory: InventorySnapshot | undefined;
@@ -55,24 +58,20 @@ function StorageUnitCard(props: {
             Count: {props.unit.storageCount ?? 0}
           </p>
         </div>
-        <button
-          class="rounded-md border border-slate-700 bg-slate-950/70 px-3 py-1 text-sm text-slate-200 transition hover:border-cyan-400/40"
-          onClick={() => props.onSelect()}
-        >
+        <Button variant="outline" size="sm" onClick={() => props.onSelect()}>
           Select
-        </button>
+        </Button>
       </div>
       <div class="mt-4 flex flex-wrap gap-2">
-        <button
-          class="rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-400/40"
+        <Button
+          variant="outline"
           onClick={() =>
             props.onRunOperation("storage.load", { casketId: props.unit.id })
           }
         >
           Load contents
-        </button>
-        <button
-          class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-sm text-white transition hover:bg-cyan-500"
+        </Button>
+        <Button
           onClick={() =>
             props.onRunOperation("storage.move-in", {
               casketId: props.unit.id,
@@ -81,9 +80,9 @@ function StorageUnitCard(props: {
           }
         >
           Move item in
-        </button>
-        <button
-          class="rounded-md border border-rose-500/40 bg-rose-600/80 px-3 py-2 text-sm text-white transition hover:bg-rose-500"
+        </Button>
+        <Button
+          variant="danger"
           onClick={() =>
             props.onRunOperation("storage.move-out", {
               casketId: props.unit.id,
@@ -92,7 +91,7 @@ function StorageUnitCard(props: {
           }
         >
           Move item out
-        </button>
+        </Button>
       </div>
     </article>
   );
@@ -128,21 +127,15 @@ export function StorageView(props: StorageViewProps) {
 
   return (
     <div class="space-y-5">
-      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 class="text-3xl font-semibold text-slate-100">Storage</h2>
-          <p class="mt-2 max-w-2xl text-sm text-slate-400">
-            Inspect storage units and queue move actions with receipt-based
-            state tracking.
-          </p>
-        </div>
-        <button
-          class="rounded-md border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:bg-slate-800"
-          onClick={() => props.onRefresh()}
-        >
-          Reload snapshot
-        </button>
-      </header>
+      <PageHeader
+        title="Storage"
+        description="Inspect storage units and queue move actions with receipt-based state tracking."
+        actions={
+          <Button variant="secondary" onClick={() => props.onRefresh()}>
+            Reload snapshot
+          </Button>
+        }
+      />
       <Show when={status()}>
         <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-200">
           {status()}
@@ -161,10 +154,10 @@ export function StorageView(props: StorageViewProps) {
             )}
           </For>
         </div>
-        <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm">
+        <Surface class="p-4">
           <h3 class="text-lg font-semibold text-slate-100">Receipt state</h3>
           <ReceiptStatePanel receipt={pendingOp()} />
-        </div>
+        </Surface>
       </div>
     </div>
   );

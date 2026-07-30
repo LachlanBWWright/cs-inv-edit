@@ -48,20 +48,35 @@ type AccountSnapshots struct {
 	RefreshedAt string            `json:"refreshedAt"`
 }
 
+type TradeDirection string
+
+const (
+	TradeDirectionReceived TradeDirection = "received"
+	TradeDirectionSent     TradeDirection = "sent"
+	TradeDirectionHistory  TradeDirection = "history"
+)
+
+type TradeState string
+
+const (
+	TradeStateActive   TradeState = "active"
+	TradeStateAccepted TradeState = "accepted"
+)
+
 type Trade struct {
-	ID                string `json:"id"`
-	Direction         string `json:"direction"`
-	PartnerSteamID    string `json:"partnerSteamId"`
-	PartnerName       string `json:"partnerName,omitempty"`
-	PartnerAvatarURL  string `json:"partnerAvatarUrl,omitempty"`
-	PartnerProfileURL string `json:"partnerProfileUrl,omitempty"`
-	Message           string `json:"message,omitempty"`
-	State             string `json:"state"`
-	CreatedAt         string `json:"createdAt,omitempty"`
-	UpdatedAt         string `json:"updatedAt,omitempty"`
-	ExpiresAt         string `json:"expiresAt,omitempty"`
-	ItemsToGive       []Item `json:"itemsToGive"`
-	ItemsToReceive    []Item `json:"itemsToReceive"`
+	ID                string         `json:"id"`
+	Direction         TradeDirection `json:"direction"`
+	PartnerSteamID    string         `json:"partnerSteamId"`
+	PartnerName       string         `json:"partnerName,omitempty"`
+	PartnerAvatarURL  string         `json:"partnerAvatarUrl,omitempty"`
+	PartnerProfileURL string         `json:"partnerProfileUrl,omitempty"`
+	Message           string         `json:"message,omitempty"`
+	State             TradeState     `json:"state"`
+	CreatedAt         string         `json:"createdAt,omitempty"`
+	UpdatedAt         string         `json:"updatedAt,omitempty"`
+	ExpiresAt         string         `json:"expiresAt,omitempty"`
+	ItemsToGive       []Item         `json:"itemsToGive"`
+	ItemsToReceive    []Item         `json:"itemsToReceive"`
 }
 
 type Item struct {
@@ -251,7 +266,7 @@ func (p *Provider) Load(ctx context.Context, accessToken string) (Snapshot, erro
 		return Snapshot{}, err
 	}
 	desc := descriptionMap(append(offersEnvelope.Response.Descriptions, historyEnvelope.Response.Descriptions...))
-	out := Snapshot{Status: "ready", Received: mapOffers(offersEnvelope.Response.Received, "received", desc), Sent: mapOffers(offersEnvelope.Response.Sent, "sent", desc), History: mapHistory(historyEnvelope.Response.Trades, desc), RefreshedAt: time.Now().UTC().Format(time.RFC3339)}
+	out := Snapshot{Status: "ready", Received: mapOffers(offersEnvelope.Response.Received, TradeDirectionReceived, desc), Sent: mapOffers(offersEnvelope.Response.Sent, TradeDirectionSent, desc), History: mapHistory(historyEnvelope.Response.Trades, desc), RefreshedAt: time.Now().UTC().Format(time.RFC3339)}
 	if err := p.loadPartnerProfiles(ctx, accessToken, &out); err != nil {
 		return Snapshot{}, err
 	}
@@ -458,7 +473,7 @@ func mapAssets(in []apiAsset, desc map[string]description) []Item {
 	}
 	return out
 }
-func mapOffers(in []offer, direction string, d map[string]description) []Trade {
+func mapOffers(in []offer, direction TradeDirection, d map[string]description) []Trade {
 	out := make([]Trade, 0, len(in))
 	for _, o := range in {
 		out = append(out, Trade{ID: o.ID, Direction: direction, PartnerSteamID: strconv.FormatUint(steamIDIndividualBase+uint64(o.AccountOther), 10), Message: o.Message, State: offerState(o.State), CreatedAt: stamp(o.Created), UpdatedAt: stamp(o.Updated), ExpiresAt: stamp(o.Expires), ItemsToGive: mapAssets(o.Give, d), ItemsToReceive: mapAssets(o.Receive, d)})
@@ -468,7 +483,7 @@ func mapOffers(in []offer, direction string, d map[string]description) []Trade {
 func mapHistory(in []historyTrade, d map[string]description) []Trade {
 	out := make([]Trade, 0, len(in))
 	for _, t := range in {
-		out = append(out, Trade{ID: scalar(t.ID), Direction: "history", PartnerSteamID: scalar(t.Partner), State: historyState(t.Status), CreatedAt: stamp(t.Time), ItemsToGive: mapAssets(t.Give, d), ItemsToReceive: mapAssets(t.Receive, d)})
+		out = append(out, Trade{ID: scalar(t.ID), Direction: TradeDirectionHistory, PartnerSteamID: scalar(t.Partner), State: historyState(t.Status), CreatedAt: stamp(t.Time), ItemsToGive: mapAssets(t.Give, d), ItemsToReceive: mapAssets(t.Receive, d)})
 	}
 	return out
 }
@@ -478,15 +493,15 @@ func stamp(v uint64) string {
 	}
 	return time.Unix(int64(v), 0).UTC().Format(time.RFC3339)
 }
-func offerState(v int) string {
+func offerState(v int) TradeState {
 	if state := map[int]string{1: "invalid", 2: "active", 3: "accepted", 4: "countered", 5: "expired", 6: "cancelled", 7: "declined", 8: "invalid_items", 9: "confirmation_required", 10: "cancelled_by_secondary_factor", 11: "state_in_escrow"}[v]; state != "" {
-		return state
+		return TradeState(state)
 	}
-	return fmt.Sprintf("state_%d", v)
+	return TradeState(fmt.Sprintf("state_%d", v))
 }
-func historyState(v int) string {
+func historyState(v int) TradeState {
 	if state := map[int]string{0: "invalid", 1: "initiated", 2: "precommitted", 3: "accepted", 4: "failed", 5: "partial", 6: "rollback", 7: "rollback_failed", 8: "state_in_escrow"}[v]; state != "" {
-		return state
+		return TradeState(state)
 	}
-	return fmt.Sprintf("status_%d", v)
+	return TradeState(fmt.Sprintf("status_%d", v))
 }

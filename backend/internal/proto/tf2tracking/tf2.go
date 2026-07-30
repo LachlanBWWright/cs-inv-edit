@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -51,6 +52,28 @@ func Marshal(name string, values map[string]uint64) ([]byte, error) {
 		}
 	}
 	return proto.MarshalOptions{Deterministic: true}.Marshal(message)
+}
+
+func MarshalFields(name string, values map[string]any) ([]byte, error) {
+	message, err := newMessage(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := tracking.SetFields(message, values); err != nil {
+		return nil, err
+	}
+	return proto.MarshalOptions{Deterministic: true}.Marshal(message)
+}
+
+func UnmarshalMessage(name string, body []byte) (*dynamicpb.Message, error) {
+	message, err := newMessage(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := proto.Unmarshal(body, message); err != nil {
+		return nil, fmt.Errorf("decode TF2 %s: %w", name, err)
+	}
+	return message, nil
 }
 
 func DecodeMessageJSON(name string, body []byte) ([]byte, error) {

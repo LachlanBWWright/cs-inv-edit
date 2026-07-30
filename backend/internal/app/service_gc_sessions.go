@@ -51,7 +51,7 @@ func (s *Service) invalidateAccountSessionLocked() {
 }
 
 func (s *Service) currentGCSessionKeyLocked(appID uint32) (gcSessionKey, context.Context, error) {
-	if s.connection.State != "connected" {
+	if s.connection.State != domain.ConnectionStateConnected {
 		return gcSessionKey{}, nil, fmt.Errorf("Steam account is not connected")
 	}
 	accountID := s.connection.SteamID

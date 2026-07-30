@@ -7,7 +7,7 @@ func TestNewReceipt(t *testing.T) {
 	if receipt.Type != "storage.move-in" {
 		t.Fatalf("unexpected type: %s", receipt.Type)
 	}
-	if receipt.State != "queued" {
+	if receipt.State != StateQueued {
 		t.Fatalf("unexpected state: %s", receipt.State)
 	}
 }
@@ -18,7 +18,7 @@ func TestNewEventUsesReceiptMetadata(t *testing.T) {
 	if event.OperationID != receipt.OperationID {
 		t.Fatalf("operation id mismatch")
 	}
-	if event.State != "requires_validation" {
+	if event.State != StateRequiresValidation {
 		t.Fatalf("unexpected event state: %s", event.State)
 	}
 }

@@ -30,6 +30,7 @@ func NewHandler(service *app.Service) http.Handler {
 	h.mux.HandleFunc("/games/{game}/inventory", h.gameInventory)
 	h.mux.HandleFunc("/games/{game}/inventory/refresh", h.gameInventoryRefresh)
 	h.mux.HandleFunc("/games/tf2/features", h.tf2Features)
+	h.mux.HandleFunc("/games/cs2/features", h.cs2Features)
 	h.mux.HandleFunc("/steam-inventory-service/{appID}", h.steamInventoryService)
 	h.mux.HandleFunc("/steam-inventory-service/{appID}/refresh", h.steamInventoryServiceRefresh)
 	h.mux.HandleFunc("/steam-inventory-service/games", h.steamInventoryServiceGames)
@@ -199,7 +200,7 @@ func (h *Handler) gameInventoryRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	receipt := h.service.RefreshGameInventory(r.PathValue("game"))
-	if receipt.State == "blocked_by_feature_flag" {
+	if receipt.State == operations.StateBlockedByFeatureFlag {
 		w.WriteHeader(http.StatusForbidden)
 	}
 	writeJSON(w, receipt)
@@ -210,6 +211,14 @@ func (h *Handler) tf2Features(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, h.service.TF2Features())
+}
+
+func (h *Handler) cs2Features(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, h.service.CS2Features())
 }
 func (h *Handler) steamInventoryServiceGames(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -254,7 +263,7 @@ func (h *Handler) steamInventoryServiceRefresh(w http.ResponseWriter, r *http.Re
 		return
 	}
 	receipt := h.service.RefreshSteamInventoryService(appID)
-	if receipt.State == "blocked_by_feature_flag" {
+	if receipt.State == operations.StateBlockedByFeatureFlag {
 		w.WriteHeader(http.StatusForbidden)
 	}
 	writeJSON(w, receipt)

@@ -43,6 +43,8 @@ const api = {
     invokeResult(backendSchemas.receipt, "backend:refreshGameInventory", game),
   tf2Features: () =>
     invokeResult(backendSchemas.tf2Features, "backend:tf2Features"),
+  cs2Features: () =>
+    invokeResult(backendSchemas.cs2Features, "backend:cs2Features"),
   steamInventoryService: (appId: number) =>
     invokeResult(
       backendSchemas.gameInventory,

@@ -5,8 +5,8 @@ export interface SelectProps {
   value?: string;
   class?: string;
   disabled?: boolean;
-  onChange?: (event: Event) => void;
-  onInput?: (event: InputEvent) => void;
+  onChange?: JSX.EventHandler<HTMLSelectElement, Event>;
+  onInput?: JSX.EventHandler<HTMLSelectElement, InputEvent>;
 }
 
 function cn(...values: Array<string | false | undefined>) {

@@ -1,1 +1,6 @@
-{"operationId":"op_test","type":"storage.load","state":"completed","message":"contents loaded"}
+{
+  "operationId": "op_test",
+  "type": "storage.load",
+  "state": "completed",
+  "message": "contents loaded"
+}

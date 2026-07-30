@@ -6,10 +6,26 @@ import (
 	"time"
 )
 
+type State string
+
+const (
+	StateQueued                 State = "queued"
+	StateValidating             State = "validating"
+	StateEncoded                State = "encoded"
+	StateSent                   State = "sent"
+	StateAwaitingGCConfirmation State = "awaiting_gc_confirmation"
+	StateReconcilingInventory   State = "reconciling_inventory"
+	StateCompleted              State = "completed"
+	StateFailed                 State = "failed"
+	StateBlockedByFeatureFlag   State = "blocked_by_feature_flag"
+	StateRequiresValidation     State = "requires_validation"
+	StateRequiresConnection     State = "requires_connection"
+)
+
 type Receipt struct {
 	OperationID string `json:"operationId"`
 	Type        string `json:"type"`
-	State       string `json:"state"`
+	State       State  `json:"state"`
 	CreatedAt   string `json:"createdAt"`
 	Message     string `json:"message,omitempty"`
 	Result      any    `json:"result,omitempty"`
@@ -18,7 +34,7 @@ type Receipt struct {
 type Event struct {
 	OperationID string `json:"operationId"`
 	Type        string `json:"type"`
-	State       string `json:"state"`
+	State       State  `json:"state"`
 	Message     string `json:"message,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 }
@@ -27,12 +43,12 @@ func NewReceipt(opType string) Receipt {
 	return Receipt{
 		OperationID: "op_" + randomHex(8),
 		Type:        opType,
-		State:       "queued",
+		State:       StateQueued,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
 
-func NewEvent(receipt Receipt, state string, message string) Event {
+func NewEvent(receipt Receipt, state State, message string) Event {
 	return Event{
 		OperationID: receipt.OperationID,
 		Type:        receipt.Type,

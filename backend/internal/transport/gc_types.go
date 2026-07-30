@@ -318,6 +318,41 @@ type TF2FeatureSnapshot struct {
 	Currency       string             `json:"currency,omitempty"`
 	Diagnostics    []string           `json:"diagnostics"`
 }
+
+type CS2EquipSlot struct {
+	ClassID      uint32 `json:"classId"`
+	SlotID       uint32 `json:"slotId"`
+	ItemID       string `json:"itemId"`
+	DefinitionID uint32 `json:"definitionId"`
+}
+
+type CS2ActivityEntry struct {
+	Kind      string         `json:"kind"`
+	ID        string         `json:"id,omitempty"`
+	Timestamp uint32         `json:"timestamp,omitempty"`
+	Data      map[string]any `json:"data"`
+}
+
+type CS2FeatureSnapshot struct {
+	Status             string             `json:"status"`
+	RefreshedAt        string             `json:"refreshedAt,omitempty"`
+	EquipSlots         []CS2EquipSlot     `json:"equipSlots"`
+	Matches            []map[string]any   `json:"matches"`
+	Profile            map[string]any     `json:"profile,omitempty"`
+	Premier            map[string]any     `json:"premier,omitempty"`
+	DeepStats          map[string]any     `json:"deepStats,omitempty"`
+	SearchStats        map[string]any     `json:"searchStats,omitempty"`
+	InspectedItem      map[string]any     `json:"inspectedItem,omitempty"`
+	InspectedAt        string             `json:"inspectedAt,omitempty"`
+	Rentals            []map[string]any   `json:"rentals"`
+	Quests             []map[string]any   `json:"quests"`
+	RecurringMissions  []map[string]any   `json:"recurringMissions"`
+	SeasonalOperations []map[string]any   `json:"seasonalOperations"`
+	XPShop             map[string]any     `json:"xpShop,omitempty"`
+	RecurringSchema    map[string]any     `json:"recurringSchema,omitempty"`
+	Activity           []CS2ActivityEntry `json:"activity"`
+	Diagnostics        []string           `json:"diagnostics"`
+}
 type GCStoreData struct {
 	Result            int32
 	Currency          int32
@@ -388,6 +423,7 @@ type GCClient interface {
 	SetProtocolTracing(enabled bool)
 	ProtocolTrace(after uint64) []ProtocolTraceEntry
 	TF2Features() TF2FeatureSnapshot
+	CS2Features() CS2FeatureSnapshot
 	Events() <-chan GCEvent
 	State() GCConnectionState
 }
@@ -408,9 +444,11 @@ type TestGCClient struct {
 	StorePurchaseResult       StorePurchaseTransportResult
 	StorePurchaseErr          error
 	TF2FeatureResult          TF2FeatureSnapshot
+	CS2FeatureResult          CS2FeatureSnapshot
 }
 
 func (m *TestGCClient) TF2Features() TF2FeatureSnapshot { return m.TF2FeatureResult }
+func (m *TestGCClient) CS2Features() CS2FeatureSnapshot { return m.CS2FeatureResult }
 
 func NewTestGCClient() *TestGCClient {
 	return &TestGCClient{events: make(chan GCEvent, 16), state: GCConnectionState{State: "test"}}

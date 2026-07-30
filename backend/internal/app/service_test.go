@@ -12,10 +12,10 @@ import (
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/econ"
 	"cs-inv-edit/backend/internal/operations"
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestCS2StoreCurrencyUsesEconomyEnum(t *testing.T) {
@@ -84,19 +84,15 @@ func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testi
 		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "700", PurchasePrice: 1299, Item: domain.RelatedItem{Defindex: 24, PaintKit: 1351, MarketName: "UMP-45 | Continuum"}}},
 	}}}
 	terminalItemID := uint64(52994080407)
-	offerBody, err := proto.Marshal(&cs2pb.CSOEconItem{
-		Id:       proto.Uint64(700),
-		DefIndex: proto.Uint32(7),
-		Attribute: []*cs2pb.CSOEconItem_Attribute{
-			{DefIndex: proto.Uint32(272), Value: proto.Uint32(uint32(terminalItemID))},
-			{DefIndex: proto.Uint32(273), Value: proto.Uint32(uint32(terminalItemID >> 32))},
-			{DefIndex: proto.Uint32(316), Value: proto.Uint32(1299)},
-		},
-	})
+	offerBody, err := cs2pb.MarshalMessage("CSOEconItem", map[string]any{"id": uint64(700), "def_index": uint32(7), "attribute": []any{
+		map[string]any{"def_index": uint32(272), "value": uint32(terminalItemID)},
+		map[string]any{"def_index": uint32(273), "value": uint32(terminalItemID >> 32)},
+		map[string]any{"def_index": uint32(316), "value": uint32(1299)},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	singleBody, err := proto.Marshal(&cs2pb.CMsgSOSingleObject{TypeId: proto.Int32(1), ObjectData: offerBody})
+	singleBody, err := cs2pb.MarshalMessage("CMsgSOSingleObject", map[string]any{"type_id": int32(1), "object_data": offerBody})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,10 +100,7 @@ func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testi
 	if err != nil || len(decodedOffers) != 1 || decodedOffers[0].Attributes[316] != 1299 {
 		t.Fatalf("decoded terminal offer price: offers=%#v err=%v", decodedOffers, err)
 	}
-	confirmationBody, err := proto.Marshal(&cs2pb.CMsgGCItemCustomizationNotification{
-		Request: proto.Uint32(protocol.CustomizationCasketContents),
-		ItemId:  []uint64{terminalItemID},
-	})
+	confirmationBody, err := cs2pb.MarshalMessage("CMsgGCItemCustomizationNotification", map[string]any{"request": protocol.CustomizationCasketContents, "item_id": []any{terminalItemID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +169,7 @@ func TestTerminalPurchaseWireShapesExhaustAllNonCanonicalPresenceCombinations(t 
 func TestSubmitOperationBlocksNameTagsByDefault(t *testing.T) {
 	service := NewService()
 	receipt := service.SubmitOperation("nametags.apply", map[string]any{})
-	if receipt.State != "blocked_by_feature_flag" {
+	if receipt.State != operations.StateBlockedByFeatureFlag {
 		t.Fatalf("expected blocked_by_feature_flag, got %q", receipt.State)
 	}
 }
@@ -216,19 +209,19 @@ func TestStorageMoveOutSendsAuthoritativeCasketExtractMessage(t *testing.T) {
 	service.settings.FeatureFlags.EnableStorageMutations = true
 
 	receipt := service.SubmitOperation("storage.move-out", map[string]any{"casketId": "17224167524", "itemId": "123456789"})
-	if receipt.State != "awaiting_gc_confirmation" || len(client.SentProtoMessages) != 1 {
+	if receipt.State != operations.StateAwaitingGCConfirmation || len(client.SentProtoMessages) != 1 {
 		t.Fatalf("receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
 	}
 	sent := client.SentProtoMessages[0]
 	if sent.EMsg != protocol.EMsgCasketItemExtract {
 		t.Fatalf("emsg=%d want=%d", sent.EMsg, protocol.EMsgCasketItemExtract)
 	}
-	var message cs2pb.CMsgCasketItem
-	if err := proto.Unmarshal(sent.Body, &message); err != nil {
+	message, err := cs2pb.UnmarshalMessage("CMsgCasketItem", sent.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if message.GetCasketItemId() != 17224167524 || message.GetItemItemId() != 123456789 {
-		t.Fatalf("message=%#v", &message)
+	if tracking.Uint(message, "casket_item_id") != 17224167524 || tracking.Uint(message, "item_item_id") != 123456789 {
+		t.Fatalf("message=%#v", message)
 	}
 }
 
@@ -239,19 +232,19 @@ func TestTerminalOfferLoadUsesCurrentVolatileItemRoute(t *testing.T) {
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
 
 	receipt := service.SubmitOperation("terminal.load-offer", map[string]any{"terminalId": "52994080407"})
-	if receipt.State != "awaiting_gc_confirmation" || len(client.SentProtoMessages) != 1 {
+	if receipt.State != operations.StateAwaitingGCConfirmation || len(client.SentProtoMessages) != 1 {
 		t.Fatalf("receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
 	}
 	sent := client.SentProtoMessages[0]
 	if sent.EMsg != protocol.EMsgVolatileItemLoadContents {
 		t.Fatalf("emsg=%d want volatile-item-load route %d", sent.EMsg, protocol.EMsgVolatileItemLoadContents)
 	}
-	var message cs2pb.CMsgCasketItem
-	if err := proto.Unmarshal(sent.Body, &message); err != nil {
+	message, err := cs2pb.UnmarshalMessage("CMsgCasketItem", sent.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if message.GetCasketItemId() != 52994080407 || message.GetItemItemId() != 52994080407 {
-		t.Fatalf("message=%#v", &message)
+	if tracking.Uint(message, "casket_item_id") != 52994080407 || tracking.Uint(message, "item_item_id") != 52994080407 {
+		t.Fatalf("message=%#v", message)
 	}
 }
 
@@ -265,16 +258,16 @@ func TestBulkArmoryPurchaseSendsAdjustedBalances(t *testing.T) {
 	service.settings.ArmoryPurchasePacingSeconds = 1
 	service.armory = domain.ArmorySnapshot{Status: "ready", Balance: 10, GenerationTime: 7, Offers: []domain.ArmoryOffer{{CampaignID: 11, RedeemID: 2, ExpectedCost: 4}}}
 	receipt := service.RedeemArmory(map[string]any{"campaignId": float64(11), "redeemId": float64(2), "redeemableBalance": float64(10), "expectedCost": float64(4), "generationTime": float64(7), "quantity": float64(2)})
-	if receipt.State != "awaiting_gc_confirmation" || len(client.SentProtoMessages) != 2 {
+	if receipt.State != operations.StateAwaitingGCConfirmation || len(client.SentProtoMessages) != 2 {
 		t.Fatalf("bulk receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
 	}
 	for index, wantBalance := range []uint32{10, 6} {
-		var message cs2pb.CMsgGCCstrike15V2ClientRedeemMissionReward
-		if err := proto.Unmarshal(client.SentProtoMessages[index].Body, &message); err != nil {
+		message, err := cs2pb.UnmarshalMessage("CMsgGCCstrike15_v2_ClientRedeemMissionReward", client.SentProtoMessages[index].Body)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if message.GetRedeemableBalance() != wantBalance {
-			t.Fatalf("message %d balance=%d want=%d", index, message.GetRedeemableBalance(), wantBalance)
+		if balance := uint32(tracking.Uint(message, "redeemable_balance")); balance != wantBalance {
+			t.Fatalf("message %d balance=%d want=%d", index, balance, wantBalance)
 		}
 	}
 }
@@ -292,7 +285,7 @@ func TestArmoryPurchaseIsNotSentWhenGCSessionPreflightFails(t *testing.T) {
 
 	receipt := service.RedeemArmory(map[string]any{"campaignId": float64(11), "redeemId": float64(2), "redeemableBalance": float64(10), "expectedCost": float64(4), "generationTime": float64(7), "quantity": float64(1)})
 
-	if receipt.State != "failed" || !strings.Contains(receipt.Message, "purchase was not sent") {
+	if receipt.State != operations.StateFailed || !strings.Contains(receipt.Message, "purchase was not sent") {
 		t.Fatalf("receipt=%#v", receipt)
 	}
 	if len(client.SentProtoMessages) != 0 {
@@ -346,7 +339,7 @@ func TestSubmitOperationAllowsNameTagsWhenEnabled(t *testing.T) {
 	})
 
 	receipt := service.SubmitOperation("nametags.apply", map[string]any{})
-	if receipt.State != "awaiting_gc_confirmation" {
+	if receipt.State != operations.StateAwaitingGCConfirmation {
 		t.Fatalf("expected awaiting_gc_confirmation, got %q", receipt.State)
 	}
 }
@@ -379,7 +372,7 @@ func TestSubmitOperationAttachesGametrackingMessageMetadata(t *testing.T) {
 func TestSubmitOperationBlocksItemDeletionWhenDisabled(t *testing.T) {
 	service := NewService()
 	receipt := service.SubmitOperation("items.delete", map[string]any{})
-	if receipt.State != "blocked_by_feature_flag" {
+	if receipt.State != operations.StateBlockedByFeatureFlag {
 		t.Fatalf("expected blocked_by_feature_flag, got %q", receipt.State)
 	}
 }
@@ -392,7 +385,7 @@ func TestCS2MutationEndpointsRejectExplicitReadOnlyGameItems(t *testing.T) {
 	service.UpdateSettings(settings)
 	for _, game := range []string{"tf2", "dota2"} {
 		receipt := service.SubmitOperation("items.delete", map[string]any{"game": game, "itemId": "123"})
-		if receipt.State != "failed" || !strings.Contains(receipt.Message, "read-only") {
+		if receipt.State != operations.StateFailed || !strings.Contains(receipt.Message, "read-only") {
 			t.Fatalf("%s mutation receipt=%#v", game, receipt)
 		}
 	}
@@ -412,7 +405,7 @@ func TestNewServiceStartsWithEmptyInventoryUntilConnected(t *testing.T) {
 func TestRefreshInventoryRequiresConnection(t *testing.T) {
 	service := NewService()
 	receipt := service.RefreshInventory()
-	if receipt.State != "requires_connection" {
+	if receipt.State != operations.StateRequiresConnection {
 		t.Fatalf("expected requires_connection, got %q", receipt.State)
 	}
 }
@@ -427,7 +420,7 @@ func TestArmoryReadAndRedemptionEnabledByDefault(t *testing.T) {
 		t.Fatal("expected Armory purchases enabled by default")
 	}
 	receipt := service.RedeemArmory(map[string]any{})
-	if receipt.State == "blocked_by_feature_flag" || receipt.State == "requires_validation" {
+	if receipt.State == operations.StateBlockedByFeatureFlag || receipt.State == operations.StateRequiresValidation {
 		t.Fatalf("expected redemption to pass default feature and validation gates, got %q", receipt.State)
 	}
 }
@@ -622,7 +615,7 @@ func TestRevealAnimationsDefaultIndependently(t *testing.T) {
 func TestTerminalRevealAnimationCanBeUpdatedIndependently(t *testing.T) {
 	service := NewService()
 	receipt := service.SubmitOperation("settings", map[string]any{"animations": map[string]any{"terminal": "countdown"}})
-	if receipt.State != "completed" {
+	if receipt.State != operations.StateCompleted {
 		t.Fatalf("settings receipt = %#v", receipt)
 	}
 	settings := service.Settings()
@@ -703,7 +696,7 @@ func TestDisabledGameRefreshNeverTouchesGC(t *testing.T) {
 	service.gcClient = client
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
 	receipt := service.RefreshGameInventory("tf2")
-	if receipt.State != "blocked_by_feature_flag" || called {
+	if receipt.State != operations.StateBlockedByFeatureFlag || called {
 		t.Fatalf("disabled refresh receipt=%#v GC-called=%t", receipt, called)
 	}
 }
@@ -749,7 +742,7 @@ func TestFailedMultiGameRefreshDoesNotMutateCS2Inventory(t *testing.T) {
 	service.UpdateSettings(settings)
 
 	receipt := service.RefreshGameInventory("tf2")
-	if receipt.State != "failed" {
+	if receipt.State != operations.StateFailed {
 		t.Fatalf("receipt=%#v", receipt)
 	}
 	after := service.Inventory()
@@ -775,7 +768,7 @@ func TestSteamInventoryServiceRefreshUsesRequestedAppID(t *testing.T) {
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "76561198000000000"}
 
 	receipt := service.RefreshSteamInventoryService(480)
-	if receipt.State != "completed" || requestedAppID != 480 || requestedSteamID != 76561198000000000 {
+	if receipt.State != operations.StateCompleted || requestedAppID != 480 || requestedSteamID != 76561198000000000 {
 		t.Fatalf("receipt=%#v appid=%d steamid=%d", receipt, requestedAppID, requestedSteamID)
 	}
 	snapshot, enabled := service.SteamInventoryService(480)
@@ -873,7 +866,7 @@ func TestDisablingGameActivelyCancelsRefreshAndClearsEveryAccount(t *testing.T) 
 	settings.FeatureFlags.EnableTF2Inventory = false
 	service.UpdateSettings(settings)
 	receipt := <-done
-	if receipt.State != "completed" || !strings.Contains(receipt.Message, "superseded") {
+	if receipt.State != operations.StateCompleted || !strings.Contains(receipt.Message, "superseded") {
 		t.Fatalf("cancelled receipt=%#v", receipt)
 	}
 	if len(service.gameInventories) != 0 || len(service.gameCancels) != 0 {
@@ -903,7 +896,7 @@ func TestAccountChangeActivelyCancelsPreviousAccountRefresh(t *testing.T) {
 	<-started
 	service.finishSteamLogin("new", transport.LogonResult{SteamID: 2})
 	receipt := <-done
-	if receipt.State != "completed" || !strings.Contains(receipt.Message, "superseded") {
+	if receipt.State != operations.StateCompleted || !strings.Contains(receipt.Message, "superseded") {
 		t.Fatalf("old-account receipt=%#v", receipt)
 	}
 	snapshot, _, _ := service.GameInventory("dota2")

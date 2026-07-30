@@ -3,7 +3,7 @@ import type { JSX } from "solid-js";
 export interface ButtonProps {
   children?: JSX.Element;
   class?: string;
-  variant?: "default" | "secondary" | "danger" | "ghost";
+  variant?: "default" | "secondary" | "danger" | "ghost" | "outline";
   size?: "sm" | "md" | "lg";
   type?: "button" | "submit" | "reset";
   disabled?: boolean;
@@ -26,6 +26,8 @@ export function Button(props: ButtonProps) {
     danger: "border-rose-400/40 bg-rose-600 text-white hover:bg-rose-500",
     ghost:
       "border-transparent bg-transparent text-slate-200 hover:bg-slate-800",
+    outline:
+      "border-slate-700 bg-slate-950/70 text-slate-200 hover:border-cyan-400/50 hover:text-cyan-100",
   };
   const sizes = {
     sm: "px-2.5 py-1.5 text-xs",

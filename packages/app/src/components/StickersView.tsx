@@ -5,6 +5,10 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { formatState } from "../lib/format.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import { Alert } from "./ui/Alert.js";
+import { Button } from "./ui/Button.js";
+import { PageHeader } from "./ui/PageHeader.js";
+import { Surface } from "./ui/Surface.js";
 
 export interface StickersViewProps {
   inventory: InventorySnapshot | undefined;
@@ -32,21 +36,18 @@ export function StickersView(props: StickersViewProps) {
 
   return (
     <div class="space-y-5">
-      <header>
-        <h2 class="text-3xl font-semibold text-slate-100">Stickers</h2>
-        <p class="mt-2 max-w-2xl text-sm text-slate-400">
-          Read-only sticker display with extraction gated behind live
-          validation.
-        </p>
-      </header>
+      <PageHeader
+        title="Stickers"
+        description="Read-only sticker display with extraction gated behind live validation."
+      />
 
-      <div class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+      <Alert variant="warning">
         <p class="font-semibold">Requires live validation</p>
         <p class="mt-1">
           Sticker extraction remains development-only and must not be treated as
           production-ready.
         </p>
-      </div>
+      </Alert>
 
       <Show when={status()}>
         <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-200">
@@ -57,20 +58,20 @@ export function StickersView(props: StickersViewProps) {
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <For each={stickerItems()}>
           {(item) => (
-            <article class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm">
+            <Surface as="article" class="p-4">
               <h3 class="font-semibold text-slate-100">{item.name}</h3>
               <p class="mt-2 text-sm text-slate-400">
                 Read-only preview for sticker assets.
               </p>
               <div class="mt-4 flex flex-wrap gap-2">
-                <button
-                  class="rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-400/40"
+                <Button
+                  variant="outline"
                   onClick={() => runOperation("stickers.extract")}
                 >
                   Extract
-                </button>
+                </Button>
               </div>
-            </article>
+            </Surface>
           )}
         </For>
       </div>

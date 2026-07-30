@@ -7,6 +7,7 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
+import { SegmentedControl } from "./ui/SegmentedControl.js";
 import { Card } from "./ui/Card.js";
 
 const stateLabel = (state: string) =>
@@ -295,21 +296,21 @@ export function TradesView(props: {
           {props.snapshot?.message || "Steam could not load trades."}
         </Alert>
       </Show>
-      <div class="mt-4 flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60 p-1">
-        <For each={tabs}>
-          {(entry) => (
-            <button
-              class={`flex min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${tab() === entry.id ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-200"}`}
-              onClick={() => setTab(entry.id)}
-            >
-              {entry.label}
-              <span class="rounded-full bg-slate-950/70 px-2 py-0.5 text-xs">
-                {entry.count()}
-              </span>
-            </button>
-          )}
-        </For>
-      </div>
+      <SegmentedControl
+        class="mt-4"
+        label="Trade offer status"
+        value={tab()}
+        onChange={setTab}
+        options={tabs.map((entry) => ({
+          value: entry.id,
+          label: entry.label,
+          suffix: (
+            <span class="rounded-full bg-slate-950/70 px-2 py-0.5 text-xs">
+              {entry.count()}
+            </span>
+          ),
+        }))}
+      />
       <div class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
         <Show
           when={trades().length}

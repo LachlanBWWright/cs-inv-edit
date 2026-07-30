@@ -24,6 +24,7 @@ import type {
   SteamTradesSnapshot,
   StoreSnapshot,
   TF2FeatureSnapshot,
+  CS2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
 import { backendSchemas } from "@cs-inv-edit/contracts";
 import "@cs-inv-edit/app/styles.css";
@@ -81,6 +82,11 @@ function createHttpBackendClient(): LocalAgentClient {
       createRequestResult<TF2FeatureSnapshot>(
         "/games/tf2/features",
         backendSchemas.tf2Features,
+      ),
+    cs2Features: () =>
+      createRequestResult<CS2FeatureSnapshot>(
+        "/games/cs2/features",
+        backendSchemas.cs2Features,
       ),
     steamInventoryService: (appId) =>
       createRequestResult<GameInventorySnapshot>(

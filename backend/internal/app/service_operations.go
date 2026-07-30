@@ -8,7 +8,7 @@ import (
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
 )
@@ -16,7 +16,7 @@ import (
 func (s *Service) RefreshInventory() operations.Receipt {
 	receipt := s.newReceipt("inventory.refresh")
 	s.mu.Lock()
-	if s.connection.State != "connected" {
+	if s.connection.State != domain.ConnectionStateConnected {
 		s.inventory.Status = "requires_connection"
 		s.inventory.RefreshedAt = now()
 		receipt.State = "requires_connection"
@@ -163,6 +163,9 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if value, ok := next["enableTf2Loadouts"].(bool); ok {
 				flags.EnableTF2Loadouts = value
 			}
+			if value, ok := next["enableCs2Loadouts"].(bool); ok {
+				flags.EnableCS2Loadouts = value
+			}
 			if value, ok := next["enableTf2ItemUse"].(bool); ok {
 				flags.EnableTF2ItemUse = value
 			}
@@ -195,7 +198,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if !flags.EnableSteamInventory {
 				s.clearGameInventoriesLocked("steam")
 			}
-			connected := s.connection.State == "connected"
+			connected := s.connection.State == domain.ConnectionStateConnected
 			s.mu.Unlock()
 			if connected && ((oldFlags.EnableTF2Inventory && !flags.EnableTF2Inventory) || (oldFlags.EnableDota2Inventory && !flags.EnableDota2Inventory)) {
 				if err := s.gcClient.SetGamesPlayed(context.Background(), enabledPresenceApps(flags)); err != nil {
@@ -214,6 +217,9 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	if _, ok := protocol.TF2OperationMapping(opType); ok {
 		return s.submitTF2Operation(receipt, opType, input)
 	}
+	if _, ok := protocol.CS2FeatureOperationMapping(opType); ok {
+		return s.submitCS2FeatureOperation(receipt, opType, input)
+	}
 	if gameID, _ := input["game"].(string); gameID != "" && gameID != "cs2" {
 		receipt.State = "failed"
 		receipt.Message = "TF2 and Dota 2 inventory modes are read-only; CS2 mutation endpoints reject non-CS2 items"
@@ -231,7 +237,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			s.mu.Unlock()
 			return receipt
 		}
-		if s.connection.State != "connected" {
+		if s.connection.State != domain.ConnectionStateConnected {
 			receipt.State = "failed"
 			receipt.Message = "connect a Steam account before opening containers"
 			s.operations = append(s.operations, receipt)
@@ -258,7 +264,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		casketID, parseErr := strconv.ParseUint(casketIDText, 10, 64)
 		s.mu.Lock()
 		enabled := s.settings.FeatureFlags.EnableStorageMutations
-		connected := s.connection.State == "connected"
+		connected := s.connection.State == domain.ConnectionStateConnected
 		if parseErr == nil && casketID != 0 && enabled && connected {
 			s.loadedStorageUnits[casketID] = true
 		}
@@ -279,7 +285,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	if opType == "terminal.load-offer" {
 		terminalIDText, _ := input["terminalId"].(string)
 		s.mu.Lock()
-		connected := s.connection.State == "connected"
+		connected := s.connection.State == domain.ConnectionStateConnected
 		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 		s.mu.Unlock()
 		if !connected || sessionErr != nil {
@@ -288,7 +294,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			return receipt
 		}
 		_, state, message, result := s.resumeTerminalOffer(accountCtx, terminalIDText)
-		receipt.State = state
+		receipt.State = operations.State(state)
 		receipt.Message = message
 		receipt.Result = result
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -301,7 +307,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		itemID, itemParseErr := strconv.ParseUint(itemIDText, 10, 64)
 		s.mu.Lock()
 		enabled := s.settings.FeatureFlags.EnableStorageMutations
-		connected := s.connection.State == "connected"
+		connected := s.connection.State == domain.ConnectionStateConnected
 		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 		s.mu.Unlock()
 		switch {
@@ -325,7 +331,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		return receipt
 	}
 
-	state := "queued"
+	state := operations.StateQueued
 	message := "queued"
 	recognizedMutation := false
 	s.mu.Lock()
@@ -373,7 +379,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		if !s.settings.FeatureFlags.EnableNameTags {
 			state = "blocked_by_feature_flag"
 			message = "name tag operations disabled"
-		} else if s.connection.State != "connected" {
+		} else if s.connection.State != domain.ConnectionStateConnected {
 			state = "awaiting_gc_confirmation"
 			message = "awaiting GC confirmation"
 		} else {
@@ -447,7 +453,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			message = "gifting requires live validation"
 		}
 	}
-	if recognizedMutation && state == "queued" {
+	if recognizedMutation && state == operations.StateQueued {
 		state = "awaiting_gc_confirmation"
 		message = "awaiting GC confirmation"
 	}
@@ -542,7 +548,7 @@ func (s *Service) UpdateSettings(next domain.Settings) domain.Settings {
 	if !next.FeatureFlags.EnableSteamInventory {
 		s.clearGameInventoriesLocked("steam")
 	}
-	connected := s.connection.State == "connected"
+	connected := s.connection.State == domain.ConnectionStateConnected
 	s.mu.Unlock()
 	if connected && ((oldFlags.EnableTF2Inventory && !next.FeatureFlags.EnableTF2Inventory) || (oldFlags.EnableDota2Inventory && !next.FeatureFlags.EnableDota2Inventory)) {
 		if err := s.gcClient.SetGamesPlayed(context.Background(), enabledPresenceApps(next.FeatureFlags)); err != nil {

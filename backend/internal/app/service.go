@@ -112,7 +112,7 @@ func (s *Service) registerSteamSessionLocked(status domain.ConnectionStatus, tok
 
 func (s *Service) prepareAdditionalSteamSession() {
 	s.mu.Lock()
-	if s.connection.State == "connected" {
+	if s.connection.State == domain.ConnectionStateConnected {
 		s.gcClient = transport.NewSteamGCClient()
 		s.gcClient.SetProtocolTracing(s.settings.FeatureFlags.EnableProtocolConsole)
 		s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "new account authentication pending"}
@@ -168,7 +168,7 @@ func (s *Service) Trades() steamtrade.Snapshot {
 
 func (s *Service) RefreshTrades(ctx context.Context) steamtrade.Snapshot {
 	s.mu.Lock()
-	if s.connection.State != "connected" {
+	if s.connection.State != domain.ConnectionStateConnected {
 		s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: "Connect a Steam account to view trades."}
 		out := s.trades
 		s.mu.Unlock()
@@ -206,7 +206,7 @@ func (s *Service) createTradeOffer(ctx context.Context, input steamtrade.CreateR
 		return steamtrade.MutationResult{Status: "blocked_by_feature_flag", Message: "Steam trade mutations are disabled. Enable them in Settings first."}
 	}
 	steamID, token, provider := s.connection.SteamID, s.tradeAccessToken, s.tradeProvider
-	connected := s.connection.State == "connected"
+	connected := s.connection.State == domain.ConnectionStateConnected
 	s.mu.Unlock()
 	if !connected {
 		return steamtrade.MutationResult{Status: "requires_connection", Message: "Connect Steam before creating a trade offer."}
@@ -225,7 +225,7 @@ func (s *Service) AcceptTradeOffer(ctx context.Context, tradeOfferID string) ste
 		return steamtrade.MutationResult{Status: "blocked_by_feature_flag", Message: "Steam trade mutations are disabled. Enable them in Settings first."}
 	}
 	steamID, token, provider := s.connection.SteamID, s.tradeAccessToken, s.tradeProvider
-	connected := s.connection.State == "connected"
+	connected := s.connection.State == domain.ConnectionStateConnected
 	partner := activeReceivedPartner(s.trades.Received, tradeOfferID)
 	s.mu.Unlock()
 	if !connected {
@@ -257,7 +257,9 @@ func (s *Service) CounterTradeOffer(ctx context.Context, tradeOfferID string, in
 
 func activeReceivedPartner(trades []steamtrade.Trade, tradeOfferID string) string {
 	for _, trade := range trades {
-		if trade.ID == tradeOfferID && trade.Direction == "received" && trade.State == "active" {
+		if trade.ID == tradeOfferID &&
+			trade.Direction == steamtrade.TradeDirectionReceived &&
+			trade.State == steamtrade.TradeStateActive {
 			return trade.PartnerSteamID
 		}
 	}
@@ -277,7 +279,7 @@ func (s *Service) ProtocolTrace(after uint64) []transport.ProtocolTraceEntry {
 func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 	s.mu.Lock()
 	enabled := s.settings.FeatureFlags.EnableTF2Inventory
-	connected := s.connection.State == "connected"
+	connected := s.connection.State == domain.ConnectionStateConnected
 	currency := s.store.Currency
 	s.mu.Unlock()
 	if !enabled {
@@ -302,13 +304,71 @@ func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 	return snapshot
 }
 
+func (s *Service) CS2Features() transport.CS2FeatureSnapshot {
+	s.mu.Lock()
+	connected := s.connection.State == domain.ConnectionStateConnected
+	s.mu.Unlock()
+	if !connected {
+		return transport.CS2FeatureSnapshot{
+			Status: "requires_connection", EquipSlots: []transport.CS2EquipSlot{},
+			Matches: []map[string]any{}, Rentals: []map[string]any{}, Quests: []map[string]any{},
+			RecurringMissions: []map[string]any{}, SeasonalOperations: []map[string]any{},
+			Activity: []transport.CS2ActivityEntry{}, Diagnostics: []string{"Connect Steam to load CS2 coordinator features."},
+		}
+	}
+	snapshot := s.gcClient.CS2Features()
+	s.reconcileCS2FeatureOperations(snapshot)
+	return snapshot
+}
+
+func (s *Service) reconcileCS2FeatureOperations(snapshot transport.CS2FeatureSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := time.Now().UTC()
+	for index := range s.operations {
+		receipt := &s.operations[index]
+		if receipt.State != operations.StateAwaitingGCConfirmation || len(receipt.Type) < 4 || receipt.Type[:4] != "cs2." {
+			continue
+		}
+		created, err := time.Parse(time.RFC3339Nano, receipt.CreatedAt)
+		if err != nil {
+			continue
+		}
+		result, _ := receipt.Result.(map[string]any)
+		confirmed := false
+		switch receipt.Type {
+		case "cs2.loadout.set":
+			classID, slotID := resultUint32(result["classId"]), resultUint32(result["slotId"])
+			itemID := fmt.Sprint(result["itemId"])
+			for _, entry := range snapshot.EquipSlots {
+				confirmed = confirmed || entry.ClassID == classID && entry.SlotID == slotID && entry.ItemID == itemID
+			}
+		case "cs2.inspect.resolve":
+			confirmed = timestampAfter(snapshot.InspectedAt, created)
+		case "cs2.matches.recent", "cs2.matches.details":
+			confirmed = timestampAfter(snapshot.RefreshedAt, created) && len(snapshot.Matches) > 0
+		case "cs2.progression.refresh":
+			confirmed = timestampAfter(snapshot.RefreshedAt, created) && snapshot.RecurringSchema != nil
+		}
+		if confirmed {
+			receipt.State, receipt.Message = "completed", "CS2 Game Coordinator state confirmed the operation"
+			s.events = append(s.events, operations.NewEvent(*receipt, receipt.State, receipt.Message))
+			continue
+		}
+		if current.Sub(created) >= 15*time.Second {
+			receipt.State, receipt.Message = "failed", "CS2 Game Coordinator did not confirm the request before timeout; it was not retried"
+			s.events = append(s.events, operations.NewEvent(*receipt, receipt.State, receipt.Message))
+		}
+	}
+}
+
 func (s *Service) reconcileTF2Operations(snapshot transport.TF2FeatureSnapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	nowTime := time.Now().UTC()
 	for index := range s.operations {
 		receipt := &s.operations[index]
-		if receipt.State != "awaiting_gc_confirmation" || len(receipt.Type) < 4 || receipt.Type[:4] != "tf2." {
+		if receipt.State != operations.StateAwaitingGCConfirmation || len(receipt.Type) < 4 || receipt.Type[:4] != "tf2." {
 			continue
 		}
 		created, err := time.Parse(time.RFC3339Nano, receipt.CreatedAt)

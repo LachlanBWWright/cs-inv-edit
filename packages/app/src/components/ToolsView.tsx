@@ -8,6 +8,10 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { formatState } from "../lib/format.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import { Button } from "./ui/Button.js";
+import { Input } from "./ui/Input.js";
+import { PageHeader } from "./ui/PageHeader.js";
+import { Surface } from "./ui/Surface.js";
 
 export interface ToolsViewProps {
   onApplyStatTrakSwap: (
@@ -30,11 +34,11 @@ function ToolSection(props: {
   children: JSX.Element | string | number | null | undefined;
 }) {
   return (
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm">
+    <Surface as="section" class="p-4">
       <h3 class="text-lg font-semibold text-slate-100">{props.title}</h3>
       <p class="mt-2 text-sm text-slate-400">{props.description}</p>
       <div class="mt-4 space-y-3 text-sm">{props.children}</div>
-    </section>
+    </Surface>
   );
 }
 
@@ -73,13 +77,10 @@ export function ToolsView(props: ToolsViewProps) {
 
   return (
     <div class="space-y-5">
-      <header>
-        <h2 class="text-3xl font-semibold text-slate-100">Tools</h2>
-        <p class="mt-2 max-w-2xl text-sm text-slate-400">
-          Run StatTrak, strange-part, and generic tool-to-item/base-item
-          operations.
-        </p>
-      </header>
+      <PageHeader
+        title="Tools"
+        description="Run StatTrak, strange-part, and generic tool-to-item/base-item operations."
+      />
       <Show when={status()}>
         <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-200">
           {status()}
@@ -90,8 +91,7 @@ export function ToolsView(props: ToolsViewProps) {
           title="StatTrak swap"
           description="Swap the supplied inventory items using the selected tool item."
         >
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Tool item ID"
             value={statTrakInput().toolItemId}
             onInput={(event) =>
@@ -101,8 +101,7 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Item 1 ID"
             value={statTrakInput().item1ItemId}
             onInput={(event) =>
@@ -112,8 +111,7 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Item 2 ID"
             value={statTrakInput().item2ItemId}
             onInput={(event) =>
@@ -123,22 +121,20 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <button
-            class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-white disabled:opacity-60"
+          <Button
             disabled={pending()}
             onClick={() =>
               run(() => props.onApplyStatTrakSwap(statTrakInput()))
             }
           >
             Submit swap
-          </button>
+          </Button>
         </ToolSection>
         <ToolSection
           title="Apply strange part"
           description="Attach a strange part to a target item using the provided tool item."
         >
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Strange part item ID"
             value={strangePartInput().strangePartItemId}
             onInput={(event) =>
@@ -148,8 +144,7 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Target item ID"
             value={strangePartInput().itemItemId}
             onInput={(event) =>
@@ -159,22 +154,20 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <button
-            class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-white disabled:opacity-60"
+          <Button
             disabled={pending()}
             onClick={() =>
               run(() => props.onApplyStrangePart(strangePartInput()))
             }
           >
             Apply strange part
-          </button>
+          </Button>
         </ToolSection>
         <ToolSection
           title="Apply tool to item"
           description="Apply a tool item against a specific inventory item."
         >
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Tool item ID"
             value={toolToItemInput().toolItemId}
             onInput={(event) =>
@@ -184,8 +177,7 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Subject item ID"
             value={toolToItemInput().subjectItemId}
             onInput={(event) =>
@@ -195,22 +187,20 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <button
-            class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-white disabled:opacity-60"
+          <Button
             disabled={pending()}
             onClick={() =>
               run(() => props.onApplyToolToItem(toolToItemInput()))
             }
           >
             Apply to item
-          </button>
+          </Button>
         </ToolSection>
         <ToolSection
           title="Apply tool to base item"
           description="Apply a tool item against a base item definition."
         >
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Tool item ID"
             value={toolToBaseInput().toolItemId}
             onInput={(event) =>
@@ -220,8 +210,7 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+          <Input
             placeholder="Base item defindex"
             type="number"
             value={toolToBaseInput().baseitemDefIndex}
@@ -232,15 +221,14 @@ export function ToolsView(props: ToolsViewProps) {
               }))
             }
           />
-          <button
-            class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-white disabled:opacity-60"
+          <Button
             disabled={pending()}
             onClick={() =>
               run(() => props.onApplyToolToBaseItem(toolToBaseInput()))
             }
           >
             Apply to base
-          </button>
+          </Button>
         </ToolSection>
       </div>
     </div>

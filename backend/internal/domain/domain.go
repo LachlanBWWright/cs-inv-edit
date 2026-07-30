@@ -1,5 +1,17 @@
 package domain
 
+type ConnectionState string
+
+const (
+	ConnectionStateDisconnected    ConnectionState = "disconnected"
+	ConnectionStateConnecting      ConnectionState = "connecting"
+	ConnectionStateAwaitingGuard   ConnectionState = "awaiting_guard"
+	ConnectionStateNeedsSteamGuard ConnectionState = "needs_steam_guard"
+	ConnectionStateAwaitingQR      ConnectionState = "awaiting_qr"
+	ConnectionStateConnected       ConnectionState = "connected"
+	ConnectionStateError           ConnectionState = "error"
+)
+
 type SteamInventoryServiceGame struct {
 	AppID           uint32 `json:"appId"`
 	Name            string `json:"name"`
@@ -17,13 +29,13 @@ type SteamInventoryServiceGames struct {
 }
 
 type ConnectionStatus struct {
-	State          string   `json:"state"`
-	Detail         string   `json:"detail,omitempty"`
-	SteamID        string   `json:"steamId,omitempty"`
-	AccountName    string   `json:"accountName,omitempty"`
-	AvatarURL      string   `json:"avatarUrl,omitempty"`
-	Diagnostics    []string `json:"diagnostics,omitempty"`
-	QRChallengeURL string   `json:"qrChallengeUrl,omitempty"`
+	State          ConnectionState `json:"state"`
+	Detail         string          `json:"detail,omitempty"`
+	SteamID        string          `json:"steamId,omitempty"`
+	AccountName    string          `json:"accountName,omitempty"`
+	AvatarURL      string          `json:"avatarUrl,omitempty"`
+	Diagnostics    []string        `json:"diagnostics,omitempty"`
+	QRChallengeURL string          `json:"qrChallengeUrl,omitempty"`
 }
 
 type Sticker struct {
@@ -216,6 +228,7 @@ type FeatureFlags struct {
 	EnableArmoryRedemption    bool `json:"enableArmoryRedemption"`
 	EnableStoreRead           bool `json:"enableStoreRead"`
 	EnableStorePurchases      bool `json:"enableStorePurchases"`
+	EnableCS2Loadouts         bool `json:"enableCs2Loadouts"`
 	EnableTF2Inventory        bool `json:"enableTf2Inventory"`
 	EnableTF2Loadouts         bool `json:"enableTf2Loadouts"`
 	EnableTF2ItemUse          bool `json:"enableTf2ItemUse"`

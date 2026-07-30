@@ -29,7 +29,7 @@ func (s *Service) Store() domain.StoreSnapshot {
 	if !s.settings.FeatureFlags.EnableStoreRead {
 		return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue."}
 	}
-	if s.connection.State == "connected" && s.store.Status == "requires_connection" {
+	if s.connection.State == domain.ConnectionStateConnected && s.store.Status == "requires_connection" {
 		store := cloneStore(s.store)
 		store.Message = "Steam is connected. Refresh the Store to load the current GC price sheet."
 		return store
@@ -47,7 +47,7 @@ func (s *Service) RefreshStore() operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != "connected" {
+	if s.connection.State != domain.ConnectionStateConnected {
 		s.store = emptyStore()
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load the CS2 cash store"
@@ -156,7 +156,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 		s.mu.Unlock()
 		return failed("CS2 cash-store purchases are disabled")
 	}
-	if s.connection.State != "connected" {
+	if s.connection.State != domain.ConnectionStateConnected {
 		s.mu.Unlock()
 		log.Printf("[InitializeStorePurchase] FAILED: Steam connection is not active (state=%q)", s.connection.State)
 		return failed("connect a Steam account before purchasing")
@@ -388,7 +388,7 @@ func (s *Service) ReconcileStorePurchase(id string) domain.PurchaseSession {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session = s.purchaseSessions[id]
-	if receipt.State != "completed" {
+	if receipt.State != operations.StateCompleted {
 		session.Status, session.Message = "awaiting_user", "Inventory refresh could not confirm the purchase; retry reconciliation after Steam finishes."
 		s.purchaseSessions[id] = session
 		return session

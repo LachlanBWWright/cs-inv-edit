@@ -10,14 +10,16 @@ import {
 } from "neverthrow";
 import {
   healthStatusSchema,
-  type ConnectionStatus,
   type FeatureFlags,
   type HealthStatus,
-  type InventorySnapshot,
-  type OperationEvent,
-  type OperationReceipt,
   type SettingsData,
 } from "@cs-inv-edit/contracts";
+import {
+  createWasmConnectionStatus as createConnectionStatus,
+  createWasmEvents as createEvents,
+  createWasmInventorySnapshot as createInventorySnapshot,
+  createWasmReceipt as createReceipt,
+} from "./wasm-backend-state.js";
 
 declare global {
   interface Window {
@@ -77,45 +79,6 @@ const defaultSettings: SettingsData = {
   },
   armoryPurchasePacingSeconds: 5,
 };
-
-function createReceipt(
-  type: string,
-  state: OperationReceipt["state"],
-  message: string,
-): OperationReceipt {
-  return {
-    operationId: `wasm-${Math.random().toString(36).slice(2, 10)}`,
-    type,
-    state,
-    createdAt: new Date().toISOString(),
-    message,
-  };
-}
-
-function createConnectionStatus(
-  state: ConnectionStatus["state"],
-  detail: string,
-): ConnectionStatus {
-  return {
-    state,
-    detail,
-    diagnostics: [`WASM backend running in ${window.location.origin}`],
-  };
-}
-
-function createInventorySnapshot(): InventorySnapshot {
-  return {
-    items: [],
-    refreshedAt: new Date().toISOString(),
-    status: "ready",
-    message:
-      "WASM backend placeholder: inventory is loaded from the browser runtime.",
-  };
-}
-
-function createEvents(): OperationEvent[] {
-  return [];
-}
 
 async function loadWasmRuntime() {
   const wasmPath = wasmAssetPaths.wasm;
@@ -204,6 +167,8 @@ export function createWasmBackendClient(): LocalAgentClient {
       errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
     tf2Features: () =>
       errAsync({ message: "TF2 coordinator features are unavailable in WASM mode" }),
+    cs2Features: () =>
+      errAsync({ message: "CS2 coordinator features are unavailable in WASM mode" }),
     steamInventoryService: (appId) =>
       errAsync({
         message: `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,

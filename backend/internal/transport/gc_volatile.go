@@ -3,8 +3,8 @@ package transport
 import (
 	"fmt"
 
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
-	"google.golang.org/protobuf/proto"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 )
 
 type GCVolatileOfferHistory struct {
@@ -50,63 +50,73 @@ type GCVirtualEconItem struct {
 }
 
 func DecodeCS2VolatileOfferHistory(data []byte) (GCVolatileOfferHistory, bool) {
-	var offer cs2pb.CSOVolatileItemOffer
-	if err := proto.Unmarshal(data, &offer); err != nil {
+	offer, err := cs2pb.DecodeVolatileItemOffer(data)
+	if err != nil {
 		return GCVolatileOfferHistory{}, false
 	}
-	defIndex := offer.GetDefidx()
-	if defIndex == 0 || defIndex > 1_000_000 || len(offer.GetFauxItemid()) == 0 {
+	if offer.DefIndex == 0 || offer.DefIndex > 1_000_000 || len(offer.FauxItemIDs) == 0 {
 		return GCVolatileOfferHistory{}, false
 	}
 	return GCVolatileOfferHistory{
-		DefIndex:        defIndex,
-		FauxItemIDs:     offer.GetFauxItemid(),
-		GenerationTimes: offer.GetGenerationTime(),
+		DefIndex:        offer.DefIndex,
+		FauxItemIDs:     offer.FauxItemIDs,
+		GenerationTimes: offer.GenerationTime,
 	}, true
 }
 
 func DecodeCS2VolatileClaimedRewards(data []byte) (GCVolatileClaimedRewards, bool) {
-	var rewards cs2pb.CSOVolatileItemClaimedRewards
-	if err := proto.Unmarshal(data, &rewards); err != nil {
+	rewards, err := cs2pb.UnmarshalMessage("CSOVolatileItemClaimedRewards", data)
+	if err != nil {
 		return GCVolatileClaimedRewards{}, false
 	}
-	defIndex := rewards.GetDefidx()
-	if defIndex == 0 || defIndex > 1_000_000 || len(rewards.GetReward()) == 0 {
+	defIndex := uint32(tracking.Uint(rewards, "defidx"))
+	rewardList := tracking.List(rewards, "reward")
+	generationList := tracking.List(rewards, "generation_time")
+	if defIndex == 0 || defIndex > 1_000_000 || rewardList.Len() == 0 {
 		return GCVolatileClaimedRewards{}, false
+	}
+	rewardValues := make([]uint32, rewardList.Len())
+	for index := range rewardValues {
+		rewardValues[index] = uint32(rewardList.Get(index).Uint())
+	}
+	generationValues := make([]uint32, generationList.Len())
+	for index := range generationValues {
+		generationValues[index] = uint32(generationList.Get(index).Uint())
 	}
 	return GCVolatileClaimedRewards{
 		DefIndex:        defIndex,
-		Rewards:         rewards.GetReward(),
-		GenerationTimes: rewards.GetGenerationTime(),
+		Rewards:         rewardValues,
+		GenerationTimes: generationValues,
 	}, true
 }
 
-func decodeVirtualEconItemFromProto(item *cs2pb.CSOEconItem) GCVirtualEconItem {
+func decodeVirtualEconItemFromProto(item cs2pb.EconItem) GCVirtualEconItem {
 	attributes := econAttributes(item)
 	attributeBytes := econAttributeBytes(item)
-	interiorID := uint64(0)
-	if item.InteriorItem != nil {
-		interiorID = item.InteriorItem.GetId()
+	equipped := make([]GCEquippedState, len(item.Equipped))
+	for index, state := range item.Equipped {
+		equipped[index] = GCEquippedState{Class: state.Class, Slot: state.Slot}
 	}
 	return GCVirtualEconItem{
-		ID:             item.GetId(),
-		OriginalID:     item.GetOriginalId(),
-		DefIndex:       item.GetDefIndex(),
-		Quantity:       item.GetQuantity(),
-		Quality:        item.GetQuality(),
-		Rarity:         item.GetRarity(),
-		Inventory:      item.GetInventory(),
-		CustomName:     item.GetCustomName(),
+		ID:             item.ID,
+		OriginalID:     item.OriginalID,
+		DefIndex:       item.DefIndex,
+		Quantity:       item.Quantity,
+		Quality:        item.Quality,
+		Rarity:         item.Rarity,
+		Inventory:      item.Inventory,
+		CustomName:     item.CustomName,
 		PaintKit:       econPaintKit(item),
 		PaintWear:      econPaintWear(item),
 		Attributes:     attributes,
 		AttributeBytes: attributeBytes,
-		InteriorItemID: interiorID,
-		Level:          item.GetLevel(),
-		Flags:          item.GetFlags(),
-		Origin:         item.GetOrigin(),
-		Style:          item.GetStyle(),
-		CustomDesc:     item.GetCustomDesc(),
+		InteriorItemID: item.InteriorID,
+		EquippedStates: equipped,
+		Level:          item.Level,
+		Flags:          item.Flags,
+		Origin:         item.Origin,
+		Style:          item.Style,
+		CustomDesc:     item.CustomDesc,
 	}
 }
 
@@ -115,43 +125,38 @@ func DecodeCS2VirtualEconItems(emsg uint32, data []byte) ([]GCVirtualEconItem, e
 
 	switch emsg {
 	case 21, 22, 23: // EMsgSOCreate (21), EMsgSOUpdate (22), EMsgSOSingleObject / EMsgSODestroy (23)
-		var single cs2pb.CMsgSOSingleObject
-		if err := proto.Unmarshal(data, &single); err == nil && single.GetTypeId() == 1 {
-			rawDataList = append(rawDataList, single.GetObjectData())
+		if single, err := cs2pb.DecodeSOSingleObject(data); err == nil && single.TypeID == 1 {
+			rawDataList = append(rawDataList, single.ObjectData)
 		}
 	case 26: // EMsgSOUpdateMultiple (26)
-		var multiple cs2pb.CMsgSOMultipleObjects
-		if err := proto.Unmarshal(data, &multiple); err == nil {
-			for _, object := range multiple.GetObjectsModified() {
-				if object.GetTypeId() == 1 {
-					rawDataList = append(rawDataList, object.GetObjectData())
+		if multiple, err := cs2pb.DecodeSOMultipleObjects(data); err == nil {
+			for _, object := range multiple.ObjectsModified {
+				if object.TypeID == 1 {
+					rawDataList = append(rawDataList, object.ObjectData)
 				}
 			}
 		}
 	case 24: // EMsgSOCacheSubscribed (24)
-		var subscribed cs2pb.CMsgSOCacheSubscribed
-		if err := proto.Unmarshal(data, &subscribed); err == nil {
-			for _, objectType := range subscribed.GetObjects() {
-				if objectType.GetTypeId() == 1 {
-					rawDataList = append(rawDataList, objectType.GetObjectData()...)
+		if subscribed, err := cs2pb.DecodeSOCacheSubscribed(data); err == nil {
+			for _, objectType := range subscribed.Objects {
+				if objectType.TypeID == 1 {
+					rawDataList = append(rawDataList, objectType.ObjectData...)
 				}
 			}
 		}
 	}
 
 	if len(rawDataList) == 0 {
-		var item cs2pb.CSOEconItem
-		if err := proto.Unmarshal(data, &item); err == nil && item.GetId() != 0 && item.GetDefIndex() != 0 {
-			return []GCVirtualEconItem{decodeVirtualEconItemFromProto(&item)}, nil
+		if item, err := cs2pb.DecodeEconItem(data); err == nil && item.ID != 0 && item.DefIndex != 0 {
+			return []GCVirtualEconItem{decodeVirtualEconItemFromProto(item)}, nil
 		}
 		return nil, nil
 	}
 
 	results := make([]GCVirtualEconItem, 0, len(rawDataList))
 	for _, raw := range rawDataList {
-		var item cs2pb.CSOEconItem
-		if err := proto.Unmarshal(raw, &item); err == nil && item.GetId() != 0 {
-			results = append(results, decodeVirtualEconItemFromProto(&item))
+		if item, err := cs2pb.DecodeEconItem(raw); err == nil && item.ID != 0 {
+			results = append(results, decodeVirtualEconItemFromProto(item))
 		}
 	}
 	return results, nil

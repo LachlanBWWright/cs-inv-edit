@@ -215,7 +215,7 @@ func (s *Service) resolveSteamAvatar(steamID string) {
 		if session := s.steamSessions[steamID]; session != nil {
 			session.Connection.AvatarURL = avatarURL
 		}
-		if s.connection.State == "connected" && s.connection.SteamID == steamID {
+		if s.connection.State == domain.ConnectionStateConnected && s.connection.SteamID == steamID {
 			s.connection.AvatarURL = avatarURL
 		}
 	}()
@@ -319,7 +319,7 @@ func (s *Service) ConnectionStatus() domain.ConnectionStatus {
 	return domain.ConnectionStatus{State: s.connection.State, Detail: s.connection.Detail, SteamID: s.connection.SteamID, AccountName: s.connection.AccountName, AvatarURL: s.connection.AvatarURL, Diagnostics: append([]string(nil), s.connection.Diagnostics...), QRChallengeURL: s.connection.QRChallengeURL}
 }
 
-func (s *Service) addEvent(receipt operations.Receipt, state string, message string) {
+func (s *Service) addEvent(receipt operations.Receipt, state operations.State, message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.operations = append(s.operations, receipt)

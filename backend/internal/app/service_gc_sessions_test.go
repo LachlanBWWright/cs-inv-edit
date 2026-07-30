@@ -127,7 +127,7 @@ func TestAccountChangeCancelsCS2RefreshAndPreventsLateSnapshotCommit(t *testing.
 	service.mu.Unlock()
 
 	receipt := <-done
-	if receipt.State != "completed" || !strings.Contains(receipt.Message, "superseded") {
+	if receipt.State != operations.StateCompleted || !strings.Contains(receipt.Message, "superseded") {
 		t.Fatalf("receipt=%#v", receipt)
 	}
 	if snapshot := service.Inventory(); len(snapshot.Items) != 0 {

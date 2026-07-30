@@ -4,16 +4,19 @@ import (
 	"testing"
 
 	"cs-inv-edit/backend/internal/domain"
+	"cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/transport"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func TestOpenCrateMessageOmitsToolForKeylessContainer(t *testing.T) {
-	message := openCrateMessage(101, 0, nil, nil)
-	if message.SubjectItemId == nil || message.GetSubjectItemId() != 101 {
-		t.Fatalf("subject item id = %#v, want 101", message.SubjectItemId)
+	message := decodeOpenCrateTest(t, 101, 0, nil, nil)
+	if !tracking.Has(message, "subject_item_id") || tracking.Uint(message, "subject_item_id") != 101 {
+		t.Fatalf("subject item id = %#v, want 101", message)
 	}
-	if message.ToolItemId != nil {
-		t.Fatalf("keyless tool item id = %#v, want omitted", message.ToolItemId)
+	if tracking.Has(message, "tool_item_id") {
+		t.Fatalf("keyless tool item id = %#v, want omitted", message)
 	}
 }
 
@@ -56,32 +59,45 @@ func TestRankedTerminalVirtualCandidatesPrefersPricedNewestOffer(t *testing.T) {
 }
 
 func TestOpenCrateMessageIncludesKeyForKeyedContainer(t *testing.T) {
-	message := openCrateMessage(101, 202, nil, nil)
-	if message.SubjectItemId == nil || message.GetSubjectItemId() != 101 {
-		t.Fatalf("subject item id = %#v, want 101", message.SubjectItemId)
+	message := decodeOpenCrateTest(t, 101, 202, nil, nil)
+	if tracking.Uint(message, "subject_item_id") != 101 {
+		t.Fatalf("subject item id = %#v, want 101", message)
 	}
-	if message.ToolItemId == nil || message.GetToolItemId() != 202 {
-		t.Fatalf("keyed tool item id = %#v, want 202", message.ToolItemId)
+	if !tracking.Has(message, "tool_item_id") || tracking.Uint(message, "tool_item_id") != 202 {
+		t.Fatalf("keyed tool item id = %#v, want 202", message)
 	}
 }
 
 func TestOpenCrateMessageIncludesTerminalOfferState(t *testing.T) {
 	pointsRemaining, volatileLimit := uint32(4), uint32(2500)
-	message := openCrateMessage(101, 0, &pointsRemaining, &volatileLimit)
-	if message.PointsRemaining == nil || message.GetPointsRemaining() != 4 {
-		t.Fatalf("points remaining = %#v, want 4", message.PointsRemaining)
+	message := decodeOpenCrateTest(t, 101, 0, &pointsRemaining, &volatileLimit)
+	if !tracking.Has(message, "points_remaining") || tracking.Uint(message, "points_remaining") != 4 {
+		t.Fatalf("points remaining = %#v, want 4", message)
 	}
-	if message.VolatileLimit == nil || message.GetVolatileLimit() != 2500 {
-		t.Fatalf("volatile limit = %#v, want 2500", message.VolatileLimit)
+	if !tracking.Has(message, "volatile_limit") || tracking.Uint(message, "volatile_limit") != 2500 {
+		t.Fatalf("volatile limit = %#v, want 2500", message)
 	}
 }
 
 func TestActiveTerminalNextOfferUsesTerminalAsToolAndSubject(t *testing.T) {
 	pointsRemaining := uint32(3)
-	message := openCrateMessage(52994080407, 52994080407, &pointsRemaining, nil)
-	if message.GetSubjectItemId() != 52994080407 || message.GetToolItemId() != 52994080407 || message.GetPointsRemaining() != 3 {
+	message := decodeOpenCrateTest(t, 52994080407, 52994080407, &pointsRemaining, nil)
+	if tracking.Uint(message, "subject_item_id") != 52994080407 || tracking.Uint(message, "tool_item_id") != 52994080407 || tracking.Uint(message, "points_remaining") != 3 {
 		t.Fatalf("active terminal next-offer message = %#v", message)
 	}
+}
+
+func decodeOpenCrateTest(t *testing.T, subject, tool uint64, points, limit *uint32) protoreflect.Message {
+	t.Helper()
+	body, err := gametracking.EncodeOpenCrate(subject, tool, points, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := gametracking.UnmarshalMessage("CMsgOpenCrate", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return message
 }
 
 func TestTerminalActivationCanReconcileAnInPlaceItemTransformation(t *testing.T) {

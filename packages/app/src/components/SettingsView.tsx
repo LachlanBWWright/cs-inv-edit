@@ -8,13 +8,11 @@ import {
 } from "solid-js";
 import type {
   FeatureFlags,
-  InventorySnapshot,
   RevealAnimationMode,
   SettingsData,
   TradeUpAnimationMode,
 } from "@cs-inv-edit/contracts";
 import { Input } from "./ui/Input.js";
-import { Select } from "./ui/Select.js";
 import {
   MOCK_RESULT_DELAY_MS,
   randomRevealCandidate,
@@ -23,176 +21,9 @@ import {
 } from "./ui/RevealAnimation.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 
-const emptyDebugReveal: RevealItem = { name: "Collection item" };
-
-const fallbackDebugCollections: Array<[string, RevealItem[]]> = [
-  [
-    "Kilowatt Case (offline fallback)",
-    [
-      {
-        name: "AK-47 | Inheritance",
-        rarity: "Covert",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 0.8,
-      },
-      {
-        name: "AWP | Chrome Cannon",
-        rarity: "Covert",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-      {
-        name: "M4A1-S | Black Lotus",
-        rarity: "Classified",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 0.7,
-      },
-      {
-        name: "USP-S | Jawbreaker",
-        rarity: "Classified",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-      {
-        name: "Glock-18 | Block-18",
-        rarity: "Restricted",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 0.5,
-      },
-      {
-        name: "MP7 | Just Smile",
-        rarity: "Restricted",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-    ],
-  ],
-  [
-    "The 2018 Inferno Collection (offline fallback)",
-    [
-      {
-        name: "SG 553 | Integrale",
-        rarity: "Classified",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-      {
-        name: "Dual Berettas | Twin Turbo",
-        rarity: "Classified",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-      {
-        name: "AK-47 | Safety Net",
-        rarity: "Restricted",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 0.6,
-      },
-      {
-        name: "MP7 | Fade",
-        rarity: "Restricted",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 0.25,
-      },
-      {
-        name: "SSG 08 | Hand Brake",
-        rarity: "Mil-Spec Grade",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-      {
-        name: "MAC-10 | Calf Skin",
-        rarity: "Industrial Grade",
-        kind: "weapon_skin",
-        wearMin: 0,
-        wearMax: 1,
-      },
-    ],
-  ],
-  [
-    "Copenhagen 2024 Legends Sticker Capsule (offline fallback)",
-    [
-      {
-        name: "Sticker | FaZe Clan | Copenhagen 2024",
-        rarity: "High Grade",
-        kind: "sticker_item",
-      },
-      {
-        name: "Sticker | Natus Vincere | Copenhagen 2024",
-        rarity: "High Grade",
-        kind: "sticker_item",
-      },
-      {
-        name: "Sticker | Spirit (Holo) | Copenhagen 2024",
-        rarity: "Remarkable",
-        kind: "sticker_item",
-      },
-      {
-        name: "Sticker | G2 Esports (Holo) | Copenhagen 2024",
-        rarity: "Remarkable",
-        kind: "sticker_item",
-      },
-      {
-        name: "Sticker | Vitality (Gold) | Copenhagen 2024",
-        rarity: "Extraordinary",
-        kind: "sticker_item",
-      },
-    ],
-  ],
-];
-
-export interface SettingsViewProps {
-  settings: SettingsData | undefined;
-  inventory?: InventorySnapshot;
-  onRefresh: () => void;
-  onSave: (next: SettingsData) => Promise<void>;
-  onToast?: (toast: {
-    title: string;
-    description?: string;
-    variant?: "default" | "success" | "warning" | "danger";
-  }) => void;
-}
-
-export function settingsEqual(
-  left: SettingsData | undefined,
-  right: SettingsData | undefined,
-) {
-  if (!left || !right) return left === right;
-  if (
-    left.backendUrl !== right.backendUrl ||
-    left.validationMode !== right.validationMode ||
-    left.sacrificialAccountMode !== right.sacrificialAccountMode ||
-    left.armoryPurchasePacingSeconds !== right.armoryPurchasePacingSeconds
-  )
-    return false;
-  if (
-    left.animations.container !== right.animations.container ||
-    left.animations.tradeUp !== right.animations.tradeUp ||
-    left.animations.armory !== right.animations.armory ||
-    left.animations.terminal !== right.animations.terminal
-  )
-    return false;
-  const keys = new Set([
-    ...Object.keys(left.featureFlags),
-    ...Object.keys(right.featureFlags),
-  ] as Array<keyof FeatureFlags>);
-  for (const key of keys) {
-    if (left.featureFlags[key] !== right.featureFlags[key]) return false;
-  }
-  return true;
-}
-
+import { emptyDebugReveal, fallbackDebugCollections, settingsEqual, type SettingsViewProps } from "./settings-view-model.js";
+import { RevealSettingsSection } from "./settings-reveal-section.js";
+export { settingsEqual, type SettingsViewProps } from "./settings-view-model.js";
 export function SettingsView(props: SettingsViewProps) {
   const [draft, setDraft] = createSignal<SettingsData | undefined>(
     props.settings,
@@ -399,111 +230,15 @@ export function SettingsView(props: SettingsViewProps) {
       </Show>
 
       <div class="mt-4 max-h-[60vh] space-y-4 overflow-y-auto pr-1">
-        <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
-          <h4 class="text-sm font-semibold text-slate-100">
-            Reveal animations
-          </h4>
-          <p class="mt-1 text-xs text-slate-500">
-            Choose an animation independently for each randomized operation.
-          </p>
-          <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <For
-              each={
-                [
-                  { key: "container", label: "Containers" },
-                  { key: "tradeUp", label: "Trade-ups" },
-                  { key: "armory", label: "Armory" },
-                  { key: "terminal", label: "Terminals" },
-                ] as const
-              }
-            >
-              {(entry) => (
-                <label class="space-y-1.5 text-sm">
-                  <span class="text-slate-300">{entry.label}</span>
-                  <Select
-                    class="w-full"
-                    value={animationMode(entry.key)}
-                    onChange={(event) =>
-                      setAnimationMode(
-                        entry.key,
-                        (event.currentTarget as HTMLSelectElement)
-                          .value as RevealAnimationMode,
-                      )
-                    }
-                  >
-                    <option value="none">No animation</option>
-                    <option value="countdown">Countdown</option>
-                    <option value="slot-machine">Slot machine</option>
-                    <Show when={entry.key === "tradeUp"}>
-                      <option value="contract-none">
-                        Contract + no animation
-                      </option>
-                      <option value="contract-countdown">
-                        Contract + countdown
-                      </option>
-                      <option value="contract-slot-machine">
-                        Contract + slot machine
-                      </option>
-                    </Show>
-                  </Select>
-                </label>
-              )}
-            </For>
-          </div>
-          <div class="mt-4 border-t border-slate-800 pt-3">
-            <p class="text-xs font-medium uppercase tracking-wide text-slate-400">
-              Debug previews
-            </p>
-            <p class="mt-1 text-xs text-slate-500">
-              Play a reveal locally using loaded CS2 collection metadata, or
-              three offline fallbacks when metadata is unavailable. This does
-              not save settings or perform an operation.
-            </p>
-            <label class="mt-3 block space-y-1.5 text-sm">
-              <span class="text-slate-300">Collection</span>
-              <Select
-                class="w-full"
-                value={selectedDebugCollection()}
-                disabled={debugCollections().length === 0}
-                onChange={(event) =>
-                  setDebugCollection(
-                    (event.currentTarget as HTMLSelectElement).value,
-                  )
-                }
-              >
-                <For each={debugCollections()}>
-                  {([name, items]) => (
-                    <option value={name}>
-                      {name} ({items.length} items)
-                    </option>
-                  )}
-                </For>
-                <Show when={debugCollections().length === 0}>
-                  <option value="">No collections loaded</option>
-                </Show>
-              </Select>
-            </label>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={selectedDebugCandidates().length === 0}
-                class="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/50 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => playDebugAnimation("countdown")}
-              >
-                Play countdown
-              </button>
-              <button
-                type="button"
-                disabled={selectedDebugCandidates().length === 0}
-                class="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/50 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => playDebugAnimation("slot-machine")}
-              >
-                Play slot machine
-              </button>
-            </div>
-          </div>
-        </section>
-
+        <RevealSettingsSection
+          animationMode={animationMode}
+          setAnimationMode={setAnimationMode}
+          selectedDebugCollection={selectedDebugCollection}
+          debugCollections={debugCollections}
+          setDebugCollection={setDebugCollection}
+          selectedDebugCandidates={selectedDebugCandidates}
+          playDebugAnimation={playDebugAnimation}
+        />
         <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
           <h4 class="text-sm font-semibold text-slate-100">
             Armory purchase pacing

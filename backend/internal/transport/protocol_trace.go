@@ -216,6 +216,7 @@ func decodeSteamCMPacketBody(packet *steammsg.Packet) (proto.Message, bool) {
 
 func (s *SteamGCClient) recordGCProtocol(direction string, appID, emsg uint32, body []byte) {
 	s.recordTF2State(direction, appID, emsg, body)
+	s.recordCS2State(direction, appID, emsg, body)
 	name := protocolMessageName(appID, emsg)
 	entry := ProtocolTraceEntry{Direction: direction, Layer: "game-coordinator", AppID: appID, EMsg: emsg, Name: name, Protobuf: true, BodyBytes: len(body), BodyHex: hex.EncodeToString(body)}
 
@@ -238,7 +239,9 @@ func (s *SteamGCClient) recordGCProtocol(direction string, appID, emsg uint32, b
 		}
 	}
 
-	// Dynamic protoregistry GlobalTypes lookup (multigamepb / cs2item / steampb)
+	// GlobalTypes only contains the transport dependency's generated Steam
+	// messages. GameTracking trees are intentionally isolated descriptor
+	// registries and are decoded before this fallback.
 	if msgInst := findGCProtoMessageInstance(name, emsg); msgInst != nil {
 		if unmarshErr := proto.Unmarshal(body, msgInst); unmarshErr == nil {
 			if jsonBytes, jsonErr := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(msgInst); jsonErr == nil {
@@ -281,7 +284,7 @@ func findGCProtoMessageInstance(name string, emsg uint32) proto.Message {
 	if name == "GC protobuf message" {
 		candidates = append(candidates, fmt.Sprintf("CMsg%d", emsg), fmt.Sprintf("CMsgGC%d", emsg))
 	}
-	prefixes := []string{"multigamepb.", "cs2item.", "steampb.", "steam.", ""}
+	prefixes := []string{"steampb.", "steam.", ""}
 	for _, prefix := range prefixes {
 		for _, cand := range candidates {
 			if msgType, err := protoregistry.GlobalTypes.FindMessageByName(protoreflect.FullName(prefix + cand)); err == nil {

@@ -11,11 +11,10 @@ import (
 	"time"
 
 	"cs-inv-edit/backend/internal/domain"
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+	"cs-inv-edit/backend/internal/operations"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
-
-	"google.golang.org/protobuf/proto"
 )
 
 func steamErrorDetail(stage string, err error) string {
@@ -165,7 +164,7 @@ func (s *Service) openOrdinaryContainer(accountCtx context.Context, container do
 
 	result.RequestEMsg = protocol.EMsgOpenCrate
 	result.RequestMethod = "open_crate_proto"
-	body, err := proto.Marshal(openCrateMessage(itemIDUint, toolItemID, nil, nil))
+	body, err := cs2pb.EncodeOpenCrate(itemIDUint, toolItemID, nil, nil)
 	if err != nil {
 		return false, "encode container open request failed: " + err.Error(), result
 	}
@@ -239,7 +238,7 @@ func (s *Service) openTerminal(accountCtx context.Context, terminal domain.Inven
 	if !activeTerminal {
 		result.RequestEMsg = protocol.EMsgOpenCrate
 		result.RequestMethod = "terminal_unseal_proto"
-		unsealBody, err := proto.Marshal(openCrateMessage(terminalID, 0, pointsRemaining, volatileLimit))
+		unsealBody, err := cs2pb.EncodeOpenCrate(terminalID, 0, pointsRemaining, volatileLimit)
 		if err != nil {
 			return false, "encode terminal unseal request failed: " + err.Error(), result
 		}
@@ -276,7 +275,7 @@ func (s *Service) openTerminal(accountCtx context.Context, terminal domain.Inven
 
 	// Stage B: Request / Resume offer & resolve virtual casket item
 	result.RequestMethod = "terminal_offer_request"
-	reqBody, err := proto.Marshal(openCrateMessage(terminalID, terminalID, pointsRemaining, volatileLimit))
+	reqBody, err := cs2pb.EncodeOpenCrate(terminalID, terminalID, pointsRemaining, volatileLimit)
 	if err != nil {
 		return false, "encode terminal offer request failed: " + err.Error(), result
 	}
@@ -318,22 +317,22 @@ func (s *Service) openTerminal(accountCtx context.Context, terminal domain.Inven
 			observed = append(observed, fmt.Sprintf("emsg=%d bytes=%d", message.EMsg, len(message.Body)))
 
 			if message.EMsg == protocol.EMsgItemCustomizationNotification {
-				notification := new(cs2pb.CMsgGCItemCustomizationNotification)
-				if err := proto.Unmarshal(message.Body, notification); err == nil {
-					if notification.GetRequest() == protocol.CustomizationCasketContents {
+				notification, decodeErr := cs2pb.DecodeItemCustomizationNotification(message.Body)
+				if decodeErr == nil {
+					if notification.Request == protocol.CustomizationCasketContents {
 						matchesTerminal := false
-						for _, id := range notification.GetItemId() {
+						for _, id := range notification.ItemIDs {
 							if id == terminalID {
 								matchesTerminal = true
 								break
 							}
 						}
-						if matchesTerminal || len(notification.GetItemId()) == 0 {
+						if matchesTerminal || len(notification.ItemIDs) == 0 {
 							matching1012Confirmation = &containerOpenConfirmation{
 								EMsg:        message.EMsg,
-								Request:     notification.GetRequest(),
-								ItemIDs:     notification.GetItemId(),
-								ExtraData:   notification.GetExtraData(),
+								Request:     notification.Request,
+								ItemIDs:     notification.ItemIDs,
+								ExtraData:   notification.ExtraData,
 								Message:     "CS2 GC confirmed terminal casket contents (request 1012)",
 								BodyHex:     hex.EncodeToString(message.Body),
 								Diagnostics: append([]string(nil), observed...),
@@ -444,7 +443,7 @@ func rankedTerminalVirtualCandidates(candidates map[uint64]transport.GCVirtualEc
 	return result
 }
 
-func (s *Service) resumeTerminalOffer(accountCtx context.Context, terminalIDText string) (bool, string, string, *containerOpenResult) {
+func (s *Service) resumeTerminalOffer(accountCtx context.Context, terminalIDText string) (bool, operations.State, string, *containerOpenResult) {
 	s.mu.Lock()
 	var terminalItem *domain.InventoryItem
 	for i := range s.inventory.Items {
@@ -484,7 +483,7 @@ func (s *Service) resumeTerminalOffer(accountCtx context.Context, terminalIDText
 	return s.resumeTerminalOfferVia(accountCtx, terminalIDText, protocol.EMsgVolatileItemLoadContents)
 }
 
-func (s *Service) resumeTerminalOfferVia(accountCtx context.Context, terminalIDText string, requestEMsg uint32) (bool, string, string, *containerOpenResult) {
+func (s *Service) resumeTerminalOfferVia(accountCtx context.Context, terminalIDText string, requestEMsg uint32) (bool, operations.State, string, *containerOpenResult) {
 	result := &containerOpenResult{Kind: "terminal_offer", TerminalItemID: terminalIDText}
 	terminalID, err := strconv.ParseUint(terminalIDText, 10, 64)
 	if err != nil || terminalID == 0 {
@@ -554,22 +553,22 @@ func (s *Service) resumeTerminalOfferVia(accountCtx context.Context, terminalIDT
 			observed = append(observed, fmt.Sprintf("emsg=%d bytes=%d", message.EMsg, len(message.Body)))
 
 			if message.EMsg == protocol.EMsgItemCustomizationNotification {
-				notification := new(cs2pb.CMsgGCItemCustomizationNotification)
-				if err := proto.Unmarshal(message.Body, notification); err == nil {
-					if notification.GetRequest() == protocol.CustomizationCasketContents {
+				notification, decodeErr := cs2pb.DecodeItemCustomizationNotification(message.Body)
+				if decodeErr == nil {
+					if notification.Request == protocol.CustomizationCasketContents {
 						matchesTerminal := false
-						for _, id := range notification.GetItemId() {
+						for _, id := range notification.ItemIDs {
 							if id == terminalID {
 								matchesTerminal = true
 								break
 							}
 						}
-						if matchesTerminal || len(notification.GetItemId()) == 0 {
+						if matchesTerminal || len(notification.ItemIDs) == 0 {
 							matching1012Confirmation = &containerOpenConfirmation{
 								EMsg:        message.EMsg,
-								Request:     notification.GetRequest(),
-								ItemIDs:     notification.GetItemId(),
-								ExtraData:   notification.GetExtraData(),
+								Request:     notification.Request,
+								ItemIDs:     notification.ItemIDs,
+								ExtraData:   notification.ExtraData,
 								Message:     "CS2 GC confirmed terminal casket contents (request 1012)",
 								BodyHex:     hex.EncodeToString(message.Body),
 								Diagnostics: append([]string(nil), observed...),
@@ -687,16 +686,6 @@ func (s *Service) resolveTerminalOffer(ctx context.Context, raw transport.GCVirt
 		WearMin:     wearMin,
 		WearMax:     wearMax,
 	}, nil
-}
-
-func openCrateMessage(subjectItemID uint64, toolItemID uint64, pointsRemaining *uint32, volatileLimit *uint32) *cs2pb.CMsgOpenCrate {
-	message := &cs2pb.CMsgOpenCrate{SubjectItemId: proto.Uint64(subjectItemID)}
-	if toolItemID != 0 {
-		message.ToolItemId = proto.Uint64(toolItemID)
-	}
-	message.PointsRemaining = pointsRemaining
-	message.VolatileLimit = volatileLimit
-	return message
 }
 
 func (s *Service) reconcileContainerResultOnce(ctx context.Context, before domain.InventorySnapshot, terminal bool) (domain.InventorySnapshot, *domain.InventoryItem, error) {
@@ -905,13 +894,13 @@ func (s *Service) waitForContainerOpenConfirmation(ctx context.Context, itemID u
 				return confirmation
 			}
 			if message.EMsg == protocol.EMsgItemCustomizationNotification {
-				notification := new(cs2pb.CMsgGCItemCustomizationNotification)
-				if err := proto.Unmarshal(message.Body, notification); err != nil {
+				notification, err := cs2pb.DecodeItemCustomizationNotification(message.Body)
+				if err != nil {
 					return containerOpenConfirmation{EMsg: message.EMsg, BodyHex: hex.EncodeToString(message.Body), Diagnostics: append([]string(nil), observed...), Err: fmt.Errorf("container open response decode failed: %w", err)}
 				}
-				req := notification.GetRequest()
-				itemIDs := notification.GetItemId()
-				extraData := notification.GetExtraData()
+				req := notification.Request
+				itemIDs := notification.ItemIDs
+				extraData := notification.ExtraData
 
 				confirmation := containerOpenConfirmation{
 					EMsg:        message.EMsg,
@@ -980,7 +969,6 @@ func (s *Service) applyNameTag(input map[string]any) (bool, string) {
 		if s.inventory.Items[i].ID == subjectItemID {
 			s.inventory.Items[i].CustomName = name
 			s.inventory.Items[i].HasCustomName = true
-			s.inventory.Items[i].MarketName = s.inventory.Items[i].MarketName
 			s.inventory.RefreshedAt = now()
 			return true, "custom name applied"
 		}

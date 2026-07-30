@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"cs-inv-edit/backend/internal/app"
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/rpc"
 )

@@ -8,11 +8,9 @@ import (
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/econ"
 	"cs-inv-edit/backend/internal/operations"
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+	"cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/transport"
-
-	"google.golang.org/protobuf/proto"
 )
 
 func (s *Service) RefreshArmory() operations.Receipt {
@@ -24,7 +22,7 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != "connected" {
+	if s.connection.State != domain.ConnectionStateConnected {
 		s.armory = emptyArmory()
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load Armory stars"
@@ -109,7 +107,7 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != "connected" || s.armory.Status != "ready" || s.armory.GenerationTime != generation || s.armory.Balance != balance {
+	if s.connection.State != domain.ConnectionStateConnected || s.armory.Status != "ready" || s.armory.GenerationTime != generation || s.armory.Balance != balance {
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "failed", "Armory snapshot is stale; refresh before purchasing"
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -165,7 +163,7 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 	var err error
 	for index := uint32(0); index < quantity; index++ {
 		prePurchaseBalance := balance - index*cost
-		body, marshalErr := proto.Marshal(&cs2pb.CMsgGCCstrike15V2ClientRedeemMissionReward{CampaignId: proto.Uint32(campaignID), RedeemId: proto.Uint32(redeemID), RedeemableBalance: proto.Uint32(prePurchaseBalance), ExpectedCost: proto.Uint32(cost)})
+		body, marshalErr := gametracking.MarshalMessage("CMsgGCCstrike15_v2_ClientRedeemMissionReward", map[string]any{"campaign_id": campaignID, "redeem_id": redeemID, "redeemable_balance": prePurchaseBalance, "expected_cost": cost})
 		if marshalErr != nil {
 			err = marshalErr
 			break

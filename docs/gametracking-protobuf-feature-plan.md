@@ -11,8 +11,9 @@ Do not implement `enableStickerExtract`.
 - Use `proto/vendor/gametracking-cs2/Protobufs/econ_gcmessages.proto` for economy GC EMsg enums such as `k_EMsgGCOpenCrate`, `k_EMsgGCUseItemRequest`, `k_EMsgGCItemCustomizationNotification`, casket/storage messages, gift messages, and related item operation IDs.
 - Use `proto/vendor/gametracking-cs2/Protobufs/gcsdk_gcmessages.proto` for base GC client session messages such as `CMsgClientHello`, `CMsgClientWelcome`, and `CMsgConnectionStatus`.
 - Use `proto/vendor/gametracking-cs2/Protobufs/cstrike15_gcmessages.proto` for CS2-specific GC messages that still retain legacy CS:GO/CStrike15 naming.
-- Do not infer binary layouts when a protobuf message exists in the submodule. If a smaller generated subset remains necessary, derive it from the vendored source files and preserve source comments before running `scripts/generate-protos.sh`.
-- Do not hand-edit generated files under `backend/internal/proto/generated/`.
+- Do not infer binary layouts when a protobuf message exists in the submodule.
+  Generate isolated descriptor sets directly from the vendored files with
+  `scripts/generate-protos.sh`; do not introduce copied partial schemas.
 
 ## Repository Review Tasks
 
@@ -53,8 +54,7 @@ If `enableStickerExtract` remains in the UI/settings model, leave it disabled an
 ## Implementation Guidelines
 
 - Keep data structures separate from behavior:
-  - protobuf and enum definitions in `proto/cs2_item_subset.proto`
-  - generated bindings in `backend/internal/proto/generated/`
+  - GameTracking descriptors exposed by `backend/internal/proto/gametracking/`
   - stable protocol aliases in `backend/internal/protocol/constants.go`
   - small handwritten encoders/decoders only when no authoritative protobuf message exists
   - service behavior in `backend/internal/app/service.go` or smaller operation-specific files if the service grows further
@@ -120,7 +120,8 @@ Initial likely mappings to verify:
 
 - `AGENTS.md` and this plan list every authoritative protobuf source used.
 - `proto/vendor/gametracking-cs2/Protobufs/` is available as a submodule, with source notes in `proto/vendor/README.md`.
-- Any local generated subset includes source comments for every copied enum/message group.
+- No local generated subset exists; runtime messages resolve from the pinned
+  GameTracking descriptor set.
 - `scripts/generate-protos.sh` regenerates successfully.
 - `npm run build` passes.
 - Implemented CS2 feature-flag operations do not use mock data, guessed binary payloads, or stale package wrappers.

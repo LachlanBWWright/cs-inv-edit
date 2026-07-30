@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -62,6 +63,64 @@ type ClientWelcomeStoreContext struct {
 	Country  string
 }
 
+type EquipSlotAdjustment struct {
+	ClassID uint32
+	SlotID  uint32
+	ItemID  uint64
+}
+
+func MarshalAdjustEquipSlots(slots []EquipSlotAdjustment, changeNumber uint32) ([]byte, error) {
+	message, err := newMessage("CMsgAdjustEquipSlots")
+	if err != nil {
+		return nil, err
+	}
+	field := message.Descriptor().Fields().ByName("slots")
+	list := message.Mutable(field).List()
+	for _, source := range slots {
+		slot, createErr := newMessage("CMsgAdjustEquipSlot")
+		if createErr != nil {
+			return nil, createErr
+		}
+		setUint(slot, "class_id", uint64(source.ClassID))
+		setUint(slot, "slot_id", uint64(source.SlotID))
+		setUint(slot, "item_id", source.ItemID)
+		list.Append(protoreflect.ValueOfMessage(slot))
+	}
+	setUint(message, "change_num", uint64(changeNumber))
+	return proto.MarshalOptions{Deterministic: true}.Marshal(message)
+}
+
+func Marshal(name string, values map[string]uint64) ([]byte, error) {
+	message, err := newMessage(name)
+	if err != nil {
+		return nil, err
+	}
+	fields := message.Descriptor().Fields()
+	for name, value := range values {
+		field := fields.ByName(protoreflect.Name(name))
+		if field == nil {
+			return nil, fmt.Errorf("GameTracking message %s has no field %s", message.Descriptor().Name(), name)
+		}
+		switch field.Kind() {
+		case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+			message.Set(field, protoreflect.ValueOfInt32(int32(value)))
+		case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+			message.Set(field, protoreflect.ValueOfInt64(int64(value)))
+		case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+			message.Set(field, protoreflect.ValueOfUint32(uint32(value)))
+		case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+			message.Set(field, protoreflect.ValueOfUint64(value))
+		case protoreflect.BoolKind:
+			message.Set(field, protoreflect.ValueOfBool(value != 0))
+		case protoreflect.EnumKind:
+			message.Set(field, protoreflect.ValueOfEnum(protoreflect.EnumNumber(value)))
+		default:
+			return nil, fmt.Errorf("GameTracking field %s.%s is not scalar", message.Descriptor().Name(), name)
+		}
+	}
+	return proto.MarshalOptions{Deterministic: true}.Marshal(message)
+}
+
 func EnumValue(enumName, valueName string) (uint32, error) {
 	files, err := files()
 	if err != nil {
@@ -80,6 +139,32 @@ func EnumValue(enumName, valueName string) (uint32, error) {
 		return 0, fmt.Errorf("GameTracking enum %s has no value %s", enumName, valueName)
 	}
 	return uint32(value.Number()), nil
+}
+
+func MarshalMessage(name string, fields map[string]any) ([]byte, error) {
+	message, err := newMessage(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := tracking.SetFields(message, fields); err != nil {
+		return nil, err
+	}
+	return proto.MarshalOptions{Deterministic: true}.Marshal(message)
+}
+
+func UnmarshalMessage(name string, body []byte) (*dynamicpb.Message, error) {
+	message, err := newMessage(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := proto.Unmarshal(body, message); err != nil {
+		return nil, fmt.Errorf("decode CS2 %s: %w", name, err)
+	}
+	return message, nil
+}
+
+func NewMessage(name string) (*dynamicpb.Message, error) {
+	return newMessage(name)
 }
 
 func DecodeMessageJSON(name string, body []byte) ([]byte, error) {

@@ -31,6 +31,7 @@ export function App(props: AppProps) {
       setSteamServiceAppId={controller.setSteamServiceAppId}
       tf2Inventory={controller.tf2Inventory()}
       tf2Features={controller.tf2Features()}
+      cs2Features={controller.cs2Features()}
       tf2ProtocolEntries={controller.tf2ProtocolEntries()}
       dota2Inventory={controller.dota2Inventory()}
       gameInventoryLoading={{

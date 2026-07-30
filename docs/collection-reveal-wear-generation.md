@@ -10,13 +10,13 @@ implementation and not the trade-up output formula.
 
 1. Select one source wear bracket using these observed probabilities:
 
-   | Bracket | Source interval | Probability |
-   | --- | ---: | ---: |
-   | Factory New | 0.00–0.07 | 3% |
-   | Minimal Wear | 0.07–0.15 | 24% |
-   | Field-Tested | 0.15–0.38 | 33% |
-   | Well-Worn | 0.38–0.45 | 24% |
-   | Battle-Scarred | 0.45–1.00 | 16% |
+   | Bracket        | Source interval | Probability |
+   | -------------- | --------------: | ----------: |
+   | Factory New    |       0.00–0.07 |          3% |
+   | Minimal Wear   |       0.07–0.15 |         24% |
+   | Field-Tested   |       0.15–0.38 |         33% |
+   | Well-Worn      |       0.38–0.45 |         24% |
+   | Battle-Scarred |       0.45–1.00 |         16% |
 
 2. Generate a value uniformly within the selected source interval. If its
    bounds are `bracket_min` and `bracket_max`, the generated value is:

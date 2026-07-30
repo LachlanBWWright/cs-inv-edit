@@ -1,10 +1,8 @@
-package cs2pb
+package gametracking
 
 import (
 	"fmt"
 	"strings"
-
-	"google.golang.org/protobuf/proto"
 )
 
 type ItemPositionInput struct {
@@ -71,12 +69,49 @@ type CraftItemsInput struct {
 	ItemIDs []uint64 `json:"itemIds"`
 }
 
+type ItemCustomizationNotification struct {
+	ItemIDs   []uint64
+	Request   uint32
+	ExtraData []uint64
+}
+
 func EncodeCasketItem(casketID, itemID uint64) ([]byte, error) {
-	msg := &CMsgCasketItem{
-		CasketItemId: proto.Uint64(casketID),
-		ItemItemId:   proto.Uint64(itemID),
+	return MarshalMessage("CMsgCasketItem", map[string]any{"casket_item_id": casketID, "item_item_id": itemID})
+}
+
+func EncodeOpenCrate(subjectItemID, toolItemID uint64, pointsRemaining, volatileLimit *uint32) ([]byte, error) {
+	fields := map[string]any{"subject_item_id": subjectItemID}
+	if toolItemID != 0 {
+		fields["tool_item_id"] = toolItemID
 	}
-	return proto.Marshal(msg)
+	if pointsRemaining != nil {
+		fields["points_remaining"] = *pointsRemaining
+	}
+	if volatileLimit != nil {
+		fields["volatile_limit"] = *volatileLimit
+	}
+	return MarshalMessage("CMsgOpenCrate", fields)
+}
+
+func DecodeItemCustomizationNotification(body []byte) (ItemCustomizationNotification, error) {
+	message, err := UnmarshalMessage("CMsgGCItemCustomizationNotification", body)
+	if err != nil {
+		return ItemCustomizationNotification{}, err
+	}
+	itemField := message.Descriptor().Fields().ByName("item_id")
+	itemList := message.Get(itemField).List()
+	items := make([]uint64, itemList.Len())
+	for index := 0; index < itemList.Len(); index++ {
+		items[index] = itemList.Get(index).Uint()
+	}
+	extraField := message.Descriptor().Fields().ByName("extra_data")
+	extraList := message.Get(extraField).List()
+	extra := make([]uint64, extraList.Len())
+	for index := 0; index < extraList.Len(); index++ {
+		extra[index] = extraList.Get(index).Uint()
+	}
+	requestField := message.Descriptor().Fields().ByName("request")
+	return ItemCustomizationNotification{ItemIDs: items, Request: uint32(message.Get(requestField).Uint()), ExtraData: extra}, nil
 }
 
 func EncodeLoadCasketContents(casketID uint64) ([]byte, error) {
@@ -84,7 +119,11 @@ func EncodeLoadCasketContents(casketID uint64) ([]byte, error) {
 }
 
 func EncodeExtractSticker(itemID uint64, slot uint32) ([]byte, error) {
-	return encodeStickerCustomization(itemID, slot, uint32(EGCItemCustomizationNotification_k_EGCItemCustomizationNotification_ExtractSticker))
+	request, err := EnumValue("EGCItemCustomizationNotification", "k_EGCItemCustomizationNotification_ExtractSticker")
+	if err != nil {
+		return nil, err
+	}
+	return encodeStickerCustomization(itemID, slot, request)
 }
 
 func EncodeSetItemName(input SetItemNameInput) ([]byte, error) {
@@ -98,28 +137,21 @@ func EncodeSetItemName(input SetItemNameInput) ([]byte, error) {
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	msg := &CMsgSetItemName{
-		SubjectItemId: proto.Uint64(input.SubjectItemID),
-		ToolItemId:    proto.Uint64(input.ToolItemID),
-		Name:          proto.String(name),
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgSetItemName", map[string]any{"subject_item_id": input.SubjectItemID, "tool_item_id": input.ToolItemID, "name": name})
 }
 
 func EncodeRemoveItemName(input RemoveItemNameInput) ([]byte, error) {
 	if err := requireID("item id", input.ItemID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgRemoveItemName{ItemId: proto.Uint64(input.ItemID)}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgRemoveItemName", map[string]any{"item_id": input.ItemID})
 }
 
 func EncodeDeleteItem(input DeleteItemInput) ([]byte, error) {
 	if err := requireID("item id", input.ItemID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgDeleteItem{ItemId: proto.Uint64(input.ItemID)}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgDeleteItem", map[string]any{"item_id": input.ItemID})
 }
 
 func EncodeApplyStatTrakSwap(input ApplyStatTrakSwapInput) ([]byte, error) {
@@ -132,12 +164,7 @@ func EncodeApplyStatTrakSwap(input ApplyStatTrakSwapInput) ([]byte, error) {
 	if err := requireID("item 2 id", input.Item2ID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgApplyStatTrakSwap{
-		ToolItemId:   proto.Uint64(input.ToolItemID),
-		Item_1ItemId: proto.Uint64(input.Item1ID),
-		Item_2ItemId: proto.Uint64(input.Item2ID),
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgApplyStatTrakSwap", map[string]any{"tool_item_id": input.ToolItemID, "item_1_item_id": input.Item1ID, "item_2_item_id": input.Item2ID})
 }
 
 func EncodeApplyStrangePart(input ApplyStrangePartInput) ([]byte, error) {
@@ -147,44 +174,39 @@ func EncodeApplyStrangePart(input ApplyStrangePartInput) ([]byte, error) {
 	if err := requireID("item id", input.ItemItemID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgApplyStrangePart{
-		StrangePartItemId: proto.Uint64(input.StrangePartItemID),
-		ItemItemId:        proto.Uint64(input.ItemItemID),
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgApplyStrangePart", map[string]any{"strange_part_item_id": input.StrangePartItemID, "item_item_id": input.ItemItemID})
 }
 
 func EncodeUseItem(input UseItemInput) ([]byte, error) {
 	if err := requireID("item id", input.ItemID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgUseItem{
-		ItemId:                proto.Uint64(input.ItemID),
-		Gift_PotentialTargets: append([]uint32(nil), input.GiftPotentialTargets...),
+	fields := map[string]any{"item_id": input.ItemID}
+	if len(input.GiftPotentialTargets) > 0 {
+		values := make([]any, len(input.GiftPotentialTargets))
+		for index, value := range input.GiftPotentialTargets {
+			values[index] = value
+		}
+		fields["gift__potential_targets"] = values
 	}
 	if input.TargetSteamID != nil {
-		msg.TargetSteamId = proto.Uint64(*input.TargetSteamID)
+		fields["target_steam_id"] = *input.TargetSteamID
 	}
 	if input.DuelClassLock != nil {
-		msg.Duel_ClassLock = proto.Uint32(*input.DuelClassLock)
+		fields["duel__class_lock"] = *input.DuelClassLock
 	}
 	if input.InitiatorSteamID != nil {
-		msg.InitiatorSteamId = proto.Uint64(*input.InitiatorSteamID)
+		fields["initiator_steam_id"] = *input.InitiatorSteamID
 	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgUseItem", fields)
 }
 
 func EncodeUseMultipleItems(input UseMultipleItemsInput) ([]byte, error) {
-	if len(input.ItemIDs) == 0 {
-		return nil, fmt.Errorf("at least one item id is required")
+	values, err := checkedIDs(input.ItemIDs)
+	if err != nil {
+		return nil, err
 	}
-	for index, itemID := range input.ItemIDs {
-		if err := requireID(fmt.Sprintf("item id at index %d", index), itemID); err != nil {
-			return nil, err
-		}
-	}
-	msg := &CMsgUseMultipleItems{ItemIds: append([]uint64(nil), input.ItemIDs...)}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgUseMultipleItems", map[string]any{"item_ids": values})
 }
 
 func EncodeApplyToolToItem(input ApplyToolToItemInput) ([]byte, error) {
@@ -194,11 +216,7 @@ func EncodeApplyToolToItem(input ApplyToolToItemInput) ([]byte, error) {
 	if err := requireID("subject item id", input.SubjectItemID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgApplyToolToItem{
-		ToolItemId:    proto.Uint64(input.ToolItemID),
-		SubjectItemId: proto.Uint64(input.SubjectItemID),
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgApplyToolToItem", map[string]any{"tool_item_id": input.ToolItemID, "subject_item_id": input.SubjectItemID})
 }
 
 func EncodeApplyToolToBaseItem(input ApplyToolToBaseItemInput) ([]byte, error) {
@@ -208,11 +226,7 @@ func EncodeApplyToolToBaseItem(input ApplyToolToBaseItemInput) ([]byte, error) {
 	if input.BaseitemDefIndex == 0 {
 		return nil, fmt.Errorf("base item defindex is required")
 	}
-	msg := &CMsgApplyToolToBaseItem{
-		ToolItemId:       proto.Uint64(input.ToolItemID),
-		BaseitemDefIndex: proto.Uint32(input.BaseitemDefIndex),
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgApplyToolToBaseItem", map[string]any{"tool_item_id": input.ToolItemID, "baseitem_def_index": input.BaseitemDefIndex})
 }
 
 func EncodeGiftItem(input GiftItemInput) ([]byte, error) {
@@ -222,55 +236,52 @@ func EncodeGiftItem(input GiftItemInput) ([]byte, error) {
 	if input.ReceiverAccountID == 0 {
 		return nil, fmt.Errorf("receiver account id is required")
 	}
-	msg := &CMsgGiftItem{
-		ItemId:            proto.Uint64(input.ItemID),
-		ReceiverAccountId: proto.Uint32(input.ReceiverAccountID),
+	fields := map[string]any{"item_id": input.ItemID, "receiver_account_id": input.ReceiverAccountID}
+	if message := strings.TrimSpace(input.GiftMessage); message != "" {
+		fields["gift_message"] = message
 	}
-	if text := strings.TrimSpace(input.GiftMessage); text != "" {
-		msg.GiftMessage = proto.String(text)
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgGiftItem", fields)
 }
 
 func EncodeCraftItems(input CraftItemsInput) ([]byte, error) {
-	if len(input.ItemIDs) == 0 {
-		return nil, fmt.Errorf("at least one item id is required")
+	values, err := checkedIDs(input.ItemIDs)
+	if err != nil {
+		return nil, err
 	}
-	for index, itemID := range input.ItemIDs {
-		if err := requireID(fmt.Sprintf("item id at index %d", index), itemID); err != nil {
-			return nil, err
-		}
-	}
-	msg := &CMsgCraftItems{
-		Recipe:  proto.Int32(input.Recipe),
-		ItemIds: append([]uint64(nil), input.ItemIDs...),
-	}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgCraftItems", map[string]any{"recipe": input.Recipe, "item_ids": values})
 }
 
-func EncodeSetItemPositions(itemPositions []ItemPositionInput) ([]byte, error) {
-	positions := make([]*CMsgSetItemPositions_ItemPosition, 0, len(itemPositions))
-	for _, position := range itemPositions {
-		positions = append(positions, &CMsgSetItemPositions_ItemPosition{
-			LegacyItemId: proto.Uint32(position.LegacyItemID),
-			Position:     proto.Uint32(position.Position),
-			ItemId:       proto.Uint64(position.ItemID),
-		})
+func EncodeSetItemPositions(positions []ItemPositionInput) ([]byte, error) {
+	values := make([]any, len(positions))
+	for index, position := range positions {
+		values[index] = map[string]any{"legacy_item_id": position.LegacyItemID, "position": position.Position, "item_id": position.ItemID}
 	}
-	msg := &CMsgSetItemPositions{ItemPositions: positions}
-	return proto.Marshal(msg)
+	return MarshalMessage("CMsgSetItemPositions", map[string]any{"item_positions": values})
 }
 
 func encodeStickerCustomization(itemID uint64, slot uint32, request uint32) ([]byte, error) {
 	if err := requireID("item id", itemID); err != nil {
 		return nil, err
 	}
-	msg := &CMsgGCItemCustomizationNotification{
-		ItemId:    []uint64{itemID},
-		Request:   proto.Uint32(request),
-		ExtraData: []uint64{uint64(slot)},
+	return MarshalMessage("CMsgGCItemCustomizationNotification", map[string]any{
+		"item_id":    []any{itemID},
+		"request":    request,
+		"extra_data": []any{uint64(slot)},
+	})
+}
+
+func checkedIDs(ids []uint64) ([]any, error) {
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("at least one item id is required")
 	}
-	return proto.Marshal(msg)
+	values := make([]any, len(ids))
+	for index, id := range ids {
+		if err := requireID(fmt.Sprintf("item id at index %d", index), id); err != nil {
+			return nil, err
+		}
+		values[index] = id
+	}
+	return values, nil
 }
 
 func requireID(name string, value uint64) error {

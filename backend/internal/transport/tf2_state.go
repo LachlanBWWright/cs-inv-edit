@@ -7,9 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
 	"cs-inv-edit/backend/internal/proto/tf2tracking"
-	"google.golang.org/protobuf/proto"
+	"cs-inv-edit/backend/internal/proto/tracking"
 )
 
 const (
@@ -198,16 +197,24 @@ func (s *SteamGCClient) removeTF2PresetObject(object []byte) {
 }
 
 func (s *SteamGCClient) decodeTF2Subscribed(body []byte) {
-	var cache multigamepb.CMsgSOCacheSubscribed
-	if err := proto.Unmarshal(body, &cache); err != nil {
+	cache, err := tf2tracking.UnmarshalMessage("CMsgSOCacheSubscribed", body)
+	if err != nil {
 		s.tf2Diagnostic("decode TF2 SOCache feature objects: " + err.Error())
 		return
 	}
-	for _, objectType := range cache.GetObjects() {
-		if objectType.GetTypeId() == 1 {
+	objects := tracking.List(cache, "objects")
+	for index := 0; index < objects.Len(); index++ {
+		objectType := objects.Get(index).Message()
+		typeID := int32(tracking.Int(objectType, "type_id"))
+		if typeID == 1 {
 			continue
 		}
-		s.decodeTF2ObjectType(objectType.GetTypeId(), objectType.GetObjectData())
+		data := tracking.List(objectType, "object_data")
+		values := make([][]byte, data.Len())
+		for dataIndex := 0; dataIndex < data.Len(); dataIndex++ {
+			values[dataIndex] = append([]byte(nil), data.Get(dataIndex).Bytes()...)
+		}
+		s.decodeTF2ObjectType(typeID, values)
 	}
 }
 

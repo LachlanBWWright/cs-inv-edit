@@ -34,6 +34,7 @@ project.
   This compresses the underlying distribution into the finish's allowed float
   range. Consequently, equal-width portions of a visible wear category need
   not be equally likely for a float-capped finish.
+
 - Within an individual generated wear interval, the article found the values
   approximately uniform, including at very low float values. This does not
   mean that floats are uniform across the entire 0–1 range, because the wear

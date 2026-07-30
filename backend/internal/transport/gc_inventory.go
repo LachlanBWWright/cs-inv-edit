@@ -8,8 +8,10 @@ import (
 	"math"
 	"time"
 
-	"cs-inv-edit/backend/internal/proto/generated"
-	multigamepb "cs-inv-edit/backend/internal/proto/generated/multigamepb"
+	"cs-inv-edit/backend/internal/proto/dota2tracking"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/proto/tf2tracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"github.com/Lucino772/envelop/pkg/steam"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
@@ -17,6 +19,8 @@ import (
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 // cs2ClientVersion must match game/csgo/steam.inf in the pinned
@@ -144,7 +148,7 @@ func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) 
 					return items, nil
 				}
 			case 27:
-				refresh, decodeErr := gameSOCacheSubscriptionRefresh(message.Body)
+				refresh, decodeErr := gameSOCacheSubscriptionRefresh(appID, message.Body)
 				if decodeErr != nil {
 					return nil, trace.Error(fmt.Errorf("appid=%d decode SOCache subscription check: %w", appID, decodeErr))
 				}
@@ -157,28 +161,44 @@ func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) 
 	}
 }
 
-func gameSOCacheSubscriptionRefresh(body []byte) ([]byte, error) {
-	var check multigamepb.CMsgSOCacheSubscriptionCheck
-	if err := proto.Unmarshal(body, &check); err != nil {
+func gameSOCacheSubscriptionRefresh(appID uint32, body []byte) ([]byte, error) {
+	check, err := unmarshalGameMessage(appID, "CMsgSOCacheSubscriptionCheck", body)
+	if err != nil {
 		return nil, err
 	}
-	if check.Owner == nil && check.OwnerSoid == nil {
+	ownerField := tracking.Field(check, "owner")
+	ownerSOIDField := tracking.Field(check, "owner_soid")
+	if !check.Has(ownerField) && !check.Has(ownerSOIDField) {
 		return nil, fmt.Errorf("SOCache subscription check omitted owner identity")
 	}
-	return proto.Marshal(&multigamepb.CMsgSOCacheSubscriptionRefresh{Owner: check.Owner, OwnerSoid: check.OwnerSoid})
+	fields := make(map[string]any)
+	if check.Has(ownerField) {
+		fields["owner"] = tracking.Uint(check, "owner")
+	}
+	if check.Has(ownerSOIDField) {
+		owner := check.Get(ownerSOIDField).Message()
+		fields["owner_soid"] = map[string]any{"type": uint32(tracking.Uint(owner, "type")), "id": tracking.Uint(owner, "id")}
+	}
+	return marshalGameMessage(appID, "CMsgSOCacheSubscriptionRefresh", fields)
 }
 
 func dotaWelcomeSOCacheRefreshes(body []byte) ([][]byte, error) {
-	var welcome multigamepb.CMsgClientWelcome
-	if err := proto.Unmarshal(body, &welcome); err != nil {
+	welcome, err := dota2tracking.UnmarshalMessage("CMsgClientWelcome", body)
+	if err != nil {
 		return nil, err
 	}
-	refreshes := make([][]byte, 0, len(welcome.GetUptodateSubscribedCaches()))
-	for _, check := range welcome.GetUptodateSubscribedCaches() {
-		if check.GetOwnerSoid() == nil {
+	checks := tracking.List(welcome, "uptodate_subscribed_caches")
+	refreshes := make([][]byte, 0, checks.Len())
+	for index := 0; index < checks.Len(); index++ {
+		check := checks.Get(index).Message()
+		ownerField := tracking.Field(check, "owner_soid")
+		if !check.Has(ownerField) {
 			return nil, fmt.Errorf("Dota 2 welcome SOCache subscription check omitted owner_soid")
 		}
-		body, err := proto.Marshal(&multigamepb.CMsgSOCacheSubscriptionRefresh{OwnerSoid: check.OwnerSoid})
+		owner := check.Get(ownerField).Message()
+		body, err := dota2tracking.MarshalMessage("CMsgSOCacheSubscriptionRefresh", map[string]any{
+			"owner_soid": map[string]any{"type": uint32(tracking.Uint(owner, "type")), "id": tracking.Uint(owner, "id")},
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -193,11 +213,33 @@ func gameClientHello(appID uint32) ([]byte, error) {
 	// Source 2 because the protobuf's legacy default is Source 1.
 	switch appID {
 	case 440:
-		return proto.Marshal(&multigamepb.CMsgClientHello{Version: proto.Uint32(10815139)})
+		return tf2tracking.MarshalFields("CMsgClientHello", map[string]any{"version": uint32(10815139)})
 	case 570:
-		return proto.Marshal(&multigamepb.CMsgClientHello{Version: proto.Uint32(6859), ClientSessionNeed: proto.Uint32(0), ClientLauncher: proto.Uint32(0), Engine: proto.Uint32(1)})
+		return dota2tracking.MarshalMessage("CMsgClientHello", map[string]any{"version": uint32(6859), "client_session_need": uint32(0), "client_launcher": uint32(0), "engine": uint32(1)})
 	default:
 		return nil, fmt.Errorf("unsupported hello AppID %d", appID)
+	}
+}
+
+func marshalGameMessage(appID uint32, name string, fields map[string]any) ([]byte, error) {
+	switch appID {
+	case 440:
+		return tf2tracking.MarshalFields(name, fields)
+	case 570:
+		return dota2tracking.MarshalMessage(name, fields)
+	default:
+		return nil, fmt.Errorf("unsupported GameTracking AppID %d", appID)
+	}
+}
+
+func unmarshalGameMessage(appID uint32, name string, body []byte) (*dynamicpb.Message, error) {
+	switch appID {
+	case 440:
+		return tf2tracking.UnmarshalMessage(name, body)
+	case 570:
+		return dota2tracking.UnmarshalMessage(name, body)
+	default:
+		return nil, fmt.Errorf("unsupported GameTracking AppID %d", appID)
 	}
 }
 
@@ -215,12 +257,13 @@ func decodeGameWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem, b
 }
 
 func decodeGenericWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
-	var welcome multigamepb.CMsgClientWelcome
-	if err := proto.Unmarshal(body, &welcome); err != nil {
+	welcome, err := unmarshalGameMessage(appID, "CMsgClientWelcome", body)
+	if err != nil {
 		return nil, false, err
 	}
-	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
-		if items, found, err := decodeGenericSubscribedTypes(appID, cache.GetObjects()); found || err != nil {
+	caches := tracking.List(welcome, "outofdate_subscribed_caches")
+	for index := 0; index < caches.Len(); index++ {
+		if items, found, err := decodeGenericSubscribedTypes(appID, tracking.List(caches.Get(index).Message(), "objects")); found || err != nil {
 			return items, found, err
 		}
 	}
@@ -228,60 +271,72 @@ func decodeGenericWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem
 }
 
 func decodeGenericSubscribedInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
-	var cache multigamepb.CMsgSOCacheSubscribed
-	if err := proto.Unmarshal(body, &cache); err != nil {
+	cache, err := unmarshalGameMessage(appID, "CMsgSOCacheSubscribed", body)
+	if err != nil {
 		return nil, false, err
 	}
-	return decodeGenericSubscribedTypes(appID, cache.GetObjects())
+	return decodeGenericSubscribedTypes(appID, tracking.List(cache, "objects"))
 }
 
-func decodeGenericSubscribedTypes(appID uint32, types []*multigamepb.CMsgSOCacheSubscribed_SubscribedType) ([]GCInventoryItem, bool, error) {
-	for _, objectType := range types {
-		if objectType.GetTypeId() != 1 {
+func decodeGenericSubscribedTypes(appID uint32, types protoreflect.List) ([]GCInventoryItem, bool, error) {
+	for typeIndex := 0; typeIndex < types.Len(); typeIndex++ {
+		objectType := types.Get(typeIndex).Message()
+		if tracking.Int(objectType, "type_id") != 1 {
 			continue
 		}
-		items := make([]GCInventoryItem, 0, len(objectType.GetObjectData()))
-		for _, data := range objectType.GetObjectData() {
-			var item multigamepb.CSOEconItem
-			if err := proto.Unmarshal(data, &item); err != nil {
+		objectData := tracking.List(objectType, "object_data")
+		items := make([]GCInventoryItem, 0, objectData.Len())
+		for dataIndex := 0; dataIndex < objectData.Len(); dataIndex++ {
+			item, err := unmarshalGameMessage(appID, "CSOEconItem", objectData.Get(dataIndex).Bytes())
+			if err != nil {
 				return nil, true, fmt.Errorf("decode economy item: %w", err)
 			}
-			if item.GetId() == 0 {
+			if tracking.Uint(item, "id") == 0 {
 				continue
 			}
-			attributes := make(map[uint32]uint32, len(item.GetAttribute()))
-			attributeBytes := make(map[uint32][]byte, len(item.GetAttribute()))
-			for _, attribute := range item.GetAttribute() {
-				definitionIndex := attribute.GetDefIndex()
-				if appID == 570 && attribute.DefIndex == nil {
+			attributeList := tracking.List(item, "attribute")
+			attributes := make(map[uint32]uint32, attributeList.Len())
+			attributeBytes := make(map[uint32][]byte, attributeList.Len())
+			for attributeIndex := 0; attributeIndex < attributeList.Len(); attributeIndex++ {
+				attribute := attributeList.Get(attributeIndex).Message()
+				definitionIndex := uint32(tracking.Uint(attribute, "def_index"))
+				if appID == 570 && !tracking.Has(attribute, "def_index") {
 					definitionIndex = 65535
 				}
-				value := attribute.GetValue()
-				if value == 0 && len(attribute.GetValueBytes()) >= 4 {
-					value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+				value := uint32(tracking.Uint(attribute, "value"))
+				valueBytes := tracking.Bytes(attribute, "value_bytes")
+				if value == 0 && len(valueBytes) >= 4 {
+					value = binary.LittleEndian.Uint32(valueBytes[:4])
 				}
 				attributes[definitionIndex] = value
-				if len(attribute.GetValueBytes()) > 0 {
-					attributeBytes[definitionIndex] = append([]byte(nil), attribute.GetValueBytes()...)
+				if len(valueBytes) > 0 {
+					attributeBytes[definitionIndex] = append([]byte(nil), valueBytes...)
 				}
 			}
-			equipped := make([]GCEquippedState, 0, len(item.GetEquippedState()))
-			for _, state := range item.GetEquippedState() {
-				equipped = append(equipped, GCEquippedState{Class: state.GetNewClass(), Slot: state.GetNewSlot()})
+			equippedList := tracking.List(item, "equipped_state")
+			equipped := make([]GCEquippedState, 0, equippedList.Len())
+			for stateIndex := 0; stateIndex < equippedList.Len(); stateIndex++ {
+				state := equippedList.Get(stateIndex).Message()
+				equipped = append(equipped, GCEquippedState{Class: uint32(tracking.Uint(state, "new_class")), Slot: uint32(tracking.Uint(state, "new_slot"))})
 			}
-			quantity, level, quality := item.GetQuantity(), item.GetLevel(), item.GetQuality()
+			quantity, level, quality := uint32(tracking.Uint(item, "quantity")), uint32(tracking.Uint(item, "level")), uint32(tracking.Uint(item, "quality"))
 			if appID == 570 {
-				if item.Quantity == nil {
+				if !tracking.Has(item, "quantity") {
 					quantity = 1
 				}
-				if item.Level == nil {
+				if !tracking.Has(item, "level") {
 					level = 1
 				}
-				if item.Quality == nil {
+				if !tracking.Has(item, "quality") {
 					quality = 4
 				}
 			}
-			items = append(items, GCInventoryItem{ID: item.GetId(), OriginalID: item.GetOriginalId(), DefIndex: item.GetDefIndex(), Quantity: quantity, Quality: quality, Inventory: item.GetInventory(), CustomName: item.GetCustomName(), Attributes: attributes, AttributeBytes: attributeBytes, EquippedStates: equipped, InteriorItemID: item.GetInteriorItem().GetId(), Level: level, Flags: item.GetFlags(), Origin: item.GetOrigin(), Style: item.GetStyle(), CustomDesc: item.GetCustomDesc()})
+			interiorID := uint64(0)
+			interiorField := tracking.Field(item, "interior_item")
+			if item.Has(interiorField) {
+				interiorID = tracking.Uint(item.Get(interiorField).Message(), "id")
+			}
+			items = append(items, GCInventoryItem{ID: tracking.Uint(item, "id"), OriginalID: tracking.Uint(item, "original_id"), DefIndex: uint32(tracking.Uint(item, "def_index")), Quantity: quantity, Quality: quality, Inventory: uint32(tracking.Uint(item, "inventory")), CustomName: tracking.String(item, "custom_name"), Attributes: attributes, AttributeBytes: attributeBytes, EquippedStates: equipped, InteriorItemID: interiorID, Level: level, Flags: uint32(tracking.Uint(item, "flags")), Origin: uint32(tracking.Uint(item, "origin")), Style: uint32(tracking.Uint(item, "style")), CustomDesc: tracking.String(item, "custom_desc")})
 		}
 		return items, true, nil
 	}
@@ -512,48 +567,48 @@ const cs2VolatileItemOfferSOTypeID int32 = 20
 func decodeCS2IncrementalInventory(message GCMessage) (cs2IncrementalInventoryUpdate, bool, error) {
 	switch message.EMsg {
 	case protocol.EMsgSOCacheSubscribed:
-		var subscribed cs2pb.CMsgSOCacheSubscribed
-		if err := proto.Unmarshal(message.Body, &subscribed); err != nil {
+		subscribed, err := cs2pb.DecodeSOCacheSubscribed(message.Body)
+		if err != nil {
 			return cs2IncrementalInventoryUpdate{}, true, fmt.Errorf("decode CS2 subscribed SOCache: %w", err)
 		}
-		return decodeCS2SubscribedTypes(subscribed.GetObjects())
+		return decodeCS2SubscribedTypes(subscribed.Objects)
 	case protocol.EMsgSOCreate, protocol.EMsgSOUpdate:
-		var single cs2pb.CMsgSOSingleObject
-		if err := proto.Unmarshal(message.Body, &single); err != nil {
+		single, err := cs2pb.DecodeSOSingleObject(message.Body)
+		if err != nil {
 			return cs2IncrementalInventoryUpdate{}, true, fmt.Errorf("decode CS2 single SO: %w", err)
 		}
-		if single.GetTypeId() == 1 {
-			item, err := decodeCS2EconItem(single.GetObjectData())
+		if single.TypeID == 1 {
+			item, err := decodeCS2EconItem(single.ObjectData)
 			if err != nil {
 				return cs2IncrementalInventoryUpdate{}, true, err
 			}
 			return cs2IncrementalInventoryUpdate{Items: []GCInventoryItem{item}}, true, nil
 		}
-		if single.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+		if single.TypeID != cs2VolatileItemOfferSOTypeID {
 			return cs2IncrementalInventoryUpdate{}, false, nil
 		}
-		offer, ok := decodeCS2VolatileOffer(single.GetObjectData())
+		offer, ok := decodeCS2VolatileOffer(single.ObjectData)
 		if !ok {
 			return cs2IncrementalInventoryUpdate{}, false, nil
 		}
-		return cs2IncrementalInventoryUpdate{VolatileOffers: map[uint32][]GCVolatileOffer{offer.GetDefidx(): domainVolatileOffers(&offer)}}, true, nil
+		return cs2IncrementalInventoryUpdate{VolatileOffers: map[uint32][]GCVolatileOffer{offer.DefIndex: domainVolatileOffers(offer)}}, true, nil
 	case protocol.EMsgSOUpdateMultiple:
-		var multiple cs2pb.CMsgSOMultipleObjects
-		if err := proto.Unmarshal(message.Body, &multiple); err != nil {
+		multiple, err := cs2pb.DecodeSOMultipleObjects(message.Body)
+		if err != nil {
 			return cs2IncrementalInventoryUpdate{}, true, fmt.Errorf("decode CS2 multiple SO update: %w", err)
 		}
 		update := cs2IncrementalInventoryUpdate{Items: make([]GCInventoryItem, 0), VolatileOffers: make(map[uint32][]GCVolatileOffer)}
-		for _, object := range multiple.GetObjectsModified() {
-			if object.GetTypeId() != 1 {
-				if object.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+		for _, object := range multiple.ObjectsModified {
+			if object.TypeID != 1 {
+				if object.TypeID != cs2VolatileItemOfferSOTypeID {
 					continue
 				}
-				if offer, ok := decodeCS2VolatileOffer(object.GetObjectData()); ok {
-					update.VolatileOffers[offer.GetDefidx()] = domainVolatileOffers(&offer)
+				if offer, ok := decodeCS2VolatileOffer(object.ObjectData); ok {
+					update.VolatileOffers[offer.DefIndex] = domainVolatileOffers(offer)
 				}
 				continue
 			}
-			item, err := decodeCS2EconItem(object.GetObjectData())
+			item, err := decodeCS2EconItem(object.ObjectData)
 			if err != nil {
 				return cs2IncrementalInventoryUpdate{}, true, err
 			}
@@ -565,24 +620,24 @@ func decodeCS2IncrementalInventory(message GCMessage) (cs2IncrementalInventoryUp
 	}
 }
 
-func decodeCS2SubscribedTypes(types []*cs2pb.CMsgSOCacheSubscribed_SubscribedType) (cs2IncrementalInventoryUpdate, bool, error) {
+func decodeCS2SubscribedTypes(types []cs2pb.SubscribedType) (cs2IncrementalInventoryUpdate, bool, error) {
 	update := cs2IncrementalInventoryUpdate{Items: make([]GCInventoryItem, 0), VolatileOffers: make(map[uint32][]GCVolatileOffer)}
 	found := false
 	for _, objectType := range types {
-		if objectType.GetTypeId() != 1 {
-			if objectType.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+		if objectType.TypeID != 1 {
+			if objectType.TypeID != cs2VolatileItemOfferSOTypeID {
 				continue
 			}
-			for _, objectData := range objectType.GetObjectData() {
+			for _, objectData := range objectType.ObjectData {
 				if offer, ok := decodeCS2VolatileOffer(objectData); ok {
-					update.VolatileOffers[offer.GetDefidx()] = domainVolatileOffers(&offer)
+					update.VolatileOffers[offer.DefIndex] = domainVolatileOffers(offer)
 					found = true
 				}
 			}
 			continue
 		}
 		found = true
-		for _, objectData := range objectType.GetObjectData() {
+		for _, objectData := range objectType.ObjectData {
 			item, err := decodeCS2EconItem(objectData)
 			if err != nil {
 				return cs2IncrementalInventoryUpdate{}, true, err
@@ -593,20 +648,20 @@ func decodeCS2SubscribedTypes(types []*cs2pb.CMsgSOCacheSubscribed_SubscribedTyp
 	return update, found, nil
 }
 
-func decodeCS2VolatileOffer(body []byte) (cs2pb.CSOVolatileItemOffer, bool) {
-	var offer cs2pb.CSOVolatileItemOffer
-	if proto.Unmarshal(body, &offer) != nil || offer.GetDefidx() == 0 || offer.GetDefidx() > 1_000_000 || len(offer.GetFauxItemid()) == 0 {
-		return cs2pb.CSOVolatileItemOffer{}, false
+func decodeCS2VolatileOffer(body []byte) (cs2pb.VolatileItemOffer, bool) {
+	offer, err := cs2pb.DecodeVolatileItemOffer(body)
+	if err != nil || offer.DefIndex == 0 || offer.DefIndex > 1_000_000 || len(offer.FauxItemIDs) == 0 {
+		return cs2pb.VolatileItemOffer{}, false
 	}
 	return offer, true
 }
 
-func domainVolatileOffers(offer *cs2pb.CSOVolatileItemOffer) []GCVolatileOffer {
-	result := make([]GCVolatileOffer, 0, len(offer.GetFauxItemid()))
-	for index, fauxItemID := range offer.GetFauxItemid() {
+func domainVolatileOffers(offer cs2pb.VolatileItemOffer) []GCVolatileOffer {
+	result := make([]GCVolatileOffer, 0, len(offer.FauxItemIDs))
+	for index, fauxItemID := range offer.FauxItemIDs {
 		generationTime := uint32(0)
-		if index < len(offer.GetGenerationTime()) {
-			generationTime = offer.GetGenerationTime()[index]
+		if index < len(offer.GenerationTime) {
+			generationTime = offer.GenerationTime[index]
 		}
 		result = append(result, GCVolatileOffer{FauxItemID: fauxItemID, GenerationTime: generationTime})
 	}
@@ -638,12 +693,7 @@ func mergeInventoryItemMap(items []GCInventoryItem, additional map[uint64]GCInve
 }
 
 func cs2ClientHello() ([]byte, error) {
-	return proto.Marshal(&cs2pb.CMsgClientHello{
-		Version:           proto.Uint32(cs2ClientVersion),
-		ClientSessionNeed: proto.Uint32(0),
-		ClientLauncher:    proto.Uint32(0),
-		SteamLauncher:     proto.Uint32(0),
-	})
+	return cs2pb.MarshalMessage("CMsgClientHello", map[string]any{"version": cs2ClientVersion, "client_session_need": uint32(0), "client_launcher": uint32(0), "steam_launcher": uint32(0)})
 }
 
 func (s *SteamGCClient) RequestArmory(ctx context.Context) (GCArmorySnapshot, error) {
@@ -697,51 +747,63 @@ func (s *SteamGCClient) RequestArmory(ctx context.Context) (GCArmorySnapshot, er
 
 func decodeArmorySOMessage(result *GCArmorySnapshot, message GCMessage) (bool, error) {
 	if message.EMsg == protocol.EMsgGCCStrike15V2GC2ClientNotifyXPShop {
-		var notification cs2pb.CMsgGCCStrike15V2GC2ClientNotifyXPShop
-		if err := proto.Unmarshal(message.Body, &notification); err != nil {
+		notification, err := cs2pb.UnmarshalMessage("CMsgGCCStrike15V2GC2ClientNotifyXPShop", message.Body)
+		if err != nil {
 			return false, err
 		}
-		state := notification.GetPostmatch()
-		if state == nil {
-			state = notification.GetPrematch()
+		var stateMessage protoreflect.Message
+		for _, name := range []string{"postmatch", "prematch"} {
+			field := notification.Descriptor().Fields().ByName(protoreflect.Name(name))
+			if notification.Has(field) {
+				stateMessage = notification.Get(field).Message()
+				break
+			}
 		}
-		if state == nil {
+		if stateMessage == nil {
 			return false, nil
+		}
+		stateBody, err := proto.Marshal(stateMessage.Interface())
+		if err != nil {
+			return false, err
+		}
+		state, err := cs2pb.DecodeXpShop(stateBody)
+		if err != nil {
+			return false, err
 		}
 		applyXpShopState(result, state)
 		return true, nil
 	}
 	switch message.EMsg {
 	case protocol.EMsgSOCacheSubscribed:
-		var subscribed cs2pb.CMsgSOCacheSubscribed
-		if err := proto.Unmarshal(message.Body, &subscribed); err != nil {
+		subscribed, err := cs2pb.DecodeSOCacheSubscribed(message.Body)
+		if err != nil {
 			return false, err
 		}
-		log.Printf("[armory] CacheSubscribed objects=%d version=%d", len(subscribed.GetObjects()), subscribed.GetVersion())
-		return decodeXpShopSubscribedCache(result, &subscribed)
+		log.Printf("[armory] CacheSubscribed objects=%d version=%d", len(subscribed.Objects), subscribed.Version)
+		return decodeXpShopSubscribedCache(result, subscribed)
 	case protocol.EMsgSOCreate, protocol.EMsgSOUpdate:
-		var single cs2pb.CMsgSOSingleObject
-		if err := proto.Unmarshal(message.Body, &single); err != nil {
+		single, err := cs2pb.DecodeSOSingleObject(message.Body)
+		if err != nil {
 			return false, err
 		}
-		log.Printf("[armory] single SO emsg=%d type_id=%d object_bytes=%d version=%d", message.EMsg, single.GetTypeId(), len(single.GetObjectData()), single.GetVersion())
+		log.Printf("[armory] single SO emsg=%d type_id=%d object_bytes=%d version=%d", message.EMsg, single.TypeID, len(single.ObjectData), single.Version)
 		// A keyless XP Shop state and a single bid have indistinguishable fields
 		// 1-3 when the bid omits optional field 4. Incremental messages can update
 		// only a type already identified from a complete subscribed cache.
-		if result.XpShopTypeID == 0 || single.GetTypeId() != result.XpShopTypeID {
+		if result.XpShopTypeID == 0 || single.TypeID != result.XpShopTypeID {
 			return false, nil
 		}
-		return decodeIncrementalArmoryObject(result, single.GetTypeId(), single.GetObjectData()), nil
+		return decodeIncrementalArmoryObject(result, single.TypeID, single.ObjectData), nil
 	case protocol.EMsgSOUpdateMultiple:
-		var multiple cs2pb.CMsgSOMultipleObjects
-		if err := proto.Unmarshal(message.Body, &multiple); err != nil {
+		multiple, err := cs2pb.DecodeSOMultipleObjects(message.Body)
+		if err != nil {
 			return false, err
 		}
 		matched := false
-		log.Printf("[armory] multiple SO objects=%d version=%d", len(multiple.GetObjectsModified()), multiple.GetVersion())
-		for _, object := range multiple.GetObjectsModified() {
-			log.Printf("[armory] multiple SO type_id=%d object_bytes=%d", object.GetTypeId(), len(object.GetObjectData()))
-			if result.XpShopTypeID != 0 && object.GetTypeId() == result.XpShopTypeID && decodeIncrementalArmoryObject(result, object.GetTypeId(), object.GetObjectData()) {
+		log.Printf("[armory] multiple SO objects=%d version=%d", len(multiple.ObjectsModified), multiple.Version)
+		for _, object := range multiple.ObjectsModified {
+			log.Printf("[armory] multiple SO type_id=%d object_bytes=%d", object.TypeID, len(object.ObjectData))
+			if result.XpShopTypeID != 0 && object.TypeID == result.XpShopTypeID && decodeIncrementalArmoryObject(result, object.TypeID, object.ObjectData) {
 				matched = true
 			}
 		}
@@ -752,32 +814,32 @@ func decodeArmorySOMessage(result *GCArmorySnapshot, message GCMessage) (bool, e
 }
 
 func decodeArmoryFromClientWelcome(body []byte) (GCArmorySnapshot, error) {
-	var welcome cs2pb.CMsgClientWelcome
-	if err := proto.Unmarshal(body, &welcome); err != nil {
+	welcome, err := cs2pb.DecodeClientWelcome(body)
+	if err != nil {
 		return GCArmorySnapshot{}, fmt.Errorf("failed to decode CS2 ClientWelcome for Armory: %w", err)
 	}
 	var result GCArmorySnapshot
-	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
-		for _, objectType := range cache.GetObjects() {
-			log.Printf("[armory] welcome SO type_id=%d objects=%d", objectType.GetTypeId(), len(objectType.GetObjectData()))
-			if objectType.GetTypeId() == 1 || len(objectType.GetObjectData()) != 1 {
+	for _, cache := range welcome.OutofdateSubscribedCaches {
+		for _, objectType := range cache.Objects {
+			log.Printf("[armory] welcome SO type_id=%d objects=%d", objectType.TypeID, len(objectType.ObjectData))
+			if objectType.TypeID == 1 || len(objectType.ObjectData) != 1 {
 				continue
 			}
-			for _, objectData := range objectType.GetObjectData() {
+			for _, objectData := range objectType.ObjectData {
 				state, valid, reason := decodeXpShopCandidate(objectData)
-				log.Printf("[armory] welcome candidate type_id=%d valid=%t reason=%s", objectType.GetTypeId(), valid, reason)
+				log.Printf("[armory] welcome candidate type_id=%d valid=%t reason=%s", objectType.TypeID, valid, reason)
 				if !valid {
 					continue
 				}
-				if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.GetTypeId() {
+				if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.TypeID {
 					if result.XpShopTypeID == observedXpShopTypeID {
 						continue
 					}
-					if objectType.GetTypeId() != observedXpShopTypeID {
-						return GCArmorySnapshot{}, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+					if objectType.TypeID != observedXpShopTypeID {
+						return GCArmorySnapshot{}, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.TypeID)
 					}
 				}
-				result.XpShopTypeID = objectType.GetTypeId()
+				result.XpShopTypeID = objectType.TypeID
 				applyXpShopState(&result, state)
 			}
 		}
@@ -785,27 +847,27 @@ func decodeArmoryFromClientWelcome(body []byte) (GCArmorySnapshot, error) {
 	return result, nil
 }
 
-func decodeXpShopSubscribedCache(result *GCArmorySnapshot, subscribed *cs2pb.CMsgSOCacheSubscribed) (bool, error) {
-	for _, objectType := range subscribed.GetObjects() {
-		log.Printf("[armory] subscribed SO type_id=%d objects=%d", objectType.GetTypeId(), len(objectType.GetObjectData()))
-		if objectType.GetTypeId() == 1 || len(objectType.GetObjectData()) != 1 {
+func decodeXpShopSubscribedCache(result *GCArmorySnapshot, subscribed cs2pb.SOCacheSubscribed) (bool, error) {
+	for _, objectType := range subscribed.Objects {
+		log.Printf("[armory] subscribed SO type_id=%d objects=%d", objectType.TypeID, len(objectType.ObjectData))
+		if objectType.TypeID == 1 || len(objectType.ObjectData) != 1 {
 			continue
 		}
-		for _, objectData := range objectType.GetObjectData() {
+		for _, objectData := range objectType.ObjectData {
 			state, valid, reason := decodeXpShopCandidate(objectData)
-			log.Printf("[armory] subscribed candidate type_id=%d valid=%t reason=%s", objectType.GetTypeId(), valid, reason)
+			log.Printf("[armory] subscribed candidate type_id=%d valid=%t reason=%s", objectType.TypeID, valid, reason)
 			if !valid {
 				continue
 			}
-			if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.GetTypeId() {
+			if result.XpShopTypeID != 0 && result.XpShopTypeID != objectType.TypeID {
 				if result.XpShopTypeID == observedXpShopTypeID {
 					continue
 				}
-				if objectType.GetTypeId() != observedXpShopTypeID {
-					return false, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.GetTypeId())
+				if objectType.TypeID != observedXpShopTypeID {
+					return false, fmt.Errorf("ambiguous XpShop SOCache candidates: type %d and type %d", result.XpShopTypeID, objectType.TypeID)
 				}
 			}
-			result.XpShopTypeID = objectType.GetTypeId()
+			result.XpShopTypeID = objectType.TypeID
 			applyXpShopState(result, state)
 			return true, nil
 		}
@@ -830,21 +892,21 @@ func decodeIncrementalArmoryObject(result *GCArmorySnapshot, typeID int32, data 
 	return true
 }
 
-func decodeXpShopCandidate(data []byte) (*cs2pb.CSOAccountXpShop, bool, string) {
+func decodeXpShopCandidate(data []byte) (cs2pb.XpShop, bool, string) {
 	remaining := data
 	for len(remaining) > 0 {
 		number, wireType, n := protowire.ConsumeTag(remaining)
 		if n < 0 {
-			return nil, false, "invalid protobuf tag"
+			return cs2pb.XpShop{}, false, "invalid protobuf tag"
 		}
 		remaining = remaining[n:]
 		if number < 1 || number > 3 {
-			return nil, false, fmt.Sprintf("unexpected field %d", number)
+			return cs2pb.XpShop{}, false, fmt.Sprintf("unexpected field %d", number)
 		}
 		if wireType == protowire.VarintType {
 			value, consumed := protowire.ConsumeVarint(remaining)
 			if consumed < 0 || value > math.MaxUint32 {
-				return nil, false, fmt.Sprintf("field %d is not uint32", number)
+				return cs2pb.XpShop{}, false, fmt.Sprintf("field %d is not uint32", number)
 			}
 			remaining = remaining[consumed:]
 			continue
@@ -852,77 +914,88 @@ func decodeXpShopCandidate(data []byte) (*cs2pb.CSOAccountXpShop, bool, string) 
 		if number == 3 && wireType == protowire.BytesType {
 			packed, consumed := protowire.ConsumeBytes(remaining)
 			if consumed < 0 {
-				return nil, false, "invalid packed xp_tracks"
+				return cs2pb.XpShop{}, false, "invalid packed xp_tracks"
 			}
 			for len(packed) > 0 {
 				value, width := protowire.ConsumeVarint(packed)
 				if width < 0 || value > math.MaxUint32 {
-					return nil, false, "packed xp_track is not uint32"
+					return cs2pb.XpShop{}, false, "packed xp_track is not uint32"
 				}
 				packed = packed[width:]
 			}
 			remaining = remaining[consumed:]
 			continue
 		}
-		return nil, false, fmt.Sprintf("field %d has wire type %d", number, wireType)
+		return cs2pb.XpShop{}, false, fmt.Sprintf("field %d has wire type %d", number, wireType)
 	}
-	var state cs2pb.CSOAccountXpShop
-	if err := proto.Unmarshal(data, &state); err != nil {
-		return nil, false, err.Error()
+	state, err := cs2pb.DecodeXpShop(data)
+	if err != nil {
+		return cs2pb.XpShop{}, false, err.Error()
 	}
-	if state.GenerationTime == nil {
-		return nil, false, "generation_time field is absent"
+	if !state.GenerationPresent {
+		return cs2pb.XpShop{}, false, "generation_time field is absent"
 	}
-	if state.GetRedeemableBalance() > 1_000_000 {
-		return nil, false, fmt.Sprintf("balance %d outside XP Shop range", state.GetRedeemableBalance())
+	if state.RedeemableBalance > 1_000_000 {
+		return cs2pb.XpShop{}, false, fmt.Sprintf("balance %d outside XP Shop range", state.RedeemableBalance)
 	}
-	return &state, true, "exact CSOAccountXpShop fields and uint32 widths"
+	return state, true, "exact CSOAccountXpShop fields and uint32 widths"
 }
 
-func applyXpShopState(result *GCArmorySnapshot, state *cs2pb.CSOAccountXpShop) {
-	result.GenerationTime = state.GetGenerationTime()
-	result.Balance = state.GetRedeemableBalance()
+func applyXpShopState(result *GCArmorySnapshot, state cs2pb.XpShop) {
+	result.GenerationTime = state.GenerationTime
+	result.Balance = state.RedeemableBalance
 	result.ItemIDs = nil
-	log.Printf("[armory] XpShop state generation=%d balance=%d tracks=%v", result.GenerationTime, result.Balance, state.GetXpTracks())
+	log.Printf("[armory] XpShop state generation=%d balance=%d tracks=%v", result.GenerationTime, result.Balance, state.XpTracks)
 }
 
 func decodeCS2ClientLogonFatalError(body []byte) error {
-	var fatal cs2pb.CMsgGCCStrike15V2ClientLogonFatalError
-	if err := proto.Unmarshal(body, &fatal); err != nil {
+	fatal, err := cs2pb.UnmarshalMessage("CMsgGCCStrike15V2ClientLogonFatalError", body)
+	if err != nil {
 		return fmt.Errorf("CS2 GC ClientLogonFatalError emsg=%d body_bytes=%d decode failed: %w", protocol.EMsgGCCStrike15V2ClientLogonFatalError, len(body), err)
 	}
-	message := fatal.GetMessage()
+	message := fatal.Get(fatal.Descriptor().Fields().ByName("message")).String()
 	if message == "" {
-		message = fmt.Sprintf("errorcode=%d", fatal.GetErrorcode())
+		message = fmt.Sprintf("errorcode=%d", fatal.Get(fatal.Descriptor().Fields().ByName("errorcode")).Int())
 	}
-	if fatal.GetCountry() != "" {
-		return fmt.Errorf("CS2 GC ClientLogonFatalError: %s country=%s", message, fatal.GetCountry())
+	country := fatal.Get(fatal.Descriptor().Fields().ByName("country")).String()
+	if country != "" {
+		return fmt.Errorf("CS2 GC ClientLogonFatalError: %s country=%s", message, country)
 	}
 	return fmt.Errorf("CS2 GC ClientLogonFatalError: %s", message)
 }
 
 func decodeCS2ConnectionStatus(body []byte) (string, error) {
-	var status cs2pb.CMsgConnectionStatus
-	if err := proto.Unmarshal(body, &status); err != nil {
+	status, err := cs2pb.UnmarshalMessage("CMsgConnectionStatus", body)
+	if err != nil {
 		return "", fmt.Errorf("CS2 GC ConnectionStatus emsg=%d body_bytes=%d decode failed: %w", protocol.EMsgGCClientConnectionStatus, len(body), err)
 	}
+	uintField := func(name string) uint64 {
+		return status.Get(status.Descriptor().Fields().ByName(protoreflect.Name(name))).Uint()
+	}
+	statusField := status.Descriptor().Fields().ByName("status")
+	statusValue := status.Get(statusField).Enum()
+	statusName := statusField.Enum().Values().ByNumber(statusValue).Name()
 	return fmt.Sprintf(
 		"status=%s client_session_need=%d queue_position=%d queue_size=%d wait_seconds=%d estimated_wait_seconds_remaining=%d",
-		status.GetStatus().String(),
-		status.GetClientSessionNeed(),
-		status.GetQueuePosition(),
-		status.GetQueueSize(),
-		status.GetWaitSeconds(),
-		status.GetEstimatedWaitSecondsRemaining(),
+		statusName,
+		uintField("client_session_need"),
+		uintField("queue_position"),
+		uintField("queue_size"),
+		uintField("wait_seconds"),
+		uintField("estimated_wait_seconds_remaining"),
 	), nil
 }
 
 func isCS2ConnectionStatusNoSession(body []byte) bool {
-	var status cs2pb.CMsgConnectionStatus
-	if err := proto.Unmarshal(body, &status); err != nil {
+	status, err := cs2pb.UnmarshalMessage("CMsgConnectionStatus", body)
+	if err != nil {
 		return false
 	}
-	return status.GetStatus() == cs2pb.GCConnectionStatus_GCConnectionStatus_NO_SESSION
+	noSession, err := cs2pb.EnumValue("GCConnectionStatus", "GCConnectionStatus_NO_SESSION")
+	if err != nil {
+		return false
+	}
+	return uint32(status.Get(status.Descriptor().Fields().ByName("status")).Enum()) == noSession
 }
 
 func nextCS2HelloEMsg(current uint32) uint32 {
@@ -1018,27 +1091,27 @@ func decodeGCProtoPayload(message GCMessage) (gcProtoMessage, error) {
 }
 
 func decodeInventoryFromClientWelcome(body []byte) ([]GCInventoryItem, error) {
-	var welcome cs2pb.CMsgClientWelcome
-	if err := proto.Unmarshal(body, &welcome); err != nil {
+	welcome, err := cs2pb.DecodeClientWelcome(body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode CS2 ClientWelcome: %w", err)
 	}
 	items := make([]GCInventoryItem, 0)
 	volatileOffers := make(map[uint32][]GCVolatileOffer)
 	var decodeErrors int
-	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
-		for _, objectType := range cache.GetObjects() {
-			if objectType.GetTypeId() != 1 { // CSOEconItem is the authoritative owned-item SO type.
-				if objectType.GetTypeId() != cs2VolatileItemOfferSOTypeID {
+	for _, cache := range welcome.OutofdateSubscribedCaches {
+		for _, objectType := range cache.Objects {
+			if objectType.TypeID != 1 { // CSOEconItem is the authoritative owned-item SO type.
+				if objectType.TypeID != cs2VolatileItemOfferSOTypeID {
 					continue
 				}
-				for _, objectData := range objectType.GetObjectData() {
+				for _, objectData := range objectType.ObjectData {
 					if offer, ok := decodeCS2VolatileOffer(objectData); ok {
-						volatileOffers[offer.GetDefidx()] = domainVolatileOffers(&offer)
+						volatileOffers[offer.DefIndex] = domainVolatileOffers(offer)
 					}
 				}
 				continue
 			}
-			for _, objectData := range objectType.GetObjectData() {
+			for _, objectData := range objectType.ObjectData {
 				item, err := decodeCS2EconItem(objectData)
 				if err != nil {
 					decodeErrors++
@@ -1059,57 +1132,57 @@ func decodeInventoryFromClientWelcome(body []byte) ([]GCInventoryItem, error) {
 }
 
 func decodeCS2EconItem(body []byte) (GCInventoryItem, error) {
-	var econ cs2pb.CSOEconItem
-	if err := proto.Unmarshal(body, &econ); err != nil {
+	econ, err := cs2pb.DecodeEconItem(body)
+	if err != nil {
 		return GCInventoryItem{}, fmt.Errorf("decode CS2 CSOEconItem: %w", err)
 	}
-	if econ.GetId() == 0 {
+	if econ.ID == 0 {
 		return GCInventoryItem{}, fmt.Errorf("decoded CS2 CSOEconItem omitted id")
 	}
 	return GCInventoryItem{
-		ID:             econ.GetId(),
-		OriginalID:     econ.GetOriginalId(),
-		DefIndex:       econ.GetDefIndex(),
-		Quantity:       econ.GetQuantity(),
-		Quality:        econ.GetQuality(),
-		Rarity:         econ.GetRarity(),
-		Inventory:      econ.GetInventory(),
-		CustomName:     econ.GetCustomName(),
-		PaintKit:       econPaintKit(&econ),
-		PaintWear:      econPaintWear(&econ),
-		Attributes:     econAttributes(&econ),
-		AttributeBytes: econAttributeBytes(&econ),
+		ID:             econ.ID,
+		OriginalID:     econ.OriginalID,
+		DefIndex:       econ.DefIndex,
+		Quantity:       econ.Quantity,
+		Quality:        econ.Quality,
+		Rarity:         econ.Rarity,
+		Inventory:      econ.Inventory,
+		CustomName:     econ.CustomName,
+		PaintKit:       econPaintKit(econ),
+		PaintWear:      econPaintWear(econ),
+		Attributes:     econAttributes(econ),
+		AttributeBytes: econAttributeBytes(econ),
 	}, nil
 }
 
-func econAttributes(item *cs2pb.CSOEconItem) map[uint32]uint32 {
+func econAttributes(item cs2pb.EconItem) map[uint32]uint32 {
 	attributes := make(map[uint32]uint32)
-	for _, attribute := range item.GetAttribute() {
-		value := attribute.GetValue()
-		if value == 0 && len(attribute.GetValueBytes()) >= 4 {
-			value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+	for _, attribute := range item.Attributes {
+		value := attribute.Value
+		if value == 0 && len(attribute.ValueBytes) >= 4 {
+			value = binary.LittleEndian.Uint32(attribute.ValueBytes[:4])
 		}
-		attributes[attribute.GetDefIndex()] = value
+		attributes[attribute.DefIndex] = value
 	}
 	return attributes
 }
 
-func econAttributeBytes(item *cs2pb.CSOEconItem) map[uint32][]byte {
+func econAttributeBytes(item cs2pb.EconItem) map[uint32][]byte {
 	attributes := make(map[uint32][]byte)
-	for _, attribute := range item.GetAttribute() {
-		if len(attribute.GetValueBytes()) > 0 {
-			attributes[attribute.GetDefIndex()] = append([]byte(nil), attribute.GetValueBytes()...)
+	for _, attribute := range item.Attributes {
+		if len(attribute.ValueBytes) > 0 {
+			attributes[attribute.DefIndex] = append([]byte(nil), attribute.ValueBytes...)
 		}
 	}
 	return attributes
 }
 
-func econPaintKit(item *cs2pb.CSOEconItem) uint32 {
-	for _, attribute := range item.GetAttribute() {
-		if attribute.GetDefIndex() == 6 {
-			value := attribute.GetValue()
-			if value == 0 && len(attribute.GetValueBytes()) >= 4 {
-				value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+func econPaintKit(item cs2pb.EconItem) uint32 {
+	for _, attribute := range item.Attributes {
+		if attribute.DefIndex == 6 {
+			value := attribute.Value
+			if value == 0 && len(attribute.ValueBytes) >= 4 {
+				value = binary.LittleEndian.Uint32(attribute.ValueBytes[:4])
 			}
 			// Economy attribute 6 is typed as a float in the item schema even
 			// though paint-kit IDs are integral. GC value/value_bytes therefore
@@ -1127,16 +1200,16 @@ func econPaintKit(item *cs2pb.CSOEconItem) uint32 {
 	return 0
 }
 
-func econPaintWear(item *cs2pb.CSOEconItem) *float64 {
-	for _, attribute := range item.GetAttribute() {
-		if attribute.GetDefIndex() != 8 {
+func econPaintWear(item cs2pb.EconItem) *float64 {
+	for _, attribute := range item.Attributes {
+		if attribute.DefIndex != 8 {
 			continue
 		}
 		var rawBits uint32
-		if len(attribute.GetValueBytes()) >= 4 {
-			rawBits = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+		if len(attribute.ValueBytes) >= 4 {
+			rawBits = binary.LittleEndian.Uint32(attribute.ValueBytes[:4])
 		} else {
-			rawBits = attribute.GetValue()
+			rawBits = attribute.Value
 		}
 		if rawBits != 0 {
 			wear := float64(math.Float32frombits(rawBits))

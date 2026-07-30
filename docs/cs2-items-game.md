@@ -20,7 +20,15 @@ The real-money Store is separate from the Armory XP Shop. Authoritative availabi
 
 Modern price sheets expose global catalogue entries under `entries`; each entry supplies an `item_link`, currency amounts under `prices`, and optional discounted amounts under `sale_prices`. The backend resolves `item_link` against the live `items_game.txt` `items[].name` field to obtain the authoritative defindex and display metadata. It does not expect personalized offer objects or direct defindex/price fields on an entry.
 
-The store protocol descriptor set is generated directly from `proto/vendor/gametracking-cs2/Protobufs/base_gcmessages.proto` and `econ_gcmessages.proto` into `backend/internal/proto/gametracking/gametracking_store.pb`. The backend uses those external descriptors through `dynamicpb`; store definitions are not copied into the local item subset. A descriptor set avoids globally registering a second copy of the un-packaged Steam/GC definitions already supplied by the transport dependency. Checkout URLs originate in a correlated GC/Steam transaction response and are never derived from item metadata.
+The CS2 protocol descriptor set is generated directly from the pinned files in
+`proto/vendor/gametracking-cs2/Protobufs/` into
+`backend/internal/proto/gametracking/gametracking_store.pb`. Inventory,
+shared-object, mutation, store, and diagnostic messages all use those external
+descriptors through `dynamicpb`; the repository has no copied partial CS2
+schema. An isolated descriptor registry avoids globally registering another
+copy of Valve's package-less GC definitions. Checkout URLs originate in a
+correlated GC/Steam transaction response and are never derived from item
+metadata.
 
 ## Documentation Sources
 
@@ -88,21 +96,21 @@ The upstream paths still use legacy names such as `csgo`, `cstrike15`, and `ECsg
 The UI's **Preview in game** action is retained from the matched owned asset's
 live Steam inventory-description `actions[].link`. Owner and asset placeholders
 are expanded with the authenticated SteamID and GC-matched asset ID. The app
-does not construct inspect links when Steam omits that action.
-3. Fetch latest `items_game.txt`.
-4. Fetch latest `csgo_english.txt`.
-5. Parse Valve KeyValues.
-6. Merge item prefabs into concrete item definitions.
-7. Resolve localization tokens.
-8. Join by `def_index`.
-9. If the GC item has paint kit attribute `6`, join it to `paint_kits`.
-10. Join the resulting `[paint_kit]weapon` key to `item_sets` for collection membership and contents.
-11. For containers, recursively resolve `loot_list_name` through `client_loot_lists`; this is descriptive metadata and does not predict an opening result. Resolve required opening keys from the container's prefab-merged `associated_items` / `associated_item` defindexes; an absent association identifies a keyless container.
+does not construct inspect links when Steam omits that action. 3. Fetch latest `items_game.txt`. 4. Fetch latest `csgo_english.txt`. 5. Parse Valve KeyValues. 6. Merge item prefabs into concrete item definitions. 7. Resolve localization tokens. 8. Join by `def_index`. 9. If the GC item has paint kit attribute `6`, join it to `paint_kits`. 10. Join the resulting `[paint_kit]weapon` key to `item_sets` for collection membership and contents. 11. For containers, recursively resolve `loot_list_name` through `client_loot_lists`; this is descriptive metadata and does not predict an opening result. Resolve required opening keys from the container's prefab-merged `associated_items` / `associated_item` defindexes; an absent association identifies a keyless container.
+
+For case-backed collection previews, rarity is taken from the case's tiered
+`client_loot_lists` (for example, the `_rare`, `_mythical`, `_legendary`, and
+`_ancient` child lists). A paint kit can be reused by another collection at a
+different grade, so the global `paint_kits_rarity` value is only the fallback
+when no unambiguous collection-specific loot-list tier exists.
 
 ## Important Attribute IDs
 
 - `6`: paint kit ID.
 - `8`: paint wear float bits.
+- `113`: sticker slot 0 ID; for unsealed graffiti this identifies the graffiti pattern.
+- `232`: remaining graffiti charges (`sprays_remaining`).
+- `233`: graffiti tint ID (`spray_tint_id`), not the remaining charge count.
 
 These IDs are decoded from `CSOEconItem.attribute`; do not infer paint names from defindex alone.
 
@@ -196,6 +204,9 @@ If live schema fetch or parsing fails, inventory refresh should fail with an exp
 The universal Armory catalogue is read from the live `items_game.txt` current
 `seasonaloperations` entry whose `redeemable_goods` value is `xpshop`, matching
 Panorama's `MissionsAPI.GetSeasonalOperationRedeemableGoodsCount/Schema` path.
+The redemption message's `redeem_id` is the unsigned IEEE CRC-32 of each
+`operational_point_redeemable.item_name`; it is not the offer's array index.
+For example, `lootlist:set_overpass_2024` maps to `2917110498`.
 The GC `XpShop` SOCache object (`CSOAccountXpShop`) supplies only
 account-specific generation, star balance, and XP tracks. `XpShopBids` objects
 are active user bids and are not the universal offer catalogue.
@@ -226,10 +237,36 @@ resolver handles `[spray]spray` graffiti and `[patch]patch` patch kits;
 loot lists resolve their named commodity-pin item definitions. Weapon cases
 resolve their `set supply crate series` attribute through
 `revolving_loot_lists` before recursively expanding `client_loot_lists`.
+Sticker Slabs are keychain instances with keychain attribute `299` set to the
+display-case definition (`37`) and the contained sticker kit in attribute
+`321`. Inventory metadata resolves that kit through `sticker_kits`, exposes it
+as a contained sticker, and prefers the tracked composite image key
+`econ/stickers/<sticker_material>_1355_37` when one is available.
+Paintable gloves use the same GC paint-kit (`6`) and wear (`8`) attributes as
+weapon finishes, despite inheriting the `hands_paintable` prefab rather than a
+`weapon_*` prefab. Their localized market names therefore join the glove item
+name with `paint_kits.description_tag`, and tracked wear images use
+`econ/default_generated/<glove_name>_<paint_kit_name>_<wear_tier>`. Generic
+patch instances similarly resolve attribute `113` through `sticker_kits`, but
+use `patch_material` and the `econ/patches/` image namespace.
+Applied stickers, agent patches, and charms are named from these same live
+definitions and use tracked schema image keys when available. The inventory UI
+still renders a typed fallback marker when an applied item's image is missing,
+so GC-owned attachment data is never hidden by an unavailable image overlay.
+`CSOEconItem.custom_name` is presented separately as the item's applied Name
+Tag while the underlying market name remains visible.
+Sticker slot wear comes from GC attributes `114 + slot*4` and is displayed as a
+read-only scrape percentage alongside a larger attachment preview. No sticker
+scrape or removal operation is exposed; those mutations remain in-game only.
 
 Bulk Armory redemption sends the authoritative redeem message once per item,
 adjusting `redeemable_balance` before each message. Messages are paced by the
 editable `armoryPurchasePacingSeconds` setting (default 5 seconds).
+After a single redemption is confirmed by a newly created GC inventory item,
+the cached Armory balance is reduced immediately so the next redemption sends
+the current pre-purchase balance without requiring a manual Armory refresh.
+Armory redemption is enabled by default and is not blocked by the app's general
+validation mode; its dedicated feature flag remains the explicit kill switch.
 Container, trade-up, and Armory slot-machine candidates reuse these resolved
 related-item names, rarities, and tracked thumbnails.
 Simulated collection-reveal misses also use live finish wear caps, the shared

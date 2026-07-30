@@ -22,6 +22,7 @@ export interface InventoryViewContentProps {
   settings: SettingsData | undefined;
   filteredItems: InventoryItemDto[];
   selectedItem: InventoryItemDto | undefined;
+  selectedItemExplicit: boolean;
   selectedItemKey: string | undefined;
   statusMessage: string;
   terminalOfferState:
@@ -268,6 +269,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         filteredItems={props.filteredItems}
         selectionMode={props.selectionMode}
         selectedItem={props.selectedItem}
+        selectedItemExplicit={props.selectedItemExplicit}
         selectedItemIds={props.selectedItemIds}
         compactMode={props.compactMode}
         marketPrices={props.marketPrices}
@@ -283,6 +285,29 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         onRetrieveFromStorage={props.onRetrieveFromStorage}
         onRetrieveAllFromStorage={props.onRetrieveAllFromStorage}
       />
+      <Show
+        when={
+          props.selectionMode !== "inventory" &&
+          props.selectedItemIds.length > 0
+        }
+      >
+        <div class="fixed inset-x-3 bottom-3 z-40 flex items-center justify-between gap-3 rounded-2xl border border-amber-400/30 bg-slate-950/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur lg:hidden">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-100">
+              {props.selectedItemIds.length} item
+              {props.selectedItemIds.length === 1 ? "" : "s"} selected
+            </p>
+            <p class="truncate text-xs text-slate-500">
+              {props.selectionMode === "inventory-storage"
+                ? "Storage selection"
+                : "Trade-up contract selection"}
+            </p>
+          </div>
+          <span class="shrink-0 text-xs font-semibold text-amber-200">
+            Review selection
+          </span>
+        </div>
+      </Show>
     </div>
   );
 }

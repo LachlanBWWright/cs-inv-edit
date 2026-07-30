@@ -30,6 +30,7 @@ import type {
   UseItemRequest,
   UseMultipleItemsRequest,
   TF2FeatureSnapshot,
+  CS2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
 import type { ResultAsync } from "neverthrow";
 import type { AppError } from "./result-http.js";
@@ -43,6 +44,7 @@ export interface LocalAgentClient {
   gameInventory(game: EconomyGame): BackendResult<GameInventorySnapshot>;
   refreshGameInventory(game: EconomyGame): BackendResult<OperationReceipt>;
   tf2Features(): BackendResult<TF2FeatureSnapshot>;
+  cs2Features(): BackendResult<CS2FeatureSnapshot>;
   steamInventoryService(appId: number): BackendResult<GameInventorySnapshot>;
   steamInventoryServiceGames(): BackendResult<SteamInventoryServiceGames>;
   refreshSteamInventoryService(appId: number): BackendResult<OperationReceipt>;

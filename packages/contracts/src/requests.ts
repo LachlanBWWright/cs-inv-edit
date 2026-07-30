@@ -17,6 +17,7 @@ export interface FeatureFlags {
   enableArmoryRedemption?: boolean;
   enableStoreRead?: boolean;
   enableStorePurchases?: boolean;
+  enableCs2Loadouts?: boolean;
   enableTf2Inventory: boolean;
   enableTf2Loadouts: boolean;
   enableTf2ItemUse: boolean;
@@ -168,6 +169,27 @@ export interface TF2FeatureSnapshot {
   inspectedAt?: string;
   marketAt?: string;
   currency?: string;
+  diagnostics: string[];
+}
+
+export interface CS2FeatureSnapshot {
+  status: "waiting" | "ready" | "requires_connection";
+  refreshedAt?: string;
+  equipSlots: { classId: number; slotId: number; itemId: string; definitionId: number }[];
+  matches: Record<string, unknown>[];
+  profile?: Record<string, unknown>;
+  premier?: Record<string, unknown>;
+  deepStats?: Record<string, unknown>;
+  searchStats?: Record<string, unknown>;
+  inspectedItem?: Record<string, unknown>;
+  inspectedAt?: string;
+  rentals: Record<string, unknown>[];
+  quests: Record<string, unknown>[];
+  recurringMissions: Record<string, unknown>[];
+  seasonalOperations: Record<string, unknown>[];
+  xpShop?: Record<string, unknown>;
+  recurringSchema?: Record<string, unknown>;
+  activity: { kind: string; id?: string; timestamp?: number; data: Record<string, unknown> }[];
   diagnostics: string[];
 }
 
@@ -387,88 +409,4 @@ export interface SettingsData {
   armoryPurchasePacingSeconds: number;
 }
 
-export type RevealAnimationMode = "none" | "countdown" | "slot-machine";
-export type TradeUpAnimationMode =
-  | RevealAnimationMode
-  | "contract-none"
-  | "contract-countdown"
-  | "contract-slot-machine";
-
-export interface AnimationSettings {
-  container: RevealAnimationMode;
-  tradeUp: TradeUpAnimationMode;
-  armory: RevealAnimationMode;
-  terminal: RevealAnimationMode;
-}
-
-export interface TradeUpPreview {
-  valid: boolean;
-  message: string;
-  selectedCount: number;
-}
-
-export interface BackendEvent {
-  type: "connection" | "inventory" | "operation" | "log";
-  payload: unknown;
-  createdAt: string;
-}
-
-export interface SetItemNameRequest {
-  subjectItemId: string;
-  toolItemId: string;
-  name: string;
-}
-
-export interface OpenContainerRequest {
-  itemId: string;
-  keyItemId?: string;
-  pointsRemaining?: number;
-  volatileLimit?: number;
-}
-
-export interface RemoveItemNameRequest {
-  itemId: string;
-}
-
-export interface DeleteItemRequest {
-  itemId: string;
-}
-
-export interface ApplyStatTrakSwapRequest {
-  toolItemId: string;
-  item1ItemId: string;
-  item2ItemId: string;
-}
-
-export interface ApplyStrangePartRequest {
-  strangePartItemId: string;
-  itemItemId: string;
-}
-
-export interface UseItemRequest {
-  itemId: string;
-  targetSteamId?: string;
-  giftPotentialTargets?: number[];
-  duelClassLock?: number;
-  initiatorSteamId?: string;
-}
-
-export interface UseMultipleItemsRequest {
-  itemIds: string[];
-}
-
-export interface ApplyToolToItemRequest {
-  toolItemId: string;
-  subjectItemId: string;
-}
-
-export interface ApplyToolToBaseItemRequest {
-  toolItemId: string;
-  baseitemDefIndex: number;
-}
-
-export interface GiftItemRequest {
-  itemId: string;
-  receiverAccountId: number;
-  giftMessage?: string;
-}
+import type { AnimationSettings } from "./settings-contracts.js";

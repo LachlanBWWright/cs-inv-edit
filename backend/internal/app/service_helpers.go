@@ -37,6 +37,7 @@ func defaultSettings() domain.Settings {
 			EnableArmoryRedemption: true,
 			EnableStoreRead:        true,
 			EnableStorePurchases:   true,
+			EnableCS2Loadouts:      false,
 			EnableTF2Inventory:     true,
 			EnableTF2Loadouts:      false,
 			EnableTF2ItemUse:       false,

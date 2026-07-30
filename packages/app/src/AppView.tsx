@@ -1,171 +1,19 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  Match,
-  Show,
-  Switch,
-} from "solid-js";
-import type {
-  ApplyStatTrakSwapRequest,
-  ArmoryRedeemRequest,
-  ArmorySnapshot,
-  ApplyStrangePartRequest,
-  ApplyToolToBaseItemRequest,
-  ApplyToolToItemRequest,
-  ConnectionStatus,
-  DeleteItemRequest,
-  GiftItemRequest,
-  GameInventorySnapshot,
-  HealthStatus,
-  InventoryItemDto,
-  InventorySnapshot,
-  OperationEvent,
-  OperationReceipt,
-  OpenContainerRequest,
-  PriceScanResult,
-  ProtocolTraceEntry,
-  RemoveItemNameRequest,
-  RelatedItemDto,
-  SetItemNameRequest,
-  SettingsData,
-  StoreSnapshot,
-  PurchaseSession,
-  InitializeStorePurchaseRequest,
-  SteamAccountProfile,
-  SteamAccountTradesCollection,
-  SteamTradesSnapshot,
-  SteamInventoryServiceGames,
-  TF2FeatureSnapshot,
-  UseItemRequest,
-  UseMultipleItemsRequest,
-} from "@cs-inv-edit/contracts";
+import { createEffect, createMemo, createSignal, Match, Show, Switch } from "solid-js";
 import { AccountView } from "./components/AccountView.js";
 import { ArmoryView } from "./components/ArmoryView.js";
 import { StoreView } from "./components/StoreView.js";
 import { InventoryView } from "./components/InventoryView.js";
 import { GameInventoryView } from "./components/GameInventoryView.js";
 import { TF2FeaturesView } from "./components/TF2FeaturesView.js";
+import { CS2FeaturesPanel } from "./components/CS2FeaturesPanel.js";
 import { TradesView } from "./components/TradesView.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Alert } from "./components/ui/Alert.js";
-import {
-  ToastViewport,
-  type ToastItem,
-} from "./components/ui/ToastViewport.js";
-import type { AppScreen } from "./view.js";
-import {
-  isEconomyInventoryScreen,
-  isInventoryScreen,
-  isTF2FeatureScreen,
-} from "./view.js";
-import {
-  itemWeaponName,
-  type InventorySort,
-} from "./components/inventory-view-utils.js";
+import { ToastViewport } from "./components/ui/ToastViewport.js";
+import { isEconomyInventoryScreen, isInventoryScreen, isTF2FeatureScreen } from "./view.js";
+import { itemWeaponName, type InventorySort } from "./components/inventory-view-utils.js";
 import { economyCategoryOptions } from "./components/game-inventory-utils.js";
-
-export interface AppViewProps {
-  view: AppScreen;
-  setView: (view: AppScreen) => void;
-  selectedItemId: string | undefined;
-  setSelectedItemId: (itemId: string | undefined) => void;
-  statusMessage: string;
-  health: HealthStatus | undefined;
-  connection: ConnectionStatus | undefined;
-  accounts: SteamAccountProfile[];
-  accountUsername: string;
-  inventory: InventorySnapshot | undefined;
-  inventoryLoading: boolean;
-  steamInventory: GameInventorySnapshot | undefined;
-  steamServiceInventory: GameInventorySnapshot | undefined;
-  steamServiceGames: SteamInventoryServiceGames | undefined;
-  steamServiceGamesLoading: boolean;
-  steamServiceAppId: number | undefined;
-  setSteamServiceAppId: (appId: number | undefined) => void;
-  tf2Inventory: GameInventorySnapshot | undefined;
-  tf2Features: TF2FeatureSnapshot | undefined;
-  tf2ProtocolEntries: ProtocolTraceEntry[];
-  dota2Inventory: GameInventorySnapshot | undefined;
-  gameInventoryLoading: Record<"steam" | "tf2" | "dota2", boolean>;
-  armory: ArmorySnapshot | undefined;
-  store: StoreSnapshot | undefined;
-  trades: SteamTradesSnapshot | undefined;
-  tradeAccounts: SteamAccountTradesCollection | undefined;
-  settings: SettingsData | undefined;
-  query: string;
-  setQuery: (value: string) => void;
-  kindFilter: "all" | InventoryItemDto["kind"];
-  setKindFilter: (value: "all" | InventoryItemDto["kind"]) => void;
-  compactMode: "icons" | "concise" | "detailed";
-  setCompactMode: (value: "icons" | "concise" | "detailed") => void;
-  receipts: OperationReceipt[] | undefined;
-  events: OperationEvent[] | undefined;
-  toasts: ToastItem[];
-  platform: "desktop" | "web";
-  onAddAccount: () => void;
-  onSignInAccount: (account: SteamAccountProfile) => void;
-  onSignOutAccount: (account: SteamAccountProfile) => void;
-  onDeleteAccount: (account: SteamAccountProfile) => void;
-  onRefreshInventory: () => void;
-  onDismissToast: (id: string) => void;
-  onConnect: (input: { username?: string; password?: string }) => Promise<void>;
-  onStartSteamQR: () => Promise<void>;
-  onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
-  onDisconnect: () => Promise<void>;
-  onToast: (toast: Omit<ToastItem, "id">) => void;
-  onInventoryRefresh: () => void;
-  onGameInventoryRefresh: (game: "steam" | "tf2" | "dota2") => void;
-  onSteamServiceRefresh: (appId: number) => void;
-  onGameOperation: (type: string, input: unknown) => Promise<OperationReceipt>;
-  onArmoryRefresh: () => Promise<unknown>;
-  onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
-  onScanPrices: (
-    marketNames: string[],
-    appId?: number,
-  ) => Promise<PriceScanResult | undefined>;
-  onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
-  onStoreRefresh: () => Promise<unknown>;
-  onStorePurchase: (
-    input: InitializeStorePurchaseRequest,
-  ) => Promise<PurchaseSession>;
-  onStoreReconcile: (id: string) => Promise<PurchaseSession>;
-  onTradesRefresh: (steamId?: string) => Promise<unknown>;
-  onInventoryRename: (input: SetItemNameRequest) => Promise<unknown>;
-  onRemoveName: (input: RemoveItemNameRequest) => Promise<unknown>;
-  onOpenContainer: (
-    input: OpenContainerRequest,
-    suppressToast?: boolean,
-  ) => Promise<unknown>;
-  onTerminalSubmit: (
-    type: string,
-    input?: unknown,
-  ) => Promise<OperationReceipt>;
-  onStorageSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
-  onTradeUpSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
-  onStickerSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
-  onNameTagApply: (input: SetItemNameRequest) => Promise<OperationReceipt>;
-  onNameTagRemove: (input: RemoveItemNameRequest) => Promise<OperationReceipt>;
-  onToolApplyStatTrakSwap: (
-    input: ApplyStatTrakSwapRequest,
-  ) => Promise<OperationReceipt>;
-  onToolApplyStrangePart: (
-    input: ApplyStrangePartRequest,
-  ) => Promise<OperationReceipt>;
-  onToolApplyToolToItem: (
-    input: ApplyToolToItemRequest,
-  ) => Promise<OperationReceipt>;
-  onToolApplyToolToBaseItem: (
-    input: ApplyToolToBaseItemRequest,
-  ) => Promise<OperationReceipt>;
-  onItemDelete: (input: DeleteItemRequest) => Promise<OperationReceipt>;
-  onItemUse: (input: UseItemRequest) => Promise<OperationReceipt>;
-  onItemUseMultiple: (
-    input: UseMultipleItemsRequest,
-  ) => Promise<OperationReceipt>;
-  onItemGift: (input: GiftItemRequest) => Promise<OperationReceipt>;
-  onSaveSettings: (next: SettingsData) => Promise<void>;
-}
+import type { AppViewProps } from "./app-view-props.js";
 
 export function AppView(props: AppViewProps) {
   const [rarityFilter, setRarityFilter] = createSignal("all");
@@ -263,7 +111,7 @@ export function AppView(props: AppViewProps) {
   });
 
   return (
-    <main class="flex h-screen min-h-0 flex-col overflow-hidden bg-app text-slate-50">
+    <main class="flex h-screen min-h-0 flex-col overflow-hidden bg-slate-950 text-slate-50">
       <Sidebar
         view={props.view}
         setView={props.setView}
@@ -334,6 +182,20 @@ export function AppView(props: AppViewProps) {
             />
           </Match>
           <Match when={isInventoryScreen(props.view)}>
+            <Show when={props.view === "inventory"}>
+              <CS2FeaturesPanel
+                features={props.cs2Features}
+                inventory={props.inventory}
+                selectedItemId={props.selectedItemId}
+                steamId={
+                  props.connection?.state === "connected"
+                    ? props.connection.steamId
+                    : undefined
+                }
+                featureFlags={props.settings?.featureFlags}
+                onOperation={props.onGameOperation}
+              />
+            </Show>
             <InventoryView
               mode={isInventoryScreen(props.view) ? props.view : "inventory"}
               inventory={props.inventory}
@@ -351,7 +213,7 @@ export function AppView(props: AppViewProps) {
               marketPrices={marketPrices()}
               compactMode={props.compactMode}
               onMarketPreview={props.onMarketPreview}
-            onScanPrices={props.onScanPrices}
+              onScanPrices={props.onScanPrices}
               onRename={props.onInventoryRename}
               onRemoveName={props.onRemoveName}
               onOpenContainer={props.onOpenContainer}
@@ -495,14 +357,14 @@ export function AppView(props: AppViewProps) {
             </Show>
           </Match>
           <Match when={isTF2FeatureScreen(props.view)}>
-          <TF2FeaturesView
-            snapshot={props.tf2Inventory}
-            features={props.tf2Features}
-            loading={props.gameInventoryLoading.tf2}
-            compactMode={props.compactMode}
-            onRefresh={() => props.onGameInventoryRefresh("tf2")}
-            onOperation={props.onGameOperation}
-          />
+            <TF2FeaturesView
+              snapshot={props.tf2Inventory}
+              features={props.tf2Features}
+              loading={props.gameInventoryLoading.tf2}
+              compactMode={props.compactMode}
+              onRefresh={() => props.onGameInventoryRefresh("tf2")}
+              onOperation={props.onGameOperation}
+            />
           </Match>
           <Match when={props.view === "armory"}>
             <ArmoryView
