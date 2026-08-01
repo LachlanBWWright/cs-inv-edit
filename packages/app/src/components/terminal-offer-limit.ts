@@ -1,7 +1,6 @@
-// The GC counter is authoritative. Most terminals expose four alternatives
-// after the first offer, while rare terminal sessions can expose as many as
-// ten offers in total.
-const terminalMaximumAdditionalOffers = 9;
+// CMsgOpenCrate.points_remaining is uint32. Do not impose a client-side offer
+// count that is absent from the GameTracking protobufs and Panorama logic.
+const terminalMaximumAdditionalOffers = 0xffff_ffff;
 
 export type TerminalOfferLimit =
   | {

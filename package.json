@@ -20,9 +20,11 @@
     "test": "./scripts/test.sh",
     "lint": "pnpm -r --if-present lint",
     "format": "prettier --write .",
+    "generate:api": "./scripts/generate-api-contracts.sh",
+    "check:api-codegen": "./scripts/check-api-codegen.sh",
     "typecheck": "pnpm -r --if-present typecheck",
     "run": "./scripts/run.sh",
-    "check": "pnpm lint && pnpm typecheck && pnpm test:frontend && pnpm test:backend && pnpm build && pnpm find:long-files && pnpm find:deep-indentation",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:frontend && pnpm test:backend && pnpm build && pnpm find:long-files && pnpm find:deep-indentation && pnpm check:api-codegen",
     "find:deep-indentation": "./scripts/find-deep-indentation.sh",
     "find:long-files": "./scripts/find-long-files.sh",
     "test-backend": "./bin/cs2-backend",
@@ -35,6 +37,7 @@
     "@capacitor/cli": "^8.4.2",
     "@eslint/compat": "^2.1.0",
     "@eslint/js": "^10.0.1",
+    "@hey-api/openapi-ts": "0.99.0",
     "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.64.0",
     "electron-builder": "^26.15.3",
@@ -46,7 +49,8 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
-    "@capacitor/core": "^8.4.2"
+    "@capacitor/core": "^8.4.2",
+    "neverthrow": "^8.2.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

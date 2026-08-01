@@ -34,6 +34,12 @@
 .economy-outline--tf2-selfmade {
   --rarity-color: 112 176 74;
 }
+.economy-outline--tf2-decorated {
+  --rarity-color: 250 250 250;
+}
+.economy-outline--tf2-valve {
+  --rarity-color: 165 15 121;
+}
 
 /* Dota 2 backend Rarity labels from Steam description tags. */
 .economy-outline--dota-common {
@@ -86,82 +92,153 @@ button:disabled,
 }
 
 ::selection {
-  background: rgba(34, 211, 238, 0.35);
+  background: rgb(8 145 178);
+}
+
+* {
+  scrollbar-color: rgb(71 85 105) rgb(2 6 23);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(2 6 23);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgb(2 6 23);
+  border-radius: 999px;
+  background: rgb(71 85 105);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(8 145 178);
+}
+
+::-webkit-scrollbar-corner {
+  background: rgb(2 6 23);
 }
 
 .rarity-outline {
   --rarity-color: 51 65 85;
-  --rarity-ring-alpha: 0.3;
-  --rarity-glow-alpha: 0;
-  border-color: rgb(var(--rarity-color) / 0.8);
-  box-shadow:
-    0 0 0 1px rgb(var(--rarity-color) / var(--rarity-ring-alpha)),
-    0 0 26px rgb(var(--rarity-color) / var(--rarity-glow-alpha));
+  border-color: rgb(var(--rarity-color));
 }
 
 .inventory-item-card {
-  transition-property: background-color, border-color, box-shadow, filter;
+  /* Keep badges and other positioned card decorations in the card's layer.
+     Without isolation, their z-index competes with sticky navigation overlays. */
+  isolation: isolate;
+  transition-property: background-color, border-color;
 }
 
 .inventory-item-card:hover,
 .inventory-item-card.is-selected {
-  background-color: rgb(var(--rarity-color) / 0.2);
+  background-color: rgb(30 41 59);
+}
+
+.tf2-effect-badges {
+  position: absolute;
+  right: 0.5rem;
+  top: 2.35rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.tf2-effect-badge {
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border: 1px solid currentcolor;
+  border-radius: 0.35rem;
+  background: rgb(2 6 23);
+}
+
+.tf2-effect-badge svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.tf2-effect-badge--strange {
+  color: rgb(207 106 50);
+}
+
+.tf2-effect-badge--unusual {
+  color: rgb(134 80 172);
+}
+
+.tf2-effect-badge--combined {
+  position: relative;
+  color: rgb(134 80 172);
+}
+
+.tf2-effect-badge--combined svg {
+  position: absolute;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.tf2-effect-badge--combined svg:first-child {
+  color: rgb(207 106 50);
+  transform: translate(-0.18rem, 0.18rem);
+}
+
+.tf2-effect-badge--combined svg:last-child {
+  transform: translate(0.18rem, -0.18rem);
 }
 
 .rarity-common {
   /* Common — white */
   --rarity-color: 176 195 217;
-  --rarity-ring-alpha: 0.38;
-  --rarity-glow-alpha: 0.14;
 }
 
 .rarity-uncommon {
   /* Uncommon — baby blue */
   --rarity-color: 94 152 217;
-  --rarity-ring-alpha: 0.38;
-  --rarity-glow-alpha: 0.16;
 }
 
 .rarity-rare {
   /* Rare — blue */
   --rarity-color: 75 105 255;
-  --rarity-ring-alpha: 0.42;
-  --rarity-glow-alpha: 0.18;
 }
 
 .rarity-mythical {
   /* Mythical — purple */
   --rarity-color: 136 71 255;
-  --rarity-ring-alpha: 0.42;
-  --rarity-glow-alpha: 0.18;
 }
 
 .rarity-legendary {
   /* Legendary — hot pink */
   --rarity-color: 211 44 230;
-  --rarity-ring-alpha: 0.42;
-  --rarity-glow-alpha: 0.18;
 }
 
 .rarity-ancient {
   /* Ancient — red */
   --rarity-color: 235 75 75;
-  --rarity-ring-alpha: 0.42;
-  --rarity-glow-alpha: 0.18;
 }
 
 .rarity-exceedingly-rare {
   /* Exceedingly Rare — gold */
   --rarity-color: 228 174 57;
-  --rarity-ring-alpha: 0.44;
-  --rarity-glow-alpha: 0.2;
 }
 
 .rarity-immortal {
   /* Immortal / Contraband — gold-orange */
   --rarity-color: 228 174 51;
-  --rarity-ring-alpha: 0.44;
-  --rarity-glow-alpha: 0.2;
+}
+
+.modal-backdrop {
+  background: rgb(2 6 23 / 0.7);
 }
 
 .reveal-overlay {
@@ -171,8 +248,6 @@ button:disabled,
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgb(2 6 23 / 0.92);
-  backdrop-filter: blur(12px);
 }
 
 .reveal-panel {
@@ -180,7 +255,7 @@ button:disabled,
   overflow: hidden;
   border: 1px solid rgb(51 65 85);
   border-radius: 1.5rem;
-  background: linear-gradient(180deg, rgb(15 23 42), rgb(2 6 23));
+  background: rgb(2 6 23);
   padding: 2rem 0;
   box-shadow: 0 30px 100px rgb(0 0 0 / 0.55);
   text-align: center;
@@ -210,26 +285,6 @@ button:disabled,
   padding: 1.5rem 0;
 }
 
-.reveal-window::before,
-.reveal-window::after {
-  position: absolute;
-  z-index: 3;
-  top: 0;
-  bottom: 0;
-  width: 22%;
-  content: "";
-  pointer-events: none;
-}
-
-.reveal-window::before {
-  left: 0;
-  background: linear-gradient(90deg, rgb(2 6 23), transparent);
-}
-.reveal-window::after {
-  right: 0;
-  background: linear-gradient(-90deg, rgb(2 6 23), transparent);
-}
-
 .reveal-marker {
   position: absolute;
   z-index: 4;
@@ -238,7 +293,6 @@ button:disabled,
   bottom: 0;
   width: 2px;
   background: rgb(34 211 238);
-  box-shadow: 0 0 18px rgb(34 211 238 / 0.8);
 }
 
 .reveal-reel {
@@ -263,7 +317,7 @@ button:disabled,
   gap: 0.75rem;
   border-width: 2px;
   border-radius: 1rem;
-  background: rgb(15 23 42 / 0.95);
+  background: rgb(15 23 42);
   padding: 1rem;
   color: rgb(241 245 249);
   font-weight: 600;
@@ -306,7 +360,7 @@ button:disabled,
   background-color: rgb(225 29 72);
 }
 .wear-color-impossible {
-  background-color: rgb(51 65 85 / 0.9);
+  background-color: rgb(51 65 85);
 }
 
 .contract-overlay {
@@ -316,12 +370,11 @@ button:disabled,
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgb(8 12 14 / 0.94);
 }
 .contract-desk {
   width: min(920px, 96vw);
   padding: clamp(1rem, 4vw, 3rem);
-  background: radial-gradient(circle at 30% 20%, #5c4d38, #211c16 72%);
+  background: #211c16;
   box-shadow: 0 32px 100px #000;
 }
 .contract-paper {
@@ -331,23 +384,9 @@ button:disabled,
   padding: clamp(2rem, 6vw, 5rem);
   color: #24221d;
   background-color: #d8d0b9;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent 0 27px,
-      rgb(59 54 42 / 0.07) 28px
-    ),
-    radial-gradient(circle at 20% 10%, #eee8d5, transparent 55%);
   box-shadow: 4px 8px 24px rgb(0 0 0 / 0.55);
   font-family: Georgia, "Times New Roman", serif;
   transform: rotate(-0.35deg);
-}
-.contract-paper::after {
-  position: absolute;
-  inset: 0;
-  content: "";
-  pointer-events: none;
-  box-shadow: inset 0 0 50px rgb(70 55 35 / 0.25);
 }
 .contract-paper h2 {
   margin: 0.35rem 0 2rem;
@@ -370,7 +409,7 @@ button:disabled,
 .contract-rule {
   height: 1px;
   margin: 2rem 0 1rem;
-  background: rgb(36 34 29 / 0.35);
+  background: rgb(36 34 29);
 }
 .contract-sign-label {
   margin: 0 0 0.4rem;
@@ -389,7 +428,7 @@ button:disabled,
   touch-action: none;
   border: 1px solid rgb(36 34 29 / 0.35);
   border-bottom: 2px solid #24221d;
-  background: rgb(255 252 239 / 0.2);
+  background: rgb(255 252 239);
 }
 .contract-actions {
   position: relative;

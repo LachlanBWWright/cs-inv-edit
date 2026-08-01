@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -14,6 +15,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -149,12 +151,6 @@ func qrChallengeMissingFields(response *steampb.CAuthentication_BeginAuthSession
 }
 
 func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSession) (QRAuthResult, error) {
-	s.mu.Lock()
-	conn := s.conn
-	s.mu.Unlock()
-	if conn == nil {
-		return QRAuthResult{}, ErrNotConnected
-	}
 	trace := newDiagnosticTrace("steam qr auth polling started")
 	interval := session.PollInterval
 	if interval <= 0 {
@@ -183,6 +179,15 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 				continue
 			}
 			consecutiveFailures = 0
+			if response.NewClientID != 0 {
+				session.ClientID = response.NewClientID
+			}
+			if response.NewChallengeURL != "" {
+				session.ChallengeURL = response.NewChallengeURL
+				if session.OnChallengeURL != nil {
+					session.OnChallengeURL(response.NewChallengeURL)
+				}
+			}
 			token := response.RefreshToken
 			if token == "" {
 				token = response.AccessToken
@@ -196,9 +201,11 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 }
 
 type steamQRPollResponse struct {
-	RefreshToken string `json:"refresh_token"`
-	AccessToken  string `json:"access_token"`
-	AccountName  string `json:"account_name"`
+	NewClientID     uint64 `json:"new_client_id,string"`
+	NewChallengeURL string `json:"new_challenge_url"`
+	RefreshToken    string `json:"refresh_token"`
+	AccessToken     string `json:"access_token"`
+	AccountName     string `json:"account_name"`
 }
 
 func pollSteamQRViaWebAPI(ctx context.Context, session QRAuthSession) (steamQRPollResponse, error) {
@@ -496,7 +503,7 @@ func (s *SteamGCClient) authenticateSteamClient(ctx context.Context, conn *steam
 		DeviceDetails: &steampb.CAuthentication_DeviceDetails{
 			DeviceFriendlyName: proto.String("cs-inv-edit"),
 			PlatformType:       steampb.EAuthTokenPlatformType_k_EAuthTokenPlatformType_SteamClient.Enum(),
-			OsType:             proto.Int32(20),
+			OsType:             proto.Int32(steamClientOSType()),
 			MachineId:          steamMachineID(credentials.Username),
 		},
 		QosLevel: proto.Int32(2),
@@ -753,7 +760,7 @@ func encodeClientLogonPacket(jobID steam.JobId, credentials LogonCredentials) (*
 		ProtocolVersion:                proto.Uint32(65580),
 		CellId:                         proto.Uint32(0),
 		ClientPackageVersion:           proto.Uint32(1771),
-		ClientOsType:                   proto.Uint32(20),
+		ClientOsType:                   proto.Uint32(uint32(steamClientOSType())),
 		ClientLanguage:                 proto.String("english"),
 		ObfuscatedPrivateIp:            &steampb.CMsgIPAddress{Ip: &steampb.CMsgIPAddress_V4{V4: 0}},
 		ClientSuppliedSteamId:          proto.Uint64(uint64(clientSteamID)),
@@ -788,6 +795,13 @@ func encodeClientLogonPacket(jobID steam.JobId, credentials LogonCredentials) (*
 	return steammsg.EncodePacket(header, body, nil)
 }
 
+func steamClientOSType() int32 {
+	if runtime.GOOS == "windows" {
+		return 20 // SteamKit EOSType.Win11
+	}
+	return -203 // SteamKit EOSType.LinuxUnknown
+}
+
 func encodeClientHelloPacket() (*steammsg.Packet, error) {
 	header := steammsg.NewProtoHeader(steamEMsgClientHello)
 	header.Proto.ClientSessionid = proto.Int32(0)
@@ -804,8 +818,37 @@ func encodeClientHeartbeatPacket() (*steammsg.Packet, error) {
 }
 
 func steamMachineID(accountName string) []byte {
-	sum := sha1.Sum([]byte("cs-inv-edit:" + accountName))
-	return append([]byte(nil), sum[:]...)
+	// SteamKit sends machine_id as a binary KeyValues MessageObject, not as a
+	// bare digest. Steam accepts a malformed value for basic CM/GC access, but
+	// client-targeted services can use this identity when deciding whether the
+	// session represents a trusted Steam client.
+	var out bytes.Buffer
+	writeBinaryKVObjectStart(&out, "MessageObject")
+	writeBinaryKVString(&out, "BB3", machineIDDigest("guid", accountName))
+	writeBinaryKVString(&out, "FF2", machineIDDigest("mac", accountName))
+	writeBinaryKVString(&out, "3B3", machineIDDigest("disk", accountName))
+	out.WriteByte(8) // end MessageObject
+	out.WriteByte(8) // end binary KeyValues stream
+	return out.Bytes()
+}
+
+func machineIDDigest(kind, accountName string) string {
+	sum := sha1.Sum([]byte("cs-inv-edit:" + kind + ":" + accountName))
+	return hex.EncodeToString(sum[:])
+}
+
+func writeBinaryKVObjectStart(out *bytes.Buffer, name string) {
+	out.WriteByte(0)
+	out.WriteString(name)
+	out.WriteByte(0)
+}
+
+func writeBinaryKVString(out *bytes.Buffer, key, value string) {
+	out.WriteByte(1)
+	out.WriteString(key)
+	out.WriteByte(0)
+	out.WriteString(value)
+	out.WriteByte(0)
 }
 
 func formatObservedEvents(events map[string]int) string {

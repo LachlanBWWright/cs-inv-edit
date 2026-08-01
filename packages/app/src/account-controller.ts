@@ -55,7 +55,6 @@ export function createAccountController(context: AccountControllerContext) {
 
   const operationController = createOperationsController({
     backend: props.backend,
-    pushToast,
     refreshInventory: () =>
       props.backend
         .refreshInventory()
@@ -71,7 +70,7 @@ export function createAccountController(context: AccountControllerContext) {
 
   const disconnectAndRefresh = async () => {
     if (!props.backend.disconnectSteam) return;
-    await props.backend
+    return props.backend
       .disconnectSteam()
       .andThen(() =>
         fromAppPromise(
@@ -92,7 +91,7 @@ export function createAccountController(context: AccountControllerContext) {
 
   const saveSettings = async (next: SettingsData) => {
     console.info("[app] saving settings", next);
-    await props.backend
+    return props.backend
       .submitOperation("settings", next)
       .andThen(() =>
         fromAppPromise(
@@ -101,18 +100,11 @@ export function createAccountController(context: AccountControllerContext) {
         ),
       )
       .match(
-        () =>
-          pushToast({
-            title: "Settings updated",
-            description: "The latest backend settings are saved.",
-            variant: "success",
-          }),
-        (error) =>
-          pushToast({
-            title: "Settings update failed",
-            description: appErrorMessage(error, "Unable to save settings"),
-            variant: "danger",
-          }),
+        () => ({ ok: true as const, message: "Settings updated" }),
+        (error) => ({
+          ok: false as const,
+          message: appErrorMessage(error, "Unable to save settings"),
+        }),
       );
   };
 

@@ -87,7 +87,7 @@ export function TerminalItemSection(props: { selected: InventoryItemDto; panelPr
   return (
     <>
       <Show when={isActiveTerminal(props.selected)}>
-        <section class="rounded-2xl border border-violet-500/30 bg-violet-950/20 p-4">
+        <section class="rounded-2xl border border-violet-500/30 bg-violet-950 p-4">
           <h4 class="text-sm font-semibold text-violet-100">
             Current terminal offer
           </h4>
@@ -112,7 +112,7 @@ export function TerminalItemSection(props: { selected: InventoryItemDto; panelPr
             {(offer) => (
               <>
                 <div
-                  class={`mt-3 flex items-center gap-3 rounded-xl bg-slate-900/60 p-3 ${rarityBorderClass(offer().item.rarity)}`}
+                  class={`mt-3 flex items-center gap-3 rounded-xl bg-slate-900 p-3 ${rarityBorderClass(offer().item.rarity)}`}
                 >
                   <Show
                     when={offer().item.imageUrl}
@@ -191,7 +191,7 @@ export function TerminalItemSection(props: { selected: InventoryItemDto; panelPr
                   {(inspectUrl) => (
                     <div class="mt-3">
                       <a
-                        class="block w-full rounded-xl border border-cyan-500/40 bg-cyan-950/30 px-3 py-2 text-center text-xs font-semibold text-cyan-100 hover:bg-cyan-900/40"
+                        class="block w-full rounded-xl border border-cyan-500/40 bg-cyan-950 px-3 py-2 text-center text-xs font-semibold text-cyan-100 hover:bg-cyan-950"
                         href={inspectUrl()}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -204,8 +204,8 @@ export function TerminalItemSection(props: { selected: InventoryItemDto; panelPr
                 <div
                   class={`mt-3 rounded-xl border px-3 py-2 ${
                     knownOfferLimit()?.isLastOffer
-                      ? "border-rose-500/40 bg-rose-950/30"
-                      : "border-violet-500/30 bg-slate-950/40"
+                      ? "border-rose-500/40 bg-rose-950"
+                      : "border-violet-500/30 bg-slate-950"
                   }`}
                 >
                   <Show
@@ -346,7 +346,7 @@ export function TerminalItemSection(props: { selected: InventoryItemDto; panelPr
                 </Show>
                 <Show when={activeSession()?.checkoutUrl}>
                   {(checkoutUrl) => (
-                    <div class="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3">
+                    <div class="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-950 p-3">
                       <p class="font-semibold text-emerald-200 text-xs">
                         Steam Microtransaction Link Ready
                       </p>

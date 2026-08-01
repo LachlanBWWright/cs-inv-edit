@@ -54,6 +54,7 @@ const defaultFeatureFlags: FeatureFlags = {
   enableToolApplication: false,
   enableGifting: false,
   enableTf2Inventory: true,
+  enableTf2Store: true,
   enableTf2Loadouts: false,
   enableTf2ItemUse: false,
   enableTf2Tools: false,
@@ -166,9 +167,13 @@ export function createWasmBackendClient(): LocalAgentClient {
     refreshGameInventory: (game) =>
       errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
     tf2Features: () =>
-      errAsync({ message: "TF2 coordinator features are unavailable in WASM mode" }),
+      errAsync({
+        message: "TF2 coordinator features are unavailable in WASM mode",
+      }),
     cs2Features: () =>
-      errAsync({ message: "CS2 coordinator features are unavailable in WASM mode" }),
+      errAsync({
+        message: "CS2 coordinator features are unavailable in WASM mode",
+      }),
     steamInventoryService: (appId) =>
       errAsync({
         message: `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
@@ -224,6 +229,35 @@ export function createWasmBackendClient(): LocalAgentClient {
           "Store catalogue unavailable in WASM mode.",
         ),
       ),
+    tf2Store: () =>
+      okAsync({
+        status: "requires_connection" as const,
+        offers: [],
+        refreshedAt: new Date().toISOString(),
+        message: "TF2 Store catalogue requires the connected backend.",
+      }),
+    refreshTF2Store: () =>
+      okAsync(
+        createReceipt(
+          "tf2.store.refresh",
+          "requires_connection",
+          "TF2 Store catalogue requires the connected backend.",
+        ),
+      ),
+    initializeTF2StorePurchase: () =>
+      okAsync({
+        id: "tf2-store-unavailable",
+        status: "failed" as const,
+        offerId: "",
+        defIndex: 0,
+        name: "",
+        quantity: 1,
+        currency: "",
+        amountMinor: 0,
+        formattedAmount: "",
+        createdAt: new Date().toISOString(),
+        message: "TF2 Store purchases require the connected backend.",
+      }),
     trades: () =>
       okAsync({
         status: "requires_connection" as const,

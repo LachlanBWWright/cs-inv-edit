@@ -9,6 +9,7 @@ const (
 	ConnectionStateNeedsSteamGuard ConnectionState = "needs_steam_guard"
 	ConnectionStateAwaitingQR      ConnectionState = "awaiting_qr"
 	ConnectionStateConnected       ConnectionState = "connected"
+	ConnectionStateSessionConflict ConnectionState = "session_conflict"
 	ConnectionStateError           ConnectionState = "error"
 )
 
@@ -75,6 +76,8 @@ type InventoryItem struct {
 	Tradable                *bool           `json:"tradable,omitempty"`
 	Marketable              *bool           `json:"marketable,omitempty"`
 	TradableAfter           string          `json:"tradableAfter,omitempty"`
+	StorageEligible         *bool           `json:"storageEligible,omitempty"`
+	StorageIneligibleReason string          `json:"storageIneligibleReason,omitempty"`
 	StorageCount            *uint32         `json:"storageCount,omitempty"`
 	GraffitiCharges         *uint32         `json:"graffitiCharges,omitempty"`
 	CasketID                *string         `json:"casketId,omitempty"`
@@ -84,6 +87,8 @@ type InventoryItem struct {
 	ContainerItems          []RelatedItem   `json:"containerItems,omitempty"`
 	TerminalOffers          []TerminalOffer `json:"terminalOffers,omitempty"`
 	TerminalPointsRemaining *uint32         `json:"terminalPointsRemaining,omitempty"`
+	IsTerminal              bool            `json:"isTerminal,omitempty"`
+	IsActiveTerminal        bool            `json:"isActiveTerminal,omitempty"`
 	Exterior                string          `json:"exterior,omitempty"`
 	Rarity                  string          `json:"rarity,omitempty"`
 	StorageLocation         string          `json:"storageLocation,omitempty"`
@@ -173,6 +178,7 @@ type StoreOffer struct {
 	RequiresSupplementalData bool          `json:"requiresSupplementalData"`
 	SupplementalDataKind     string        `json:"supplementalDataKind,omitempty"`
 	PurchaseType             uint32        `json:"-"`
+	Coupon                   bool          `json:"coupon"`
 	Purchasable              bool          `json:"purchasable"`
 	UnsupportedReason        string        `json:"unsupportedReason,omitempty"`
 	Items                    []RelatedItem `json:"items,omitempty"`
@@ -228,8 +234,10 @@ type FeatureFlags struct {
 	EnableArmoryRedemption    bool `json:"enableArmoryRedemption"`
 	EnableStoreRead           bool `json:"enableStoreRead"`
 	EnableStorePurchases      bool `json:"enableStorePurchases"`
+	EnableFullCS2Store        bool `json:"enableFullCs2Store"`
 	EnableCS2Loadouts         bool `json:"enableCs2Loadouts"`
 	EnableTF2Inventory        bool `json:"enableTf2Inventory"`
+	EnableTF2Store            bool `json:"enableTf2Store"`
 	EnableTF2Loadouts         bool `json:"enableTf2Loadouts"`
 	EnableTF2ItemUse          bool `json:"enableTf2ItemUse"`
 	EnableTF2Tools            bool `json:"enableTf2Tools"`

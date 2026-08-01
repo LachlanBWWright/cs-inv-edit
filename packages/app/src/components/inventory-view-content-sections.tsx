@@ -16,6 +16,7 @@ import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import { ItemMarketBadges } from "./ItemMarketBadges.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { ResponsiveInspector } from "./ui/ResponsiveInspector.js";
+import { InventoryStorageMoveToolbar } from "./InventoryStorageMoveToolbar.js";
 import {
   InventoryEmptyState,
   InventoryItemIcon as ItemIcon,
@@ -44,7 +45,7 @@ export function InventoryFilters(props: InventoryFiltersProps) {
     <div
       class={
         props.class ??
-        "grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-2"
+        "grid gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-3 sm:grid-cols-2"
       }
     >
       <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -133,16 +134,20 @@ export interface InventoryGridProps {
   inventory: InventorySnapshot | undefined;
   inventoryLoading: boolean;
   filteredItems: InventoryItemDto[];
-  selectionMode: "inventory" | "inventory-storage" | "inventory-tradeup";
+  selectionMode: "inventory";
   selectedItem: InventoryItemDto | undefined;
   selectedItemExplicit: boolean;
   selectedItemIds: string[];
   compactMode: "icons" | "concise" | "detailed";
   marketPrices: ReadonlyMap<string, number>;
-  onSelectItem: (item: InventoryItemDto, options?: { range: boolean }) => void;
+  onSelectItem: (
+    item: InventoryItemDto,
+    options?: { range: boolean; selected?: boolean },
+  ) => void;
   onRefresh: () => void;
   detailsPanel: JSX.Element;
   browsingStorageUnit: InventoryItemDto | undefined;
+  movingIntoStorageUnit: InventoryItemDto | undefined;
   removeFromStorageMode: boolean;
   storageSelectedItemIds: string[];
   storageRetrieval: { completed: number; total: number } | undefined;
@@ -150,15 +155,20 @@ export interface InventoryGridProps {
   onToggleRemoveFromStorageMode: () => void;
   onRetrieveFromStorage: () => Promise<void> | void;
   onRetrieveAllFromStorage: () => Promise<void> | void;
+  onCancelMoveIntoStorage: () => void;
+  onConfirmMoveIntoStorage: () => Promise<void> | void;
 }
 
 export function InventoryGrid(props: InventoryGridProps) {
+  let dragSelecting = false;
+  let dragSelectionValue = true;
   const itemCardClass = (item: InventoryItemDto) => {
-    const isSelected = props.removeFromStorageMode
-      ? props.storageSelectedItemIds.includes(item.id)
-      : props.selectionMode === "inventory"
-        ? props.selectedItem?.id === item.id
-        : props.selectedItemIds.includes(item.id);
+    const isSelected =
+      props.removeFromStorageMode || props.movingIntoStorageUnit
+        ? props.storageSelectedItemIds.includes(item.id)
+        : props.selectionMode === "inventory"
+          ? props.selectedItem?.id === item.id
+          : props.selectedItemIds.includes(item.id);
     return `inventory-item-card group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition duration-150 ${rarityBorderClass(item.rarity)} ${isSelected ? "is-selected ring-2 ring-cyan-300" : "hover:brightness-110"}`;
   };
 
@@ -249,10 +259,23 @@ export function InventoryGrid(props: InventoryGridProps) {
   };
 
   return (
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
-      <div class="flex min-h-0 flex-col">
+    <div
+      class={`grid flex-1 grid-cols-1 items-start gap-4 ${props.movingIntoStorageUnit ? "" : "lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1fr)]"}`}
+    >
+      <Show when={props.movingIntoStorageUnit}>
+        {(unit) => (
+          <InventoryStorageMoveToolbar
+            unit={unit()}
+            selectedCount={props.storageSelectedItemIds.length}
+            pending={!!props.storageRetrieval}
+            onCancel={props.onCancelMoveIntoStorage}
+            onConfirm={props.onConfirmMoveIntoStorage}
+          />
+        )}
+      </Show>
+      <div class="flex min-h-0 flex-col lg:order-2">
         <Show when={props.browsingStorageUnit}>
-          <div class="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 p-2.5">
+          <div class="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 p-2.5">
             <button
               type="button"
               class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -307,7 +330,7 @@ export function InventoryGrid(props: InventoryGridProps) {
           </div>
         </Show>
         <PullToRefresh
-          class="relative min-h-0 flex-1 overflow-y-auto pb-24 pr-1 lg:pb-0"
+          class="relative min-h-0 flex-1 pb-24 lg:pb-0"
           onRefresh={props.onRefresh}
         >
           <Show
@@ -321,6 +344,8 @@ export function InventoryGrid(props: InventoryGridProps) {
           >
             <div
               class="grid gap-3"
+              onPointerUp={() => (dragSelecting = false)}
+              onPointerLeave={() => (dragSelecting = false)}
               style={{
                 "grid-template-columns":
                   "repeat(auto-fill, minmax(190px, 1fr))",
@@ -332,7 +357,7 @@ export function InventoryGrid(props: InventoryGridProps) {
                     type="button"
                     class={`focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${itemCardClass(item)}`}
                     aria-pressed={
-                      props.removeFromStorageMode
+                      props.removeFromStorageMode || props.movingIntoStorageUnit
                         ? props.storageSelectedItemIds.includes(item.id)
                         : props.selectionMode === "inventory"
                           ? props.selectedItem?.id === item.id
@@ -340,9 +365,46 @@ export function InventoryGrid(props: InventoryGridProps) {
                     }
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (props.movingIntoStorageUnit) return;
                       props.onSelectItem(item, { range: event.shiftKey });
                     }}
+                    onPointerDown={(event) => {
+                      if (!props.movingIntoStorageUnit || event.button !== 0)
+                        return;
+                      event.preventDefault();
+                      dragSelecting = true;
+                      dragSelectionValue =
+                        !props.storageSelectedItemIds.includes(item.id);
+                      props.onSelectItem(item, {
+                        range: false,
+                        selected: dragSelectionValue,
+                      });
+                    }}
+                    onPointerEnter={() => {
+                      if (!props.movingIntoStorageUnit || !dragSelecting)
+                        return;
+                      if (
+                        props.storageSelectedItemIds.includes(item.id) ===
+                        dragSelectionValue
+                      )
+                        return;
+                      props.onSelectItem(item, {
+                        range: false,
+                        selected: dragSelectionValue,
+                      });
+                    }}
                   >
+                    <Show when={props.movingIntoStorageUnit}>
+                      <span
+                        class={`absolute left-2.5 top-2.5 z-10 flex h-6 w-6 items-center justify-center rounded-md border-2 text-sm font-bold shadow ${props.storageSelectedItemIds.includes(item.id) ? "border-cyan-300 bg-cyan-400 text-slate-950" : "border-slate-400 bg-slate-950 text-transparent"}`}
+                        role="checkbox"
+                        aria-checked={props.storageSelectedItemIds.includes(
+                          item.id,
+                        )}
+                      >
+                        ✓
+                      </span>
+                    </Show>
                     <ItemMarketBadges
                       item={item}
                       priceMinor={props.marketPrices.get(item.marketName ?? "")}
@@ -357,7 +419,7 @@ export function InventoryGrid(props: InventoryGridProps) {
           <Show when={props.storageRetrieval}>
             {(retrieval) => (
               <div
-                class="absolute inset-0 z-10 flex items-start justify-center bg-slate-950/75 px-4 pt-10 backdrop-blur-sm"
+                class="absolute inset-0 z-10 flex items-start justify-center bg-slate-950 px-4 pt-10"
                 role="status"
                 aria-live="polite"
               >
@@ -379,29 +441,31 @@ export function InventoryGrid(props: InventoryGridProps) {
           </Show>
         </PullToRefresh>
       </div>
-      <ResponsiveInspector
-        open={
-          props.selectionMode === "inventory" &&
-          props.selectedItemExplicit &&
-          !!props.selectedItem
-        }
-        selectionKey={props.selectedItem?.id}
-        label="Selected CS2 item details"
-        summary={
-          <div class="min-w-0">
-            <p class="truncate text-sm font-semibold text-slate-100">
-              {props.selectedItem
-                ? itemDisplayName(props.selectedItem)
-                : "Selected item"}
-            </p>
-            <p class="mt-0.5 truncate text-xs text-slate-500">
-              {props.selectedItem ? itemSubtitle(props.selectedItem) : ""}
-            </p>
-          </div>
-        }
-      >
-        {props.detailsPanel}
-      </ResponsiveInspector>
+      <Show when={!props.movingIntoStorageUnit}>
+        <ResponsiveInspector
+          open={
+            props.selectionMode === "inventory" &&
+            props.selectedItemExplicit &&
+            !!props.selectedItem
+          }
+          selectionKey={props.selectedItem?.id}
+          label="Selected CS2 item details"
+          summary={
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-slate-100">
+                {props.selectedItem
+                  ? itemDisplayName(props.selectedItem)
+                  : "Selected item"}
+              </p>
+              <p class="mt-0.5 truncate text-xs text-slate-500">
+                {props.selectedItem ? itemSubtitle(props.selectedItem) : ""}
+              </p>
+            </div>
+          }
+        >
+          {props.detailsPanel}
+        </ResponsiveInspector>
+      </Show>
     </div>
   );
 }

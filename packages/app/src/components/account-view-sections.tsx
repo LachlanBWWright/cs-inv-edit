@@ -7,6 +7,7 @@ export interface AccountViewLayoutProps {
   status: string;
   loading: boolean;
   connectionState: string | undefined;
+  connectionDetail: string | undefined;
   accountName: string | undefined;
   username: string;
   password: string;
@@ -14,11 +15,9 @@ export interface AccountViewLayoutProps {
   guardCode: string;
   qrImage: string;
   qrLoadingText: string;
-  qrRetryAvailable: boolean;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onPasswordToggle: () => void;
-  onRetryQR: () => void;
   onGuardCodeChange: (value: string) => void;
   onConnect: (event: Event) => void;
   onSteamGuard: (event: Event) => void;
@@ -33,6 +32,34 @@ function renderConnectionPanel(props: AccountViewLayoutProps) {
         loading={props.loading}
         onDisconnect={props.onDisconnect}
       />
+    );
+  }
+
+  if (props.connectionState === "session_conflict") {
+    return (
+      <div class="space-y-4 rounded-2xl border border-amber-500/30 bg-amber-950 p-4">
+        <div>
+          <h3 class="font-semibold text-amber-100">
+            Steam session active elsewhere
+          </h3>
+          <p class="mt-1 text-sm text-amber-200">
+            {props.connectionDetail ??
+              "Close CS2 or sign out of Steam on the other device, then return to Inventory and select Retry."}
+          </p>
+        </div>
+        <p class="text-xs text-slate-400">
+          Your account remains selected. The app will reconnect only when you
+          explicitly retry an inventory sync.
+        </p>
+        <Button
+          variant="secondary"
+          class="w-full justify-center"
+          onClick={() => props.onDisconnect()}
+          disabled={props.loading}
+        >
+          Disconnect this account
+        </Button>
+      </div>
     );
   }
 
@@ -64,8 +91,6 @@ function renderConnectionPanel(props: AccountViewLayoutProps) {
       <QrSignInPanel
         qrImage={props.qrImage}
         qrLoadingText={props.qrLoadingText}
-        retryAvailable={props.qrRetryAvailable}
-        onRetry={props.onRetryQR}
       />
     </div>
   );
@@ -75,10 +100,12 @@ export function AccountViewLayout(props: AccountViewLayoutProps) {
   const descriptionText =
     props.connectionState === "needs_steam_guard"
       ? "Approve the sign-in on your phone, or enter a Steam Guard code below."
-      : "Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account.";
+      : props.connectionState === "session_conflict"
+        ? "Steam allows only one active CS2 session for this account. Resolve the other session, then retry without signing in again."
+        : "Sign in to your Steam account to load inventory and keep name-tag, tool, and storage actions scoped to the active account.";
   return (
-    <div class="h-full overflow-y-auto">
-      <div class="mx-auto flex min-h-full w-full max-w-6xl flex-col px-1 py-2 sm:px-2 lg:py-4">
+    <div class="flex-1">
+      <div class="mx-auto flex w-full max-w-6xl flex-col px-1 py-2 sm:px-2 lg:py-4">
         <header class="mb-6 flex flex-col gap-2 border-b border-slate-800 pb-5">
           <h2 class="text-2xl font-semibold text-slate-50">
             Steam inventory access
@@ -104,7 +131,7 @@ interface ConnectedStateCardProps {
 
 function ConnectedStateCard(props: ConnectedStateCardProps) {
   return (
-    <div class="space-y-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+    <div class="space-y-4 rounded-2xl border border-emerald-500/20 bg-emerald-950 p-4">
       <div>
         <h3 class="font-semibold text-emerald-100">Signed in</h3>
         <p class="mt-1 text-sm text-emerald-200">
@@ -138,7 +165,7 @@ function SteamGuardForm(props: SteamGuardFormProps) {
   return (
     <form class="space-y-4" onSubmit={props.onSubmit}>
       <div
-        class="flex items-center gap-3 rounded-2xl border border-sky-400/20 bg-sky-400/10 px-4 py-3"
+        class="flex items-center gap-3 rounded-2xl border border-sky-400/20 bg-sky-950 px-4 py-3"
         role="status"
         aria-live="polite"
       >
@@ -309,8 +336,6 @@ function CredentialsForm(props: CredentialsFormProps) {
 interface QrSignInPanelProps {
   qrImage: string;
   qrLoadingText: string;
-  retryAvailable: boolean;
-  onRetry: () => void;
 }
 
 function QrSignInPanel(props: QrSignInPanelProps) {
@@ -329,7 +354,7 @@ function QrSignInPanel(props: QrSignInPanelProps) {
         when={props.qrImage}
         fallback={
           <div
-            class="mt-5 flex aspect-square w-full max-w-md items-center justify-center rounded-2xl border border-slate-700 bg-slate-950/60 px-6 text-sm text-slate-400"
+            class="mt-5 flex aspect-square w-full max-w-md items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-6 text-sm text-slate-400"
             role="status"
             aria-live="polite"
           >
@@ -342,16 +367,6 @@ function QrSignInPanel(props: QrSignInPanelProps) {
           src={props.qrImage}
           alt="Steam sign-in QR code"
         />
-      </Show>
-      <Show when={props.retryAvailable}>
-        <Button
-          type="button"
-          variant="secondary"
-          class="mt-4 w-full max-w-md justify-center"
-          onClick={props.onRetry}
-        >
-          Try a new QR code
-        </Button>
       </Show>
     </section>
   );

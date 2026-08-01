@@ -14,10 +14,16 @@ export function createToastController(): ToastController {
 
   const pushToast = (toast: Omit<ToastItem, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setToasts((current) => [...current, { id, ...toast }]);
+    setToasts((current) => {
+      const withoutDuplicate = current.filter(
+        (item) =>
+          item.title !== toast.title || item.description !== toast.description,
+      );
+      return [...withoutDuplicate, { id, ...toast }].slice(-3);
+    });
     globalThis.setTimeout(() => {
       setToasts((current) => current.filter((item) => item.id !== id));
-    }, 4000);
+    }, toast.variant === "danger" ? 8000 : 4000);
   };
 
   const dismissToast = (id: string) => {

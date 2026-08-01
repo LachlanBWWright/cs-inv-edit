@@ -14,7 +14,7 @@ export function Card(props: CardProps) {
   return (
     <div
       class={cn(
-        "rounded-2xl border border-slate-800 bg-slate-900/80 shadow-[0_10px_60px_-30px_rgba(34,211,238,0.35)]",
+        "rounded-2xl border border-slate-800 bg-slate-900 shadow-sm shadow-black",
         props.class,
       )}
       onClick={props.onClick}

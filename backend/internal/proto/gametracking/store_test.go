@@ -54,7 +54,7 @@ func TestClientWelcomeStoreContextUsesGameTrackingDescriptor(t *testing.T) {
 }
 
 func TestStoreDynamicMessagesRoundTrip(t *testing.T) {
-	body, err := MarshalStorePurchaseInit(StorePurchaseRequest{Country: "AU", Language: 0, Currency: 21, Lines: []StorePurchaseLine{{ItemDefID: 1200, Quantity: 2, Cost: 305, PurchaseType: 3, PurchaseTypePresent: true, OmitSupplementalData: true}}})
+	body, err := MarshalStorePurchaseInit(StorePurchaseRequest{Country: "AU", Language: 0, Currency: 21, Lines: []StorePurchaseLine{{ItemDefID: 1200, Quantity: 2, Cost: 305, SupplementalData: 0}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,12 +73,12 @@ func TestStoreDynamicMessagesRoundTrip(t *testing.T) {
 	}
 	line := message.Get(field(message, "line_items")).List().Get(0).Message()
 	purchaseType := line.Descriptor().Fields().ByName("purchase_type")
-	if !line.Has(purchaseType) || line.Get(purchaseType).Uint() != 3 {
-		t.Fatal("price-sheet purchase_type must be explicitly present")
+	if line.Has(purchaseType) {
+		t.Fatal("native ordinary store purchase must omit purchase_type")
 	}
 	supplemental := line.Descriptor().Fields().ByName("supplemental_data")
-	if line.Has(supplemental) {
-		t.Fatal("ordinary store purchase must omit supplemental_data")
+	if !line.Has(supplemental) || line.Get(supplemental).Uint() != 0 {
+		t.Fatal("native ordinary store purchase must include supplemental_data=0")
 	}
 }
 

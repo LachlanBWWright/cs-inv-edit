@@ -10,11 +10,11 @@ export interface ActionLinkProps {
 export function ActionLink(props: ActionLinkProps) {
   const tones = {
     neutral:
-      "border-slate-700 bg-slate-900/70 text-slate-200 hover:border-slate-600 hover:bg-slate-800",
+      "border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-600 hover:bg-slate-800",
     primary:
-      "border-cyan-500/40 bg-cyan-950/30 text-cyan-100 hover:bg-cyan-900/40",
+      "border-cyan-700 bg-cyan-950 text-cyan-100 hover:bg-cyan-900",
     commerce:
-      "border-emerald-500/40 bg-emerald-950/30 text-emerald-100 hover:bg-emerald-900/40",
+      "border-emerald-700 bg-emerald-950 text-emerald-100 hover:bg-emerald-900",
   };
   return (
     <a

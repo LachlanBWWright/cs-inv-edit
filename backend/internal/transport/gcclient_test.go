@@ -69,13 +69,35 @@ func TestAuthenticatedSteamIDPrefersResponseHeaderIdentity(t *testing.T) {
 	}
 }
 
+func TestSteamMachineIDUsesSteamKitMessageObjectShape(t *testing.T) {
+	machineID := steamMachineID("example")
+	values := map[string]any{}
+	reader := bytes.NewReader(machineID)
+	if kind, err := reader.ReadByte(); err != nil || kind != 0 {
+		t.Fatalf("machine ID root kind=%d err=%v", kind, err)
+	}
+	root, err := readCString(reader)
+	if err != nil || root != "MessageObject" {
+		t.Fatalf("machine ID root=%q err=%v", root, err)
+	}
+	if err := parseBinaryKV(reader, values); err != nil {
+		t.Fatalf("parse machine ID: %v", err)
+	}
+	for _, key := range []string{"bb3", "ff2", "3b3"} {
+		value, ok := values[key].(string)
+		if !ok || len(value) != 40 {
+			t.Fatalf("machine ID %s=%#v", key, values[key])
+		}
+	}
+}
+
 func TestEncodeGamesPlayedPacketAdvertisesCS2(t *testing.T) {
 	packet, err := encodeGamesPlayedPacket(730)
 	if err != nil {
 		t.Fatalf("encodeGamesPlayedPacket returned error: %v", err)
 	}
-	if packet.MsgType() != steamlang.EMsg_ClientGamesPlayed {
-		t.Fatalf("expected ClientGamesPlayed packet, got %v", packet.MsgType())
+	if packet.MsgType() != steamlang.EMsg_ClientGamesPlayedWithDataBlob {
+		t.Fatalf("expected ClientGamesPlayedWithDataBlob packet, got %v", packet.MsgType())
 	}
 	var body steampb.CMsgClientGamesPlayed
 	if _, err := steammsg.DecodePacket(packet, &body); err != nil {
@@ -88,8 +110,8 @@ func TestEncodeGamesPlayedPacketAdvertisesCS2(t *testing.T) {
 	if game.GetGameId() != 730 {
 		t.Fatalf("expected CS2 app id 730, got %d", game.GetGameId())
 	}
-	if game.GetGameExtraInfo() != "Counter-Strike 2" {
-		t.Fatalf("unexpected game extra info %q", game.GetGameExtraInfo())
+	if game.GameExtraInfo != nil {
+		t.Fatalf("real app presence must omit game_extra_info, got %q", game.GetGameExtraInfo())
 	}
 }
 
@@ -105,8 +127,8 @@ func TestEncodeGamesPlayedPacketKeepsCS2ActiveWithAnotherEconomyGame(t *testing.
 	if len(body.GetGamesPlayed()) != 2 || body.GetGamesPlayed()[0].GetGameId() != 730 || body.GetGamesPlayed()[1].GetGameId() != 440 {
 		t.Fatalf("games played = %#v", body.GetGamesPlayed())
 	}
-	if body.GetGamesPlayed()[0].GetGameExtraInfo() != "Counter-Strike 2" || body.GetGamesPlayed()[1].GetGameExtraInfo() != "Team Fortress 2" {
-		t.Fatalf("games played labels = %#v", body.GetGamesPlayed())
+	if body.GetGamesPlayed()[0].GameExtraInfo != nil || body.GetGamesPlayed()[1].GameExtraInfo != nil {
+		t.Fatalf("real app presence must omit game_extra_info: %#v", body.GetGamesPlayed())
 	}
 }
 

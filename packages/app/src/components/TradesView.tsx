@@ -22,7 +22,7 @@ const dateLabel = (value?: string) =>
 
 function ItemTile(props: { item: SteamTradeItemDto }) {
   return (
-    <div class="flex min-w-0 items-center gap-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-2.5">
+    <div class="flex min-w-0 items-center gap-3 rounded-xl border border-slate-800/80 bg-slate-950 p-2.5">
       <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-900">
         <Show
           when={props.item.imageUrl}
@@ -58,7 +58,7 @@ function TradeSide(props: {
 }) {
   return (
     <div
-      class={`rounded-2xl border p-3 ${props.tone === "receive" ? "border-emerald-400/20 bg-emerald-400/[0.04]" : "border-amber-400/20 bg-amber-400/[0.04]"}`}
+      class={`rounded-2xl border p-3 ${props.tone === "receive" ? "border-emerald-400/20 bg-emerald-950" : "border-amber-400/20 bg-amber-950"}`}
     >
       <div class="mb-2 flex items-center justify-between">
         <h3 class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
@@ -134,12 +134,12 @@ function TradeCard(props: {
             </p>
             <div class="mt-1 flex flex-wrap items-center gap-2">
               <Show when={props.accountName}>
-                <span class="rounded-full bg-violet-400/15 px-2.5 py-1 text-xs font-semibold text-violet-200">
+                <span class="rounded-full bg-violet-950 px-2.5 py-1 text-xs font-semibold text-violet-200">
                   {props.accountName}
                 </span>
               </Show>
               <span
-                class={`rounded-full px-2.5 py-1 text-xs font-semibold ${active() ? "bg-cyan-400/15 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-400/15 text-emerald-200" : "bg-slate-800 text-slate-300"}`}
+                class={`rounded-full px-2.5 py-1 text-xs font-semibold ${active() ? "bg-cyan-950 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-950 text-emerald-200" : "bg-slate-800 text-slate-300"}`}
               >
                 {stateLabel(props.trade.state || "unknown")}
               </span>
@@ -159,7 +159,7 @@ function TradeCard(props: {
         </div>
       </div>
       <Show when={props.trade.message}>
-        <blockquote class="mx-4 mt-3 rounded-xl border-l-2 border-cyan-400/40 bg-slate-900/60 px-3 py-2 text-sm text-slate-300">
+        <blockquote class="mx-4 mt-3 rounded-xl border-l-2 border-cyan-400/40 bg-slate-900 px-3 py-2 text-sm text-slate-300">
           “{props.trade.message}”
         </blockquote>
       </Show>
@@ -178,7 +178,7 @@ function TradeCard(props: {
       <Show when={!props.historical && active()}>
         <div class="flex justify-end border-t border-slate-800/80 px-4 py-3">
           <a
-            class="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/20"
+            class="rounded-lg border border-cyan-400/30 bg-cyan-950 px-3 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-950"
             href={`https://steamcommunity.com/tradeoffer/${props.trade.id}/`}
             target="_blank"
             rel="noopener noreferrer"
@@ -247,7 +247,7 @@ export function TradesView(props: {
     { id: "history", label: "History", count: () => history().length },
   ] as const;
   return (
-    <div class="flex h-full min-h-0 w-full flex-col">
+    <div class="flex w-full flex-1 flex-col">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-semibold text-white">Trades</h1>
         <div class="flex items-center gap-2">
@@ -305,13 +305,13 @@ export function TradesView(props: {
           value: entry.id,
           label: entry.label,
           suffix: (
-            <span class="rounded-full bg-slate-950/70 px-2 py-0.5 text-xs">
+            <span class="rounded-full bg-slate-950 px-2 py-0.5 text-xs">
               {entry.count()}
             </span>
           ),
         }))}
       />
-      <div class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+      <div class="mt-4 flex-1">
         <Show
           when={trades().length}
           fallback={

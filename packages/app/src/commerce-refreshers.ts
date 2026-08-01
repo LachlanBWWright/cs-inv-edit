@@ -1,7 +1,6 @@
 import type { Setter } from "solid-js";
 import type { SteamAccountTradesCollection, SteamTradesSnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
 import { appErrorMessage, fromAppPromise } from "./lib/result.js";
-import type { createToastController } from "./features/notifications/controller.js";
 import type { AppProps } from "./app-controller.js";
 
 type ResourceRefetch = (info?: unknown) => unknown;
@@ -12,9 +11,8 @@ export function createCommerceRefreshers(context: {
   setTrades: Setter<SteamTradesSnapshot | undefined>;
   setTradeAccounts: Setter<SteamAccountTradesCollection | undefined>;
   refetchStore: ResourceRefetch;
-  pushToast: ReturnType<typeof createToastController>["pushToast"];
 }) {
-  const { props, setStore, setTrades, setTradeAccounts, refetchStore, pushToast } = context;
+  const { props, setStore, setTrades, setTradeAccounts, refetchStore } = context;
   const refreshStoreState = async () => {
     setStore((current): StoreSnapshot => ({
       status: "loading",
@@ -41,11 +39,6 @@ export function createCommerceRefreshers(context: {
             currency: current?.currency,
             message,
           }));
-          pushToast({
-            title: "Store refresh failed",
-            description: message,
-            variant: "danger",
-          });
         },
       );
   };
@@ -83,4 +76,3 @@ export function createCommerceRefreshers(context: {
   };
   return { refreshStoreState, refreshTradesState, refreshTradeAccountsState };
 }
-

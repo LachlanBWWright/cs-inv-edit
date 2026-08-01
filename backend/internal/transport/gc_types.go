@@ -12,6 +12,23 @@ import (
 
 var ErrNotConnected = errors.New("steam gc transport is not connected")
 
+// SteamSessionConflictError means Steam ended or rejected this CM session
+// because the account is active in another Steam/CS2 client. Callers should
+// wait for that client to exit, then explicitly retry instead of continuously
+// reconnecting and displacing sessions.
+type SteamSessionConflictError struct {
+	Result int32
+}
+
+func (e SteamSessionConflictError) Error() string {
+	return fmt.Sprintf("Steam ended this session because the account is active elsewhere (EResult %d); close CS2 or sign out of Steam on the other device, then retry", e.Result)
+}
+
+func IsSteamSessionConflict(err error) bool {
+	var conflict SteamSessionConflictError
+	return errors.As(err, &conflict)
+}
+
 const steamCMHandshakeTimeout = 15 * time.Second
 const steamCMLogonTimeout = 8 * time.Second
 const steamAuthConfirmationTimeout = 20 * time.Second
@@ -119,10 +136,11 @@ type LogonResult struct {
 }
 
 type QRAuthSession struct {
-	ClientID     uint64
-	RequestID    []byte
-	ChallengeURL string
-	PollInterval time.Duration
+	ClientID       uint64
+	RequestID      []byte
+	ChallengeURL   string
+	PollInterval   time.Duration
+	OnChallengeURL func(string)
 }
 
 type QRAuthResult struct {
@@ -157,9 +175,9 @@ type storePurchaseResultInfo struct {
 func storePurchaseResult(result int32) storePurchaseResultInfo {
 	results := map[int32]storePurchaseResultInfo{
 		1:   {"OK", "purchase initialization accepted"},
-		2:   {"Fail", "generic CS2 store purchase initialization failure"},
+		2:   {"Fail", "generic store purchase initialization failure"},
 		3:   {"InvalidParam", "the GC rejected one or more purchase parameters"},
-		4:   {"InternalError", "the CS2 store encountered an internal error"},
+		4:   {"InternalError", "the game store encountered an internal error"},
 		5:   {"NotApproved", "the purchase was not approved"},
 		6:   {"AlreadyCommitted", "the purchase transaction was already committed"},
 		7:   {"UserNotLoggedIn", "the Steam user is not logged in"},
@@ -173,7 +191,7 @@ func storePurchaseResult(result int32) storePurchaseResultInfo {
 		102: {"AcctDisabled", "purchases are disabled for this account"},
 		103: {"AcctCannotPurchase", "this account cannot make the requested purchase"},
 		104: {"Fraud", "Steam rejected the transaction for account-security reasons"},
-		150: {"OldPriceSheet", "the CS2 store price sheet is stale"},
+		150: {"OldPriceSheet", "the game store price sheet is stale"},
 		151: {"TxnNotFound", "the store transaction was not found"},
 		// Current CS2 uses this terminal-specific extension beyond the legacy
 		// public econ_store.h enum. The shipped terminal UI handles it as
@@ -183,7 +201,7 @@ func storePurchaseResult(result int32) storePurchaseResultInfo {
 	if known, ok := results[result]; ok {
 		return known
 	}
-	return storePurchaseResultInfo{fmt.Sprintf("UnknownPurchaseResult%d", result), "unknown CS2 store purchase result"}
+	return storePurchaseResultInfo{fmt.Sprintf("UnknownPurchaseResult%d", result), "unknown game store purchase result"}
 }
 
 func (e steamResultError) Error() string {
@@ -361,6 +379,7 @@ type GCStoreData struct {
 	PriceSheet        []byte
 }
 type StorePurchaseRequest struct {
+	AppID                uint32
 	Country              string
 	Language             int32
 	Currency             int32
@@ -414,12 +433,16 @@ type GCClient interface {
 	SendToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	RequestInventory(ctx context.Context) ([]GCInventoryItem, error)
+	WaitForNewCS2InventoryItem(ctx context.Context, knownIDs map[uint64]struct{}) (GCInventoryItem, error)
 	RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error)
 	RequestSteamInventoryService(ctx context.Context, appID uint32, steamID uint64) (SteamInventoryServiceResponse, error)
 	RequestOwnedGames(ctx context.Context, steamID uint64) ([]SteamOwnedGame, error)
 	RequestArmory(ctx context.Context) (GCArmorySnapshot, error)
 	RequestStore(ctx context.Context, version uint32, currency int32) (GCStoreData, error)
+	RequestGameStore(ctx context.Context, appID uint32, version uint32, currency int32) (GCStoreData, error)
 	InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (StorePurchaseTransportResult, error)
+	FinalizeStorePurchase(ctx context.Context, orderID uint64) ([]uint64, error)
+	FinalizeGameStorePurchase(ctx context.Context, appID uint32, orderID uint64) ([]uint64, error)
 	SetProtocolTracing(enabled bool)
 	ProtocolTrace(after uint64) []ProtocolTraceEntry
 	TF2Features() TF2FeatureSnapshot
@@ -438,11 +461,13 @@ type TestGCClient struct {
 	SteamInventoryServiceFunc func(context.Context, uint32, uint64) (SteamInventoryServiceResponse, error)
 	OwnedGamesFunc            func(context.Context, uint64) ([]SteamOwnedGame, error)
 	InventoryFunc             func(context.Context) ([]GCInventoryItem, error)
+	WaitForNewCS2ItemFunc     func(context.Context, map[uint64]struct{}) (GCInventoryItem, error)
 	GamesPlayedCalls          [][]uint32
 	StorePurchaseCalls        []StorePurchaseRequest
 	StorePurchaseFunc         func(context.Context, StorePurchaseRequest) (StorePurchaseTransportResult, error)
 	StorePurchaseResult       StorePurchaseTransportResult
 	StorePurchaseErr          error
+	FinalizeStorePurchaseFunc func(context.Context, uint64) ([]uint64, error)
 	TF2FeatureResult          TF2FeatureSnapshot
 	CS2FeatureResult          CS2FeatureSnapshot
 }
@@ -505,6 +530,13 @@ func (m *TestGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem,
 	return nil, nil
 }
 
+func (m *TestGCClient) WaitForNewCS2InventoryItem(ctx context.Context, knownIDs map[uint64]struct{}) (GCInventoryItem, error) {
+	if m.WaitForNewCS2ItemFunc != nil {
+		return m.WaitForNewCS2ItemFunc(ctx, knownIDs)
+	}
+	return GCInventoryItem{}, context.DeadlineExceeded
+}
+
 func (m *TestGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
 	if m.GameInventoryFunc != nil {
 		return m.GameInventoryFunc(ctx, appID)
@@ -532,12 +564,25 @@ func (m *TestGCClient) RequestArmory(context.Context) (GCArmorySnapshot, error) 
 func (m *TestGCClient) RequestStore(context.Context, uint32, int32) (GCStoreData, error) {
 	return GCStoreData{}, nil
 }
+func (m *TestGCClient) RequestGameStore(ctx context.Context, _ uint32, version uint32, currency int32) (GCStoreData, error) {
+	return m.RequestStore(ctx, version, currency)
+}
 func (m *TestGCClient) InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (StorePurchaseTransportResult, error) {
 	m.StorePurchaseCalls = append(m.StorePurchaseCalls, request)
 	if m.StorePurchaseFunc != nil {
 		return m.StorePurchaseFunc(ctx, request)
 	}
 	return m.StorePurchaseResult, m.StorePurchaseErr
+}
+
+func (m *TestGCClient) FinalizeStorePurchase(ctx context.Context, orderID uint64) ([]uint64, error) {
+	if m.FinalizeStorePurchaseFunc != nil {
+		return m.FinalizeStorePurchaseFunc(ctx, orderID)
+	}
+	return nil, nil
+}
+func (m *TestGCClient) FinalizeGameStorePurchase(ctx context.Context, _ uint32, orderID uint64) ([]uint64, error) {
+	return m.FinalizeStorePurchase(ctx, orderID)
 }
 
 func (m *TestGCClient) Events() <-chan GCEvent {

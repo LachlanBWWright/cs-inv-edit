@@ -1,36 +1,74 @@
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
-import type { ArmoryRedeemRequest, ArmorySnapshot, OperationReceipt, PriceScanResult, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
+import type {
+  ArmoryRedeemRequest,
+  ArmorySnapshot,
+  OperationReceipt,
+  PriceScanResult,
+  RelatedItemDto,
+  SettingsData,
+} from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
-import { Button } from "./ui/Button.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
-import { MOCK_RESULT_DELAY_MS, RevealAnimation, generateRevealMiss, randomRevealCandidate, type RevealItem } from "./ui/RevealAnimation.js";
+import {
+  MOCK_RESULT_DELAY_MS,
+  RevealAnimation,
+  generateRevealMiss,
+  randomRevealCandidate,
+  type RevealItem,
+} from "./ui/RevealAnimation.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
-import { expectedReturn, scanPriceMap, type ReturnEstimate } from "./roi-utils.js";
+import {
+  expectedReturn,
+  scanPriceMap,
+  type ReturnEstimate,
+} from "./roi-utils.js";
 import { Dialog } from "./ui/Dialog.js";
 import { sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 import { RelatedItemPreview } from "./RelatedItemPreview.js";
-import { LoadingProgress } from "./ui/LoadingProgress.js";
+import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
 import {
-  ARMORY_PURCHASE_TIMEOUT_MS, ARMORY_STAR_COST_MINOR, OfferCard,
-  armoryLoadingStages, armoryPurchaseRequiresConfirmation,
-  armoryPurchaseUsesReveal, armoryRevealCandidates, armoryRevealResult,
-  armoryRevealVariant, armoryPurchaseTimeoutMessage, isContainerOffer,
+  ARMORY_PURCHASE_TIMEOUT_MS,
+  ARMORY_STAR_COST_MINOR,
+  OfferCard,
+  armoryLoadingStages,
+  armoryPurchaseRequiresConfirmation,
+  armoryPurchaseUsesReveal,
+  armoryRevealCandidates,
+  armoryRevealResult,
+  armoryRevealVariant,
+  armoryPurchaseTimeoutMessage,
+  isContainerOffer,
   withArmoryPurchaseTimeout,
 } from "./armory-view-elements.js";
-export { ARMORY_PURCHASE_TIMEOUT_MS, ARMORY_STAR_COST_MINOR, armoryPurchaseRequiresConfirmation, armoryPurchaseUsesReveal, armoryRevealCandidates, armoryRevealResult, withArmoryPurchaseTimeout } from "./armory-view-elements.js";
+import {
+  armoryOfferKey,
+  filterArmoryOffers,
+  type CommerceSort,
+} from "./commerce-view-utils.js";
+export {
+  ARMORY_PURCHASE_TIMEOUT_MS,
+  ARMORY_STAR_COST_MINOR,
+  armoryPurchaseRequiresConfirmation,
+  armoryPurchaseUsesReveal,
+  armoryRevealCandidates,
+  armoryRevealResult,
+  withArmoryPurchaseTimeout,
+} from "./armory-view-elements.js";
 export type { ArmoryRevealVariant } from "./armory-view-elements.js";
 export function ArmoryView(props: {
   armory?: ArmorySnapshot;
   settings?: SettingsData;
-  onRefresh: () => Promise<unknown>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onScanPrices: (
     marketNames: string[],
     appId?: number,
   ) => Promise<PriceScanResult | undefined>;
   onRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
+  query?: string;
+  categoryFilter?: string;
+  sort?: CommerceSort;
 }) {
-  const [confirming, setConfirming] = createSignal<number>();
+  const [confirming, setConfirming] = createSignal<string>();
   const [busy, setBusy] = createSignal(false);
   const [purchaseError, setPurchaseError] = createSignal<string>();
   const [reveal, setReveal] = createSignal<{
@@ -47,9 +85,9 @@ export function ArmoryView(props: {
   const [returnEstimate, setReturnEstimate] = createSignal<ReturnEstimate>();
   const [returnEstimateLoading, setReturnEstimateLoading] = createSignal(false);
   const [returnUnitCost, setReturnUnitCost] = createSignal<number>();
-  const [quantities, setQuantities] = createSignal<Record<number, number>>({});
+  const [quantities, setQuantities] = createSignal<Record<string, number>>({});
   const [offerEstimates, setOfferEstimates] = createSignal<
-    Record<number, ReturnEstimate>
+    Record<string, ReturnEstimate>
   >({});
   const [offerEstimatesLoading, setOfferEstimatesLoading] = createSignal(false);
   let offerEstimateRequest = 0;
@@ -63,18 +101,28 @@ export function ArmoryView(props: {
   const ready = () => props.armory?.status === "ready";
   const redemptionEnabled = () =>
     props.settings?.featureFlags.enableArmoryRedemption !== false;
-  const offers = () => props.armory?.offers ?? [];
+  const offers = () =>
+    filterArmoryOffers(props.armory?.offers ?? [], {
+      query: props.query ?? "",
+      category: props.categoryFilter ?? "",
+      sort: props.sort ?? "name",
+    });
   const diagnostics = () =>
     (props.armory?.diagnostics ?? []).filter(
       (line) =>
         line !==
         "Armory balance loaded, but no purchasable bid objects were present in the GC cache",
     );
-  const quantity = (redeemId: number) => quantities()[redeemId] ?? 1;
-  const setQuantity = (redeemId: number, value: number, maximum: number) =>
+  const quantity = (offer: ArmorySnapshot["offers"][number]) =>
+    quantities()[armoryOfferKey(offer)] ?? 1;
+  const setQuantity = (
+    offer: ArmorySnapshot["offers"][number],
+    value: number,
+    maximum: number,
+  ) =>
     setQuantities((current) => ({
       ...current,
-      [redeemId]: Math.max(1, Math.min(maximum, value)),
+      [armoryOfferKey(offer)]: Math.max(1, Math.min(maximum, value)),
     }));
 
   createEffect(() => {
@@ -95,11 +143,11 @@ export function ArmoryView(props: {
     if (names.length === 0) return;
     void scanPriceMap(names, props.onScanPrices).then((prices) => {
       if (request !== offerEstimateRequest) return;
-      const estimates: Record<number, ReturnEstimate> = {};
+      const estimates: Record<string, ReturnEstimate> = {};
       for (const offer of currentOffers) {
         const items = offer.items ?? [];
         const odds = containerItemOdds(items);
-        estimates[offer.redeemId] = expectedReturn(
+        estimates[armoryOfferKey(offer)] = expectedReturn(
           items.map((item) => ({
             marketName: item.marketName,
             probability: odds.get(item) ?? 0,
@@ -113,10 +161,9 @@ export function ArmoryView(props: {
     });
   });
 
-  const redeem = async (index: number) => {
+  const redeem = async (offer: ArmorySnapshot["offers"][number]) => {
     const state = props.armory;
-    const offer = state?.offers?.[index];
-    if (!state || !offer || state.status !== "ready") return;
+    if (!state || state.status !== "ready") return;
     clearPreviewResultTimer();
     setBusy(true);
     setReturnEstimate(undefined);
@@ -131,7 +178,7 @@ export function ArmoryView(props: {
       setBusy(false);
       setPurchaseError(armoryPurchaseTimeoutMessage);
     }, ARMORY_PURCHASE_TIMEOUT_MS);
-    const purchaseQuantity = quantity(offer.redeemId);
+    const purchaseQuantity = quantity(offer);
     const mode = isContainerOffer(offer)
       ? (props.settings?.animations?.container ?? "slot-machine")
       : (props.settings?.animations?.armory ?? "slot-machine");
@@ -257,7 +304,7 @@ export function ArmoryView(props: {
   };
 
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="flex-1">
       <RevealAnimation
         open={!!reveal()}
         ready={reveal()?.ready}
@@ -278,21 +325,25 @@ export function ArmoryView(props: {
         }}
       />
       <div class="flex w-full flex-col gap-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <p class="text-xl font-semibold leading-none">
-            {ready() ? `${props.armory?.balance ?? 0} stars` : "Armory stars"}
-          </p>
-          <Button onClick={() => void props.onRefresh()}>Refresh Armory</Button>
-        </div>
-        <Show when={!props.armory || props.armory.status === "loading"}>
-          <div class="flex justify-center rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4">
-            <LoadingProgress
-              active={!props.armory || props.armory.status === "loading"}
-              title="Loading CS2 Armory"
-              stages={armoryLoadingStages}
-              currentStage={props.armory?.message}
-            />
+        <Show when={ready()}>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xl font-semibold leading-none">
+              {props.armory?.balance ?? 0} stars
+            </p>
           </div>
+        </Show>
+        <Show
+          when={
+            (!props.armory || props.armory.status === "loading") &&
+            (props.armory?.offers.length ?? 0) === 0
+          }
+        >
+          <InventoryLoadingState
+            active={!props.armory || props.armory.status === "loading"}
+            title="Loading CS2 Armory"
+            stages={armoryLoadingStages}
+            currentStage={props.armory?.message}
+          />
         </Show>
         <Show when={props.armory?.status === "requires_connection"}>
           <Alert variant="warning">
@@ -310,9 +361,9 @@ export function ArmoryView(props: {
         </For>
         <div class="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
           <For each={offers()}>
-            {(offer, index) => {
+            {(offer) => {
               const affordable = () =>
-                offer.expectedCost * quantity(offer.redeemId) <=
+                offer.expectedCost * quantity(offer) <=
                 (props.armory?.balance ?? 0);
               const disabledReason = () =>
                 !redemptionEnabled()
@@ -320,9 +371,9 @@ export function ArmoryView(props: {
                   : !ready()
                     ? "Refresh the Armory and wait for a current GC balance before buying."
                     : !affordable()
-                      ? `You need ${offer.expectedCost * quantity(offer.redeemId) - (props.armory?.balance ?? 0)} more stars for this purchase.`
+                      ? `You need ${offer.expectedCost * quantity(offer) - (props.armory?.balance ?? 0)} more stars for this purchase.`
                       : undefined;
-              const purchaseQuantity = quantity(offer.redeemId);
+              const purchaseQuantity = quantity(offer);
               const requiresConfirmation = armoryPurchaseRequiresConfirmation(
                 purchaseQuantity,
                 offer.expectedCost,
@@ -331,7 +382,7 @@ export function ArmoryView(props: {
                 <OfferCard
                   offer={offer}
                   quantity={purchaseQuantity}
-                  estimate={offerEstimates()[offer.redeemId]}
+                  estimate={offerEstimates()[armoryOfferKey(offer)]}
                   estimateLoading={offerEstimatesLoading()}
                   canBuy={redemptionEnabled() && ready() && affordable()}
                   buyDisabledReason={disabledReason()}
@@ -341,7 +392,7 @@ export function ArmoryView(props: {
                   onPreviewOpen={() => previewOpen(offer)}
                   onSetQuantity={(value) =>
                     setQuantity(
-                      offer.redeemId,
+                      offer,
                       value,
                       Math.floor(
                         (props.armory?.balance ?? 0) / offer.expectedCost,
@@ -349,12 +400,13 @@ export function ArmoryView(props: {
                     )
                   }
                   onConfirm={() => {
-                    if (requiresConfirmation) setConfirming(index());
-                    else void redeem(index());
+                    if (requiresConfirmation)
+                      setConfirming(armoryOfferKey(offer));
+                    else void redeem(offer);
                   }}
-                  onRedeem={() => void redeem(index())}
+                  onRedeem={() => void redeem(offer)}
                   onCancel={() => setConfirming(undefined)}
-                  confirming={confirming() === index()}
+                  confirming={confirming() === armoryOfferKey(offer)}
                 />
               );
             }}
@@ -378,7 +430,7 @@ export function ArmoryView(props: {
         <Show
           when={(contentsOffer()?.items?.length ?? 0) > 0}
           fallback={
-            <p class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">
+            <p class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
               No item contents were found in the current CS2 schema.
             </p>
           }

@@ -1,9 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
   gameInventorySnapshotSchema,
+  healthStatusSchema,
   settingsDataSchema,
   storeSnapshotSchema,
 } from "./schemas.js";
+
+it("validates generated health responses", () => {
+  expect(
+    healthStatusSchema.safeParse({
+      status: "ok",
+      service: "cs2-backend",
+      version: "0.0.0",
+      time: "2026-08-01T00:00:00Z",
+    }).success,
+  ).toBe(true);
+  expect(
+    healthStatusSchema.safeParse({
+      status: "available",
+      service: "cs2-backend",
+      version: "0.0.0",
+      time: "not-a-timestamp",
+    }).success,
+  ).toBe(false);
+});
 
 const item = {
   game: "tf2",
@@ -103,7 +123,7 @@ it("normalizes a legacy null store offer list", () => {
   const parsed = storeSnapshotSchema.safeParse({
     status: "requires_connection",
     offers: null,
-    refreshedAt: "now",
+    refreshedAt: "2026-08-01T00:00:00Z",
   });
   expect(parsed.success).toBe(true);
   if (parsed.success) expect(parsed.data.offers).toEqual([]);

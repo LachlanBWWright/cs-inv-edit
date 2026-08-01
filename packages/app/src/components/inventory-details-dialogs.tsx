@@ -41,7 +41,7 @@ export function InventoryDetailsDialogs(props: {
         <Show
           when={(props.contentsDialog()?.items.length ?? 0) > 0}
           fallback={
-            <p class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">
+            <p class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
               No item contents were found in the current CS2 schema.
             </p>
           }
@@ -76,7 +76,7 @@ export function InventoryDetailsDialogs(props: {
         <Show
           when={(props.nestedCollection()?.items?.length ?? 0) > 0}
           fallback={
-            <p class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">
+            <p class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
               CS2 identifies this rare-special collection, but does not publish
               its individual contents in the client item schema.
             </p>
@@ -100,4 +100,3 @@ export function InventoryDetailsDialogs(props: {
     </>
   );
 }
-

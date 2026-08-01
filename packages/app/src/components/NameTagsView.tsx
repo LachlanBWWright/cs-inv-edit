@@ -106,7 +106,7 @@ export function NameTagsView(props: NameTagsViewProps) {
         description="Apply and remove item names using explicit message-backed forms."
       />
       <Show when={status()}>
-        <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-200">
+        <div class="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200">
           {status()}
         </div>
       </Show>

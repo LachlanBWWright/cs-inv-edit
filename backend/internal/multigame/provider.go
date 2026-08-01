@@ -41,6 +41,7 @@ type Provider struct {
 	communityBase     string
 	tf2ItemsURL       string
 	tf2EnglishURL     string
+	tf2QuestsURL      string
 	tf2Mu             sync.Mutex
 	tf2Definitions    map[uint32]econ.TF2Definition
 	tf2Attributes     map[uint32]econ.TF2AttributeDefinition
@@ -81,6 +82,7 @@ func NewProvider() *Provider {
 		communityBase: "https://steamcommunity.com",
 		tf2ItemsURL:   "https://raw.githubusercontent.com/SteamTracking/GameTracking-TF2/master/tf/scripts/items/items_game.txt",
 		tf2EnglishURL: "https://raw.githubusercontent.com/SteamTracking/GameTracking-TF2/master/tf/resource/tf_english.txt",
+		tf2QuestsURL:  "https://raw.githubusercontent.com/SteamTracking/GameTracking-TF2/master/tf/resource/tf_quests_english.txt",
 		overlays:      make(map[string]overlayCacheEntry),
 		tf2Images:     econ.NewProvider(),
 	}
@@ -489,6 +491,9 @@ func (p *Provider) loadTF2Definitions(ctx context.Context) (map[uint32]econ.TF2D
 	if err != nil {
 		return nil, "", err
 	}
+	if quests, questErr := p.fetchText(ctx, p.tf2QuestsURL); questErr == nil {
+		_ = econ.ApplyTF2QuestLocalization(definitions, quests)
+	}
 	attributes, err := econ.ParseTF2AttributeDefinitions(items)
 	if err != nil {
 		return nil, "", err
@@ -496,6 +501,22 @@ func (p *Provider) loadTF2Definitions(ctx context.Context) (map[uint32]econ.TF2D
 	digest := sha256.Sum256([]byte(items + "\x00" + english))
 	p.tf2Definitions, p.tf2Attributes, p.tf2SchemaRevision, p.tf2SchemaLoaded = definitions, attributes, fmt.Sprintf("gametracking-tf2-sha256:%x", digest[:8]), true
 	return definitions, p.tf2SchemaRevision, nil
+}
+
+func (p *Provider) TF2Definitions(ctx context.Context) (map[uint32]econ.TF2Definition, string, error) {
+	definitions, revision, err := p.loadTF2Definitions(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	copyDefinitions := make(map[uint32]econ.TF2Definition, len(definitions))
+	for defIndex, definition := range definitions {
+		copyDefinitions[defIndex] = definition
+	}
+	return copyDefinitions, revision, nil
+}
+
+func (p *Provider) TF2StoreImages(ctx context.Context, names []string) (map[string]econ.MarketDescription, error) {
+	return p.tf2Images.LoadMarketDescriptionsForApp(ctx, 440, names)
 }
 
 func (p *Provider) fetchText(ctx context.Context, endpoint string) (string, error) {

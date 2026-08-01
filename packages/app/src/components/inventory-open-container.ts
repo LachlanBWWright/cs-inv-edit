@@ -21,6 +21,12 @@ interface OpenContainerContext {
   setReveal: Setter<{ result: RevealItem; ready: boolean; candidates: RevealItem[]; complete: () => void } | undefined>;
 }
 
+export function containerOpeningUsesReveal(
+  animationMode: "none" | "countdown" | "slot-machine",
+): boolean {
+  return animationMode !== "none";
+}
+
 export function createOpenContainerHandler(context: OpenContainerContext) {
   const { props, selectedItem, compatibleContainerKey, compatibleContainerKeys, connected, setContainerStatusMessage, setPending, setContainerReturn, setContainerReturnLoading, setReveal } = context;
   return async (terminalSelection?: {
@@ -107,7 +113,7 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
         );
         setContainerReturnLoading(false);
       });
-    if (terminal && animationMode !== "none")
+    if (containerOpeningUsesReveal(animationMode))
       setReveal({
         result: candidates[0] ?? { name: "Awaiting item…" },
         ready: false,
@@ -226,7 +232,7 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
                   isStatTrak: openedItem!.isStatTrak,
                   isSouvenir: openedItem!.isSouvenir,
                 };
-            if (terminal && animationMode !== "none") {
+            if (containerOpeningUsesReveal(animationMode)) {
               await new Promise<void>((resolve) =>
                 setReveal({
                   result,

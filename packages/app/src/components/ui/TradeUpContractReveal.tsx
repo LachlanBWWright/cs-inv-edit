@@ -5,7 +5,8 @@ import type {
   TradeUpAnimationMode,
 } from "@cs-inv-edit/contracts";
 import { RevealAnimation, type RevealItem } from "./RevealAnimation.js";
-import type { ReturnEstimate } from "../roi-utils.js";
+import { ModalCloseRow } from "./ModalBackdrop.js";
+import { useEscapeDismiss } from "./modal-dismiss.js";
 
 interface TradeUpContractRevealProps {
   open: boolean;
@@ -14,8 +15,6 @@ interface TradeUpContractRevealProps {
   candidates: RevealItem[];
   result: RevealItem;
   onComplete: () => void;
-  returnEstimate?: ReturnEstimate;
-  returnEstimateLoading?: boolean;
 }
 
 const underlyingMode = (mode: TradeUpAnimationMode): RevealAnimationMode => {
@@ -45,6 +44,11 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
       canvas.getContext("2d")?.scale(scale, scale);
     });
   });
+
+  useEscapeDismiss(
+    () => props.open && phase() !== "reveal",
+    props.onComplete,
+  );
 
   const point = (event: PointerEvent) => {
     const rect = canvas!.getBoundingClientRect();
@@ -95,12 +99,17 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
       <Portal>
         <Show when={props.open && phase() !== "reveal"}>
           <div
-            class="contract-overlay"
+            class="modal-backdrop contract-overlay"
             role="dialog"
             aria-modal="true"
             aria-label="Trade Up Contract"
           >
             <div class="contract-desk">
+              <ModalCloseRow
+                label="Close trade-up contract"
+                buttonClass="border-stone-500 bg-stone-950 text-stone-100"
+                onClose={props.onComplete}
+              />
               <section class="contract-paper">
                 <div class="contract-seal">CS</div>
                 <p class="contract-kicker">Arms Replacement Agreement</p>
@@ -111,11 +120,6 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
                     <div class="contract-result">
                       <p>Contract accepted</p>
                       <strong>{props.result.name}</strong>
-                      <Show when={props.result.price}>
-                        <span class="font-semibold text-emerald-700">
-                          {props.result.price}
-                        </span>
-                      </Show>
                       <Show when={props.result.imageUrl}>
                         <img src={props.result.imageUrl} alt="" />
                       </Show>
@@ -174,9 +178,6 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
         candidates={props.candidates}
         result={props.result}
         onComplete={props.onComplete}
-        returnEstimate={props.returnEstimate}
-        returnEstimateLoading={props.returnEstimateLoading}
-        returnEstimateCostLabel="Estimated inputs"
       />
     </>
   );

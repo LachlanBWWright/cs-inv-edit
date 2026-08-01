@@ -12,6 +12,15 @@ import type {
   OperationReceipt,
   TF2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
+import demomanIcon from "../assets/images/tf2/classes/demoman.png";
+import engineerIcon from "../assets/images/tf2/classes/engineer.png";
+import heavyIcon from "../assets/images/tf2/classes/heavy.png";
+import medicIcon from "../assets/images/tf2/classes/medic.png";
+import pyroIcon from "../assets/images/tf2/classes/pyro.png";
+import scoutIcon from "../assets/images/tf2/classes/scout.png";
+import sniperIcon from "../assets/images/tf2/classes/sniper.png";
+import soldierIcon from "../assets/images/tf2/classes/soldier.png";
+import spyIcon from "../assets/images/tf2/classes/spy.png";
 import { ItemPreviewMedia } from "./ItemPreviewMedia.js";
 import { SegmentedControl } from "./ui/SegmentedControl.js";
 
@@ -19,15 +28,15 @@ type TF2Item = Extract<EconomyInventoryItemDto, { game: "tf2" }>;
 type SlotGroup = "Weapons" | "Cosmetics" | "Class equipment" | "Taunts";
 
 const classes = [
-  { id: 1, name: "Scout" },
-  { id: 2, name: "Sniper" },
-  { id: 3, name: "Soldier" },
-  { id: 4, name: "Demoman" },
-  { id: 5, name: "Medic" },
-  { id: 6, name: "Heavy" },
-  { id: 7, name: "Pyro" },
-  { id: 8, name: "Spy" },
-  { id: 9, name: "Engineer" },
+  { id: 1, name: "Scout", icon: scoutIcon },
+  { id: 2, name: "Sniper", icon: sniperIcon },
+  { id: 3, name: "Soldier", icon: soldierIcon },
+  { id: 4, name: "Demoman", icon: demomanIcon },
+  { id: 5, name: "Medic", icon: medicIcon },
+  { id: 6, name: "Heavy", icon: heavyIcon },
+  { id: 7, name: "Pyro", icon: pyroIcon },
+  { id: 8, name: "Spy", icon: spyIcon },
+  { id: 9, name: "Engineer", icon: engineerIcon },
 ] as const;
 
 const slots = [
@@ -90,7 +99,11 @@ export function TF2FeaturesView(props: {
   loading: boolean;
   compactMode: "icons" | "concise" | "detailed";
   onRefresh: () => void;
-  onOperation: (type: string, input: unknown) => Promise<OperationReceipt>;
+  onOperation: (
+    type: string,
+    input: unknown,
+    suppressToast?: boolean,
+  ) => Promise<OperationReceipt>;
 }) {
   const [classId, setClassId] = createSignal(1);
   const [presetId, setPresetId] = createSignal(0);
@@ -100,6 +113,9 @@ export function TF2FeaturesView(props: {
   let requestedInitialRefresh = false;
   const items = createMemo(() =>
     props.snapshot?.game === "tf2" ? props.snapshot.items : [],
+  );
+  const inventoryReady = createMemo(
+    () => props.snapshot?.game === "tf2" && props.snapshot.status === "ready",
   );
   const selectedClass = createMemo(
     () => classes.find((entry) => entry.id === classId()) ?? classes[0],
@@ -126,6 +142,8 @@ export function TF2FeaturesView(props: {
   const equippedItem = createMemo(() => equippedForSlot(slotId()));
   const applicableSlots = createMemo(() =>
     slots.filter((slot) => {
+      if (classId() === 8 && slot.id === 5) return false;
+      if (classId() === 9 && (slot.id === 4 || slot.id === 6)) return false;
       if (
         slot.group === "Weapons" ||
         slot.group === "Cosmetics" ||
@@ -159,24 +177,35 @@ export function TF2FeaturesView(props: {
       }))
       .filter((group) => group.items.length),
   );
-  const selectItem = async (item: TF2Item) =>
+  const selectItem = async (item: TF2Item) => {
+    if (!inventoryReady()) return;
     setReceipt(
-      await props.onOperation("tf2.loadout.set-preset-item", {
-        game: "tf2",
-        itemId: item.assetId,
-        classId: classId(),
-        presetId: presetId(),
-        slotId: slotId(),
-      }),
+      await props.onOperation(
+        "tf2.loadout.set-preset-item",
+        {
+          game: "tf2",
+          itemId: item.assetId,
+          classId: classId(),
+          presetId: presetId(),
+          slotId: slotId(),
+        },
+        true,
+      ),
     );
+  };
   const selectPreset = async (next: number) => {
+    if (!inventoryReady()) return;
     setPresetId(next);
     setReceipt(
-      await props.onOperation("tf2.loadout.select-preset", {
-        game: "tf2",
-        classId: classId(),
-        presetId: next,
-      }),
+      await props.onOperation(
+        "tf2.loadout.select-preset",
+        {
+          game: "tf2",
+          classId: classId(),
+          presetId: next,
+        },
+        true,
+      ),
     );
   };
   onMount(() => {
@@ -222,11 +251,11 @@ export function TF2FeaturesView(props: {
           },
         ]}
       />
-      <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
+      <div class="grid flex-1 items-start gap-4 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1fr)]">
         <section
-          class={`min-h-0 overflow-y-auto pr-1 ${
+          class={`${
             mobileView() === "items" ? "block" : "hidden"
-          } lg:block`}
+          } lg:order-2 lg:block`}
         >
           <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 pb-3">
             <div>
@@ -246,7 +275,7 @@ export function TF2FeaturesView(props: {
             />
           </div>
           <Show
-            when={!props.loading}
+            when={!props.loading && inventoryReady()}
             fallback={
               <p class="py-12 text-center text-sm text-slate-500">
                 Loading your TF2 inventory…
@@ -329,9 +358,9 @@ export function TF2FeaturesView(props: {
         </section>
 
         <aside
-          class={`min-h-0 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-4 ${
+          class={`rounded-2xl border border-slate-800 bg-slate-950 p-4 ${
             mobileView() === "loadout" ? "block" : "hidden"
-          } lg:block`}
+          } lg:sticky lg:top-20 lg:order-1 lg:block lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto`}
         >
           <div class="flex items-center justify-between gap-3">
             <div>
@@ -355,17 +384,23 @@ export function TF2FeaturesView(props: {
               </For>
             </div>
           </div>
-          <div class="mt-4 grid grid-cols-3 gap-1">
+          <div class="mt-4 grid grid-cols-9 gap-1">
             <For each={classes}>
               {(entry) => (
                 <button
-                  class={`rounded-lg px-2 py-2 text-sm ${classId() === entry.id ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"}`}
+                  class={`aspect-square min-w-0 overflow-hidden rounded-lg p-1 ${classId() === entry.id ? "bg-slate-700 ring-1 ring-inset ring-slate-400" : "opacity-70 hover:bg-slate-800 hover:opacity-100"}`}
+                  aria-label={entry.name}
+                  title={entry.name}
                   onClick={() => {
                     setClassId(entry.id);
                     setSlotId(0);
                   }}
                 >
-                  {entry.name}
+                  <img
+                    class="h-full w-full object-contain"
+                    src={entry.icon}
+                    alt=""
+                  />
                 </button>
               )}
             </For>
@@ -415,7 +450,7 @@ export function TF2FeaturesView(props: {
                                       <ItemPreviewMedia
                                         name={item().name}
                                         imageUrl={item().imageUrl}
-                                        variant="economy-card"
+                                        variant="loadout-slot"
                                       />
                                     </span>
                                     <span class="line-clamp-2 text-xs text-slate-200">

@@ -13,6 +13,8 @@ import type {
   TradeUpAnimationMode,
 } from "@cs-inv-edit/contracts";
 import { Input } from "./ui/Input.js";
+import { Alert } from "./ui/Alert.js";
+import { Button } from "./ui/Button.js";
 import {
   MOCK_RESULT_DELAY_MS,
   randomRevealCandidate,
@@ -21,9 +23,17 @@ import {
 } from "./ui/RevealAnimation.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 
-import { emptyDebugReveal, fallbackDebugCollections, settingsEqual, type SettingsViewProps } from "./settings-view-model.js";
+import {
+  emptyDebugReveal,
+  fallbackDebugCollections,
+  settingsEqual,
+  type SettingsViewProps,
+} from "./settings-view-model.js";
 import { RevealSettingsSection } from "./settings-reveal-section.js";
-export { settingsEqual, type SettingsViewProps } from "./settings-view-model.js";
+export {
+  settingsEqual,
+  type SettingsViewProps,
+} from "./settings-view-model.js";
 export function SettingsView(props: SettingsViewProps) {
   const [draft, setDraft] = createSignal<SettingsData | undefined>(
     props.settings,
@@ -32,6 +42,9 @@ export function SettingsView(props: SettingsViewProps) {
     SettingsData | undefined
   >(props.settings);
   const [status, setStatus] = createSignal<string>("");
+  const [statusVariant, setStatusVariant] = createSignal<
+    "default" | "success" | "danger"
+  >("default");
   const [saving, setSaving] = createSignal(false);
   const [debugAnimation, setDebugAnimation] = createSignal<
     RevealAnimationMode | undefined
@@ -174,31 +187,29 @@ export function SettingsView(props: SettingsViewProps) {
     if (!value || !hasChanges() || saving()) return;
     setSaving(true);
     setStatus("Saving…");
+    setStatusVariant("default");
     await fromAppPromise(props.onSave(value), "Settings save failed").match(
-      () => {
-        setSavedSettings(value);
-        setStatus("Settings updated");
-        props.onToast?.({
-          title: "Settings updated",
-          description: "The backend settings are now active.",
-          variant: "success",
-        });
+      (outcome) => {
+        if (outcome.ok) {
+          setSavedSettings(value);
+          setStatus(outcome.message ?? "Settings updated");
+          setStatusVariant("success");
+          return;
+        }
+        setStatus(outcome.message);
+        setStatusVariant("danger");
       },
       (error) => {
         const message = appErrorMessage(error, "Save failed");
         setStatus(message);
-        props.onToast?.({
-          title: "Settings save failed",
-          description: message,
-          variant: "danger",
-        });
+        setStatusVariant("danger");
       },
     );
     setSaving(false);
   };
 
   return (
-    <div class="w-full max-w-full overflow-hidden text-slate-200">
+    <div class="w-full max-w-full text-slate-200">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 class="text-lg font-semibold text-slate-50">Settings</h3>
@@ -207,29 +218,30 @@ export function SettingsView(props: SettingsViewProps) {
           </p>
         </div>
         <div class="flex gap-2">
-          <button
-            class="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-200"
+          <Button
+            variant="secondary"
+            class="rounded-full"
             onClick={() => props.onRefresh()}
           >
             Reload
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={!hasChanges() || saving()}
-            class="rounded-full border border-cyan-500/30 bg-cyan-600/80 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+            class="rounded-full"
             onClick={() => void save()}
           >
             {saving() ? "Saving…" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
 
       <Show when={status()}>
-        <div class="mt-3 rounded-2xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
+        <Alert class="mt-3" variant={statusVariant()}>
           {status()}
-        </div>
+        </Alert>
       </Show>
 
-      <div class="mt-4 max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+      <div class="mt-4 space-y-4">
         <RevealSettingsSection
           animationMode={animationMode}
           setAnimationMode={setAnimationMode}
@@ -239,7 +251,7 @@ export function SettingsView(props: SettingsViewProps) {
           selectedDebugCandidates={selectedDebugCandidates}
           playDebugAnimation={playDebugAnimation}
         />
-        <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
+        <section class="rounded-2xl border border-slate-800/70 bg-slate-900 p-3">
           <h4 class="text-sm font-semibold text-slate-100">
             Armory purchase pacing
           </h4>
@@ -276,7 +288,7 @@ export function SettingsView(props: SettingsViewProps) {
           </label>
         </section>
 
-        <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
+        <section class="rounded-2xl border border-slate-800/70 bg-slate-900 p-3">
           <h4 class="text-sm font-semibold text-slate-100">Backend</h4>
           <div class="mt-3 space-y-3 text-sm text-slate-400">
             <label class="flex flex-col gap-2">
@@ -338,12 +350,12 @@ export function SettingsView(props: SettingsViewProps) {
           </div>
         </section>
 
-        <section class="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-3">
+        <section class="rounded-2xl border border-slate-800/70 bg-slate-900 p-3">
           <h4 class="text-sm font-semibold text-slate-100">Feature flags</h4>
           <div class="mt-3 space-y-2 text-sm text-slate-400">
             <For each={featureKeys()}>
               {(key) => (
-                <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2">
                   <span class="text-slate-200">{featureLabel(key)}</span>
                   <input
                     type="checkbox"

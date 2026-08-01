@@ -1,4 +1,11 @@
-import type { InitializeStorePurchaseRequest, InventoryItemDto, PriceScanResult, PurchaseSession, RelatedItemDto, SettingsData } from "@cs-inv-edit/contracts";
+import type {
+  InitializeStorePurchaseRequest,
+  InventoryItemDto,
+  PriceScanResult,
+  PurchaseSession,
+  RelatedItemDto,
+  SettingsData,
+} from "@cs-inv-edit/contracts";
 import type { RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import type { ReturnEstimate } from "./roi-utils.js";
 
@@ -56,5 +63,6 @@ export interface InventoryDetailsPanelProps {
   onShowContents?: () => void;
   onLoadStorageContents: (casketId: string) => Promise<boolean>;
   onViewStorageContents?: () => Promise<void> | void;
+  onBeginMoveIntoStorage?: (item: InventoryItemDto) => void;
   onPreviewTradeUp?: (item: InventoryItemDto) => void;
 }

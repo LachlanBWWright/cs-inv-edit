@@ -16,6 +16,7 @@
     "@cs-inv-edit/app": "workspace:*",
     "@cs-inv-edit/contracts": "workspace:*",
     "@tailwindcss/vite": "^4.3.1",
+    "neverthrow": "^8.2.0",
     "vite-plugin-solid": "^2.11.8",
     "solid-js": "^1.9.10",
     "tailwindcss": "^4.3.1",

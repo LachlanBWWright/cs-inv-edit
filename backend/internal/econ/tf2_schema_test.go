@@ -18,6 +18,21 @@ func TestParseTF2DefinitionsMergesPrefabAndLocalization(t *testing.T) {
 	}
 }
 
+func TestApplyTF2QuestLocalizationResolvesContractDetails(t *testing.T) {
+	definitions := map[uint32]TF2Definition{25000: {DefIndex: 25000, Name: "Quest25000"}}
+	localization := `"lang" { "Tokens" { "quest25000name0" "Scout Contract" "quest25000desc0" "Complete Scout tasks." "quest25000objectivedesc0" "Score points as Scout: %s1" "quest25000objectivedesc2" "Capture an objective: %s1" } }`
+	if err := ApplyTF2QuestLocalization(definitions, localization); err != nil {
+		t.Fatalf("apply quest localization: %v", err)
+	}
+	definition := definitions[25000]
+	if definition.Name != "Scout Contract" || definition.Description != "Complete Scout tasks." {
+		t.Fatalf("definition = %#v", definition)
+	}
+	if len(definition.QuestObjectives) != 2 || definition.QuestObjectives[0] != "Score points as Scout: " {
+		t.Fatalf("objectives = %#v", definition.QuestObjectives)
+	}
+}
+
 func TestParseTF2DefinitionsPreservesOperationMetadata(t *testing.T) {
 	items := `"items_game" {
 		"prefabs" { "crate" { "item_class" "supply_crate" "craft_class" "supply_crate" "equip_regions" { "medal" "1" } "capabilities" { "can_trade" "1" } } }

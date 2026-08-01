@@ -1,0 +1,138 @@
+openapi: 3.0.3
+info:
+  title: CS Inventory Edit Data Service
+  version: 0.1.0
+paths:
+  /healthz:
+    get:
+      operationId: GetHealth
+      responses:
+        "200":
+          description: Service health
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataServiceHealth" }
+  /readyz:
+    get:
+      operationId: GetReadiness
+      responses:
+        "200":
+          description: Service readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataServiceHealth" }
+  /v1/providers:
+    get:
+      operationId: ListProviders
+      responses:
+        "200":
+          description: Available price providers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderList" }
+  /v1/prices/query:
+    post:
+      operationId: QueryPrices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PriceQuery" }
+      responses:
+        "200":
+          description: Aggregated prices
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceResult" }
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+components:
+  schemas:
+    DataServiceHealth:
+      type: object
+      additionalProperties: false
+      required: [status, service, version, time]
+      properties:
+        status: { type: string, enum: [ok] }
+        service: { type: string, enum: [cs-inv-edit-data] }
+        version: { type: string }
+        time: { type: string, format: date-time }
+    ProviderList:
+      type: object
+      additionalProperties: false
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items: { type: string }
+    PriceQuery:
+      type: object
+      additionalProperties: false
+      required: [marketNames, currency]
+      properties:
+        marketNames:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: string, minLength: 1 }
+        currency: { type: string, minLength: 1 }
+        appId: { type: integer, minimum: 0 }
+    PriceQuote:
+      type: object
+      additionalProperties: false
+      required: [source, marketName, currency, displayPrice, priceMultiplier, observedAt]
+      properties:
+        source: { type: string }
+        marketName: { type: string }
+        currency: { type: string }
+        amountMinor: { type: integer }
+        displayPrice: { type: string }
+        priceMultiplier: { type: number }
+        adjustedAmountMinor: { type: integer }
+        adjustedDisplayPrice: { type: string }
+        listingCount: { type: integer }
+        url: { type: string }
+        observedAt: { type: string, format: date-time }
+    PriceItemResult:
+      type: object
+      additionalProperties: false
+      required: [marketName, quotes]
+      properties:
+        marketName: { type: string }
+        quotes:
+          type: array
+          items: { $ref: "#/components/schemas/PriceQuote" }
+    ProviderError:
+      type: object
+      additionalProperties: false
+      required: [source, message]
+      properties:
+        source: { type: string }
+        message: { type: string }
+    PriceResult:
+      type: object
+      additionalProperties: false
+      required: [currency, items, listings, errors, scannedAt]
+      properties:
+        currency: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PriceItemResult" }
+        listings:
+          type: array
+          items: { $ref: "#/components/schemas/PriceQuote" }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderError" }
+        scannedAt: { type: string, format: date-time }
+        servedAt: { type: string, format: date-time }
+        cacheState: { type: string, enum: [fresh, stale] }
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string }

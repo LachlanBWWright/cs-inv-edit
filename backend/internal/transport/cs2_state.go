@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/protocol"
 )
 
 func emptyCS2FeatureSnapshot() CS2FeatureSnapshot {
@@ -39,6 +40,8 @@ func (s *SteamGCClient) recordCS2State(direction string, appID, emsg uint32, bod
 	s.cs2Features.Status = "ready"
 	s.cs2Features.RefreshedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	switch emsg {
+	case protocol.EMsgGCClientWelcome:
+		s.decodeCS2Welcome(body)
 	case 9110:
 		if value, err := decodeCS2Map("CMsgGCCStrike15_v2_MatchmakingGC2ClientHello", body); err == nil {
 			s.cs2Features.Profile = value
@@ -85,6 +88,24 @@ func (s *SteamGCClient) recordCS2State(direction string, appID, emsg uint32, bod
 	case 9226:
 		if value, err := decodeCS2Map("CMsgRecurringMissionSchema", body); err == nil {
 			s.cs2Features.RecurringSchema = value
+		}
+	}
+}
+
+func (s *SteamGCClient) decodeCS2Welcome(body []byte) {
+	welcome, err := gametracking.DecodeClientWelcome(body)
+	if err != nil {
+		s.cs2Diagnostic("decode CS2 feature ClientWelcome: " + err.Error())
+		return
+	}
+	for _, cache := range welcome.OutofdateSubscribedCaches {
+		for _, objectType := range cache.Objects {
+			if objectType.TypeID == 1 {
+				continue
+			}
+			for _, object := range objectType.ObjectData {
+				s.detectCS2SO(objectType.TypeID, object, false)
+			}
 		}
 	}
 }

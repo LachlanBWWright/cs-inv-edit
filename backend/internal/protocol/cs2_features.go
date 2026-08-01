@@ -10,6 +10,7 @@ func CS2FeatureOperationMapping(operation string) (CS2FeatureOperation, bool) {
 		"cs2.loadout.set":         {EMsg: mustGameTrackingEnum("EGCItemMsg", "k_EMsgGCAdjustEquipSlotsManual"), FeatureFlag: "enableCs2Loadouts"},
 		"cs2.matches.recent":      {EMsg: mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_MatchListRequestRecentUserGames")},
 		"cs2.matches.details":     {EMsg: mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_MatchListRequestFullGameInfo")},
+		"cs2.profile.refresh":     {EMsg: mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_MatchmakingClient2GCHello")},
 		"cs2.inspect.resolve":     {EMsg: mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_Client2GCEconPreviewDataBlockRequest")},
 		"cs2.progression.refresh": {EMsg: mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_RequestRecurringMissionSchedule")},
 	}

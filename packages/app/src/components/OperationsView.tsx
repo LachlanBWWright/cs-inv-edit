@@ -10,7 +10,7 @@ export interface OperationsViewProps {
 
 function ReceiptCard(props: { receipt: OperationReceipt }) {
   return (
-    <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-300">
+    <div class="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
       <div class="flex items-center justify-between gap-3">
         <span class="font-mono text-xs text-slate-400">
           {props.receipt.operationId}
@@ -29,7 +29,7 @@ function ReceiptCard(props: { receipt: OperationReceipt }) {
 
 function EventCard(props: { event: OperationEvent }) {
   return (
-    <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-300">
+    <div class="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
       <div class="flex items-center justify-between gap-3">
         <span class="font-semibold text-slate-100">{props.event.type}</span>
         <span class="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200">

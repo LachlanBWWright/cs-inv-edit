@@ -59,6 +59,23 @@ The welcome payloads are not interchangeable: Dota 2
 is `txn_country_code`. The TF2 loader therefore waits for the separate EMsg 24
 subscription and never interprets its welcome as a Dota cache.
 
+The TF2 Mann Co. Store is loaded from AppID `440` using
+`CMsgStoreGetUserData` / `CMsgStoreGetUserDataResponse` (GC EMsgs `2500` and
+`2501`) from `proto/vendor/gametracking-tf2/Protobufs/base_gcmessages.proto`.
+The GC's compressed price sheet is authoritative for availability and
+account-local prices. Live GameTracking-TF2 `items_game.txt` and
+`tf_english.txt` provide names, classifications, descriptions, and container
+contents. Store offers are never inferred from inventory or Community Market
+listings, and image URLs are omitted unless Steam supplies an exact description
+icon token.
+
+Supported TF2 purchases use `CMsgGCStorePurchaseInit` / response EMsgs
+`2510` and `2511`, followed after explicit Steam authorization by TF2's
+`CMsgGCStorePurchaseFinalize` / response EMsgs `2512` and `2513`. Request
+fields come directly from the current account-local price sheet. Offers that
+require supplemental purchase data remain unavailable until that exact TF2
+payload is represented; the backend does not infer it.
+
 SOCache subscription refreshes also differ. TF2 sends a standalone
 `CMsgSOCacheSubscriptionCheck` as EMsg `27`; the client answers with
 `CMsgSOCacheSubscriptionRefresh` EMsg `28`. Dota 2 may instead include checks
@@ -95,9 +112,11 @@ owned AppIDs through the authenticated `Player.GetOwnedGames#1` unified RPC
 (`CPlayer_GetOwnedGames_Request`, with app info and played free games included).
 The backend removes AppIDs 753 (Steam), 570 (Dota 2), 440 (Team Fortress 2), and
 730 (Counter-Strike 2) because those sources have dedicated implementations.
-The remaining owned games are sorted by Steam's display name and exposed to the
-client as a dropdown; selection does not imply that a game uses Inventory
-Service, so an empty service response remains a valid per-game result.
+The remaining owned games are probed through `Inventory.GetInventory#1` with a
+bounded worker pool. Only AppIDs whose authoritative response contains at least
+one owned item are sorted by Steam's display name and exposed in the dropdown.
+Unsupported and empty Inventory Service responses are omitted, and successful
+snapshots are cached for the connected account during discovery.
 
 The sanitized fixed-wire fixture at
 `backend/internal/transport/testdata/multigame_socache.hex` covers an ordinary

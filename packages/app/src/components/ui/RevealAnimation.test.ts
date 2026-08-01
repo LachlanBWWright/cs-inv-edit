@@ -4,7 +4,26 @@ import {
   generateLandingJitter,
   LANDING_EDGE_BIAS_EXPONENT,
   landingProgress,
+  waitingVelocity,
 } from "./RevealAnimation.js";
+import { generateRevealMiss } from "./reveal-animation-random.js";
+
+describe("slot-machine decoy presentation", () => {
+  it("preserves fixed variants shared by trade-up candidates and the result", () => {
+    expect(
+      generateRevealMiss(
+        { name: "StatTrak trade-up", kind: "weapon_skin", isStatTrak: true },
+        () => 1,
+      ),
+    ).toMatchObject({ isStatTrak: true, isSouvenir: false });
+    expect(
+      generateRevealMiss(
+        { name: "Souvenir trade-up", kind: "weapon_skin", isSouvenir: true },
+        () => 1,
+      ),
+    ).toMatchObject({ isStatTrak: false, isSouvenir: true });
+  });
+});
 
 describe("slot-machine landing jitter", () => {
   it("uses a fourth-root distribution to bias landings strongly toward item edges", () => {
@@ -26,6 +45,13 @@ describe("slot-machine landing jitter", () => {
 });
 
 describe("slot-machine landing timing", () => {
+  it("decelerates linearly to a frictionless waiting speed", () => {
+    expect(waitingVelocity(0)).toBeCloseTo(2.15);
+    expect(waitingVelocity(1_200)).toBeCloseTo((2.15 + 0.62) / 2);
+    expect(waitingVelocity(2_400)).toBeCloseTo(0.62);
+    expect(waitingVelocity(12_000)).toBeCloseTo(0.62);
+  });
+
   it("randomizes the deceleration after the result becomes available", () => {
     expect(generateLandingDuration(() => 0)).toBe(2_400);
     expect(generateLandingDuration(() => 0.5)).toBe(3_000);
@@ -39,8 +65,8 @@ describe("slot-machine landing timing", () => {
 
   it("brakes visibly as soon as landing starts", () => {
     expect(landingProgress(0)).toBe(0);
-    expect(landingProgress(0.25)).toBeCloseTo(0.578);
-    expect(landingProgress(0.5)).toBe(0.875);
+    expect(landingProgress(0.25)).toBeCloseTo(0.4375);
+    expect(landingProgress(0.5)).toBe(0.75);
     expect(landingProgress(1)).toBe(1);
   });
 });

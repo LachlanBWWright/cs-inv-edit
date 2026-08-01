@@ -5,7 +5,11 @@ import { IconButton } from "./ui/IconButton.js";
 import { Popover } from "./ui/Popover.js";
 import { supportsPullToRefresh } from "./ui/PullToRefresh.js";
 import type { SidebarProps } from "./Sidebar.js";
-import { isEconomyInventoryScreen, isInventoryScreen } from "../view.js";
+import {
+  isCommerceScreen,
+  isEconomyInventoryScreen,
+  isInventoryScreen,
+} from "../view.js";
 
 export function SidebarAccountControls(
   props: SidebarProps & {
@@ -26,7 +30,8 @@ export function SidebarAccountControls(
       <Show
         when={
           (isInventoryScreen(props.view) ||
-            isEconomyInventoryScreen(props.view)) &&
+            isEconomyInventoryScreen(props.view) ||
+            isCommerceScreen(props.view)) &&
           !supportsPullToRefresh()
         }
       >
@@ -52,52 +57,17 @@ export function SidebarAccountControls(
         </IconButton>
       </Show>
       <Popover
-        class="relative hidden sm:block"
-        open={state.settingsOpen()}
-        onOpenChange={state.setSettingsOpen}
-      >
-        <IconButton
-          label="Settings"
-          popup="dialog"
-          expanded={state.settingsOpen()}
-          onClick={() => {
-            state.setSettingsOpen((value) => !value);
-            state.setKindMenuOpen(false);
-            state.setCompactMenuOpen(false);
-            state.setAccountOpen(false);
-          }}
-        >
-          <svg
-            class="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="3.2" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.1a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.6 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z" />
-          </svg>
-        </IconButton>
-        <Show when={state.settingsOpen()}>
-          <div class="absolute right-0 top-full z-30 mt-2 w-[min(82vw,760px)] rounded-3xl border border-slate-800/80 bg-slate-950/95 p-3 shadow-2xl">
-            <SettingsView
-              settings={props.settings}
-              inventory={props.inventory}
-              onRefresh={() => props.onRefreshInventory()}
-              onSave={props.onSaveSettings}
-            />
-          </div>
-        </Show>
-      </Popover>
-      <Popover
         class="relative"
-        open={state.accountOpen()}
-        onOpenChange={state.setAccountOpen}
+        open={state.accountOpen() || state.settingsOpen()}
+        onOpenChange={(open) => {
+          if (!open) {
+            state.setAccountOpen(false);
+            state.setSettingsOpen(false);
+          }
+        }}
       >
         <button
-          class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200"
+          class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200"
           aria-label={
             props.connection?.accountName
               ? `Account: ${props.connection.accountName}`
@@ -112,7 +82,7 @@ export function SidebarAccountControls(
             state.setCompactMenuOpen(false);
           }}
         >
-          <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900/80">
+          <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900">
             <Show
               when={props.connection?.avatarUrl}
               fallback={
@@ -133,14 +103,14 @@ export function SidebarAccountControls(
               />
             </Show>
           </div>
-          <span class="hidden max-w-30 truncate text-sm font-medium text-slate-100 sm:inline">
+          <span class="hidden max-w-30 truncate text-sm font-medium text-slate-100 lg:inline">
             {props.connection?.accountName ||
               props.connection?.steamId ||
               "Account"}
           </span>
         </button>
         <Show when={state.accountOpen()}>
-          <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-800/80 bg-slate-950/95 p-3 shadow-2xl">
+          <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-800/80 bg-slate-950 p-3 shadow-2xl">
             <AccountSwitcher
               inventory={props.inventory}
               accounts={props.accounts}
@@ -150,6 +120,20 @@ export function SidebarAccountControls(
               onDeleteAccount={props.onDeleteAccount}
               onRefreshInventory={props.onRefreshInventory}
               onOpenAccount={props.onOpenAccount}
+              onOpenSettings={() => {
+                state.setAccountOpen(false);
+                state.setSettingsOpen(true);
+              }}
+            />
+          </div>
+        </Show>
+        <Show when={state.settingsOpen()}>
+          <div class="absolute right-0 top-full z-30 mt-2 w-[min(82vw,760px)] rounded-3xl border border-slate-800/80 bg-slate-950 p-3 shadow-2xl">
+            <SettingsView
+              settings={props.settings}
+              inventory={props.inventory}
+              onRefresh={() => props.onRefreshInventory()}
+              onSave={props.onSaveSettings}
             />
           </div>
         </Show>

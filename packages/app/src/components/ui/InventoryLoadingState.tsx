@@ -1,4 +1,3 @@
-import { Alert } from "./Alert.js";
 import { LoadingProgress, type LoadingStage } from "./LoadingProgress.js";
 
 export interface InventoryLoadingStateProps {
@@ -10,13 +9,13 @@ export interface InventoryLoadingStateProps {
 
 export function InventoryLoadingState(props: InventoryLoadingStateProps) {
   return (
-    <Alert class="flex h-full min-h-48 items-center justify-center">
+    <div class="grid h-full min-h-64 place-items-center px-4 py-10">
       <LoadingProgress
         active={props.active}
         title={props.title}
         stages={props.stages}
         currentStage={props.currentStage}
       />
-    </Alert>
+    </div>
   );
 }

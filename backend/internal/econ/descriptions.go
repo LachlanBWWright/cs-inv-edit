@@ -372,6 +372,10 @@ func marketSearchQueries(marketName string) []string {
 	if marketName != "" && !containsStringFold(queries, marketName) {
 		queries = append(queries, marketName)
 	}
+	normalizedName := normalizeTF2MarketName(marketName)
+	if normalizedName != "" && !containsStringFold(queries, normalizedName) {
+		queries = append(queries, normalizedName)
+	}
 	return queries
 }
 

@@ -1,15 +1,21 @@
-export type InventoryMode =
-  "inventory" | "inventory-storage" | "inventory-tradeup";
+export type InventoryMode = "inventory";
 export type EconomyInventoryMode =
   | "steam-inventory"
   | "steam-service-inventory"
   | "tf2-inventory"
   | "dota2-inventory";
 export type TF2FeatureMode = "tf2-loadouts";
+export type TF2ActivityMode = "tf2-matches" | "tf2-campaigns";
+export type CS2FeatureMode = "cs2-features";
+export type CS2LoadoutMode = "cs2-loadouts";
 export type AppMode =
   | InventoryMode
   | EconomyInventoryMode
+  | CS2FeatureMode
+  | CS2LoadoutMode
   | TF2FeatureMode
+  | TF2ActivityMode
+  | "tf2-store"
   | "armory"
   | "store"
   | "trades";
@@ -18,8 +24,8 @@ export type AppScreen = AppMode | "account";
 const tf2FeatureModes: readonly TF2FeatureMode[] = ["tf2-loadouts"];
 const appModes: readonly AppMode[] = [
   "inventory",
-  "inventory-storage",
-  "inventory-tradeup",
+  "cs2-features",
+  "cs2-loadouts",
   "trades",
   "armory",
   "store",
@@ -27,6 +33,9 @@ const appModes: readonly AppMode[] = [
   "steam-service-inventory",
   "tf2-inventory",
   ...tf2FeatureModes,
+  "tf2-matches",
+  "tf2-campaigns",
+  "tf2-store",
   "dota2-inventory",
 ];
 
@@ -36,19 +45,27 @@ export function isAppMode(value: string | null): value is AppMode {
 
 export function availableModes(flags?: {
   enableSteamInventory?: boolean;
+  enableCs2Loadouts?: boolean;
   enableTf2Inventory: boolean;
+  enableTf2Store?: boolean;
   enableDota2Inventory: boolean;
 }): AppMode[] {
   const modes: AppMode[] = [
     "inventory",
-    "inventory-storage",
-    "inventory-tradeup",
+    "cs2-features",
     "trades",
     "armory",
     "store",
   ];
+  if (flags?.enableCs2Loadouts) modes.push("cs2-loadouts");
   if (flags?.enableTf2Inventory)
-    modes.push("tf2-inventory", ...tf2FeatureModes);
+    modes.push(
+      "tf2-inventory",
+      ...tf2FeatureModes,
+      "tf2-matches",
+      "tf2-campaigns",
+    );
+  if (flags?.enableTf2Store !== false) modes.push("tf2-store");
   if (flags?.enableDota2Inventory) modes.push("dota2-inventory");
   if (flags?.enableSteamInventory)
     modes.push("steam-inventory", "steam-service-inventory");
@@ -65,7 +82,9 @@ export function enabledModeOrDefault(
   mode: AppMode,
   flags?: {
     enableSteamInventory?: boolean;
+    enableCs2Loadouts?: boolean;
     enableTf2Inventory: boolean;
+    enableTf2Store?: boolean;
     enableDota2Inventory: boolean;
   },
 ): AppMode {
@@ -77,11 +96,7 @@ export function modeForScreen(screen: AppScreen): AppMode {
 }
 
 export function isInventoryScreen(screen: AppScreen): screen is InventoryMode {
-  return (
-    screen === "inventory" ||
-    screen === "inventory-storage" ||
-    screen === "inventory-tradeup"
-  );
+  return screen === "inventory";
 }
 
 export function isEconomyInventoryScreen(
@@ -93,4 +108,8 @@ export function isEconomyInventoryScreen(
     screen === "tf2-inventory" ||
     screen === "dota2-inventory"
   );
+}
+
+export function isCommerceScreen(screen: AppScreen) {
+  return screen === "armory" || screen === "store" || screen === "tf2-store";
 }

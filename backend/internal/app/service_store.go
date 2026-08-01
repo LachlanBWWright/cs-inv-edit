@@ -32,9 +32,29 @@ func (s *Service) Store() domain.StoreSnapshot {
 	if s.connection.State == domain.ConnectionStateConnected && s.store.Status == "requires_connection" {
 		store := cloneStore(s.store)
 		store.Message = "Steam is connected. Refresh the Store to load the current GC price sheet."
+		if !s.settings.FeatureFlags.EnableFullCS2Store {
+			store.Offers = couponStoreOffers(store.Offers)
+		}
 		return store
 	}
-	return cloneStore(s.store)
+	store := cloneStore(s.store)
+	if !s.settings.FeatureFlags.EnableFullCS2Store {
+		store.Offers = couponStoreOffers(store.Offers)
+		if store.Status == "ready" {
+			store.Message = "Showing coupon items available through Steam's browser checkout. Enable Full CS2 Store to show experimental GC checkout offers."
+		}
+	}
+	return store
+}
+
+func couponStoreOffers(offers []domain.StoreOffer) []domain.StoreOffer {
+	filtered := make([]domain.StoreOffer, 0, len(offers))
+	for _, offer := range offers {
+		if offer.Coupon {
+			filtered = append(filtered, offer)
+		}
+	}
+	return filtered
 }
 
 func (s *Service) RefreshStore() operations.Receipt {
@@ -117,7 +137,7 @@ func (s *Service) RefreshStore() operations.Receipt {
 		if len(meta.ContainerItems) == 1 && meta.ContainerItems[0].ImageURL != "" {
 			imageURL = meta.ContainerItems[0].ImageURL
 		}
-		offers = append(offers, domain.StoreOffer{ID: source.ID, ItemLink: source.ItemLink, DefIndex: defIndex, Name: meta.Name, ImageURL: imageURL, Category: firstNonEmptyApp(source.Category, meta.Kind), Rarity: meta.Rarity, Currency: currency, AmountMinor: amount, FormattedPrice: formatStoreAmount(currency, amount), SaleAmountMinor: saleAmount, PurchaseType: source.PurchaseType, Items: domainRelatedItems(meta.ContainerItems), FormattedSalePrice: func() string {
+		offers = append(offers, domain.StoreOffer{ID: source.ID, ItemLink: source.ItemLink, DefIndex: defIndex, Name: meta.Name, ImageURL: imageURL, Category: firstNonEmptyApp(source.Category, meta.Kind), Rarity: meta.Rarity, Currency: currency, AmountMinor: amount, FormattedPrice: formatStoreAmount(currency, amount), SaleAmountMinor: saleAmount, PurchaseType: source.PurchaseType, Coupon: schema.IsCoupon(defIndex), Items: domainRelatedItems(meta.ContainerItems), FormattedSalePrice: func() string {
 			if saleAmount == nil {
 				return ""
 			}
@@ -287,6 +307,11 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 		log.Printf("[InitializeStorePurchase] FAILED: store offer is unavailable or unsupported (offerID=%q)", offerID)
 		return failed("store offer is unavailable or unsupported")
 	}
+	fullStoreEnabled := s.settings.FeatureFlags.EnableFullCS2Store
+	if !fullStoreEnabled && !offer.Coupon {
+		s.mu.Unlock()
+		return failed("this offer requires the experimental Full CS2 Store feature")
+	}
 	amount := offer.AmountMinor
 	if offer.SaleAmountMinor != nil {
 		amount = *offer.SaleAmountMinor
@@ -315,20 +340,32 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 
 	sessionID := newID()
 	session := domain.PurchaseSession{ID: sessionID, Status: "initializing", OfferID: offer.ID, DefIndex: offer.DefIndex, Name: offer.Name, Quantity: uint32(quantity64), Currency: offer.Currency, AmountMinor: amount * quantity64, FormattedAmount: formatStoreAmount(offer.Currency, amount*quantity64), CreatedAt: created, ExpiresAt: time.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339), Message: "Initializing purchase with Steam"}
-	// Panorama passes faux item IDs to StoreAPI for ordinary catalogue items
-	// and "defindex(supplemental item id)" for supplemental purchases. The
-	// native layer resolves the price-sheet purchase type and only supplies
-	// supplemental_data for the parenthesized form.
+	// Current CS2Interface captures show that native StoreAPI omits purchase_type
+	// but explicitly emits supplemental_data, using zero for an ordinary bare
+	// defindex and the parenthesized asset ID for supplemental purchases.
 	purchaseRequest := transport.StorePurchaseRequest{
-		Country: purchaseCountry, CountryPresent: true,
+		// Current CS2 captures explicitly send an empty country in purchase init;
+		// the authoritative wallet country is used to select/validate the store
+		// catalogue, while the numeric GC currency identifies the checkout wallet.
+		Country: "", CountryPresent: true,
 		Language: 0, LanguagePresent: true,
 		Currency: purchaseCurrency, ItemDefID: offer.DefIndex,
 		Quantity: uint32(quantity64), Cost: amount * quantity64,
-		PurchaseType: offer.PurchaseType, PurchaseTypePresent: terminalID == 0,
-		SupplementalData: terminalID, OmitSupplementalData: terminalID == 0,
+		SupplementalData: terminalID,
 	}
 	s.purchaseSessions[sessionID] = session
 	s.mu.Unlock()
+	if offer.Coupon && !fullStoreEnabled {
+		checkoutURL := steamCouponBuyItemURL(offer.DefIndex, uint32(quantity64))
+		session.Status = "awaiting_user"
+		session.Message = "Steam coupon checkout link ready. Review and complete the purchase on Steam."
+		session.CheckoutURL = checkoutURL
+		session.Diagnostics = []string{fmt.Sprintf("COUPON checkout route=Steam BuyItem appid=730 item_def_id=%d quantity=%d", offer.DefIndex, quantity64)}
+		s.mu.Lock()
+		s.purchaseSessions[sessionID] = session
+		s.mu.Unlock()
+		return session
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	var result transport.StorePurchaseTransportResult
 	probeDiagnostics := make([]string, 0)
@@ -380,10 +417,54 @@ func (s *Service) ReconcileStorePurchase(id string) domain.PurchaseSession {
 		s.mu.Unlock()
 		return session
 	}
-	session.Status, session.Message = "finalizing", "Refreshing inventory to reconcile the Steam purchase"
+	session.Status, session.Message = "finalizing", "Finalizing the authorized purchase with CS2"
 	s.purchaseSessions[id] = session
 	expected := append([]uint64(nil), s.purchaseItemIDs[id]...)
+	appID := s.purchaseAppIDs[id]
+	if appID == 0 {
+		appID = protocol.AppIDCS2
+	}
 	s.mu.Unlock()
+	orderID, parseErr := strconv.ParseUint(session.OrderID, 10, 64)
+	if parseErr != nil || orderID == 0 {
+		s.mu.Lock()
+		session = s.purchaseSessions[id]
+		session.Status, session.Message = "failed", "Purchase session has no valid GC order ID."
+		s.purchaseSessions[id] = session
+		s.mu.Unlock()
+		return session
+	}
+	finalizeCtx, cancelFinalize := context.WithTimeout(context.Background(), 12*time.Second)
+	finalizedItemIDs, finalizeErr := s.gcClient.FinalizeGameStorePurchase(finalizeCtx, appID, orderID)
+	cancelFinalize()
+	if finalizeErr != nil {
+		s.mu.Lock()
+		session = s.purchaseSessions[id]
+		session.Status, session.Message = "awaiting_user", "Steam has not authorized this purchase yet. Approve checkout, then retry finalization."
+		session.Diagnostics = append(session.Diagnostics, finalizeErr.Error())
+		s.purchaseSessions[id] = session
+		s.mu.Unlock()
+		return session
+	}
+	if len(finalizedItemIDs) > 0 {
+		expected = finalizedItemIDs
+		s.mu.Lock()
+		s.purchaseItemIDs[id] = append([]uint64(nil), finalizedItemIDs...)
+		s.mu.Unlock()
+	}
+	if appID == tf2AppID {
+		receipt := s.RefreshGameInventory("tf2")
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		session = s.purchaseSessions[id]
+		if receipt.State == operations.StateCompleted {
+			session.Status, session.Message = "completed", "TF2 purchase finalized and inventory refreshed from the Game Coordinator."
+		} else {
+			session.Status, session.Message = "awaiting_user", "TF2 inventory refresh could not confirm the purchase yet."
+		}
+		s.purchaseSessions[id] = session
+		return session
+	}
 	receipt := s.RefreshInventory()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -417,6 +498,10 @@ func (s *Service) StorePurchase(id string) (domain.PurchaseSession, bool) {
 	defer s.mu.Unlock()
 	session, ok := s.purchaseSessions[id]
 	return session, ok
+}
+
+func steamCouponBuyItemURL(defIndex, quantity uint32) string {
+	return fmt.Sprintf("https://store.steampowered.com/buyitem/730/%d/%d", defIndex, quantity)
 }
 
 func (s *Service) MarketPreview(marketName string) (domain.RelatedItem, error) {

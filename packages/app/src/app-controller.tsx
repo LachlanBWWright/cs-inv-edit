@@ -1,6 +1,12 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { errAsync } from "neverthrow";
-import type { ArmorySnapshot, ConnectionStatus, RelatedItemDto, SteamAccountProfile } from "@cs-inv-edit/contracts";
+import type {
+  ArmorySnapshot,
+  ConnectionStatus,
+  RelatedItemDto,
+  SteamAccountProfile,
+  StoreSnapshot,
+} from "@cs-inv-edit/contracts";
 import type { LocalAgentClient } from "./lib/backend.js";
 import type { SharedDataClient } from "./lib/shared-data.js";
 import { appErrorMessage, fromAppPromise } from "./lib/result.js";
@@ -19,7 +25,14 @@ export interface AppProps {
   platform: "desktop" | "web";
 }
 
-import { accountStorageKey, loadSteamAccounts, modeFromUrl, screenFromUrl, writeLoginToUrl, writeModeToUrl } from "./app-controller-url.js";
+import {
+  accountStorageKey,
+  loadSteamAccounts,
+  modeFromUrl,
+  screenFromUrl,
+  writeLoginToUrl,
+  writeModeToUrl,
+} from "./app-controller-url.js";
 import { createAppResources } from "./app-resources.js";
 import { createAccountController } from "./account-controller.js";
 import { createCommerceRefreshers } from "./commerce-refreshers.js";
@@ -31,7 +44,43 @@ export function createAppController(props: AppProps) {
   const [inventoryRefreshActive, setInventoryRefreshActive] =
     createSignal(false);
 
-  const { health, settings, refetchSettings, tf2ProtocolEntries, inventory, refetchInventory, steamInventory, refetchSteamInventory, tf2Inventory, refetchTF2Inventory, tf2Features, refetchTF2Features, cs2Features, dota2Inventory, refetchDota2Inventory, armory, refetchArmory, setArmory, store, refetchStore, setStore, trades, setTrades, tradeAccounts, setTradeAccounts, receipts, refetchOperations, events, refetchEvents, connection, refetchConnection, setConnection } = createAppResources(props);
+  const {
+    health,
+    settings,
+    refetchSettings,
+    tf2ProtocolEntries,
+    inventory,
+    refetchInventory,
+    steamInventory,
+    refetchSteamInventory,
+    tf2Inventory,
+    refetchTF2Inventory,
+    tf2Features,
+    refetchTF2Features,
+    cs2Features,
+    dota2Inventory,
+    refetchDota2Inventory,
+    armory,
+    refetchArmory,
+    setArmory,
+    store,
+    refetchStore,
+    setStore,
+    tf2Store,
+    refetchTF2Store,
+    setTF2Store,
+    trades,
+    setTrades,
+    tradeAccounts,
+    setTradeAccounts,
+    receipts,
+    refetchOperations,
+    events,
+    refetchEvents,
+    connection,
+    refetchConnection,
+    setConnection,
+  } = createAppResources(props);
   const pushToast = toastController.pushToast;
 
   const refreshInventoryState = createInventoryRefresher({
@@ -210,8 +259,35 @@ export function createAppController(props: AppProps) {
       setTrades,
       setTradeAccounts,
       refetchStore,
-      pushToast,
     });
+  const refreshTF2StoreState = async () => {
+    setTF2Store((current) => ({
+      status: "loading",
+      offers: current?.offers ?? [],
+      refreshedAt: current?.refreshedAt ?? new Date().toISOString(),
+      priceSheetVersion: current?.priceSheetVersion,
+      currency: current?.currency,
+      message: "Requesting the current TF2 GC price sheet",
+    }));
+    await props.backend
+      .refreshTF2Store()
+      .andThen(() =>
+        fromAppPromise(
+          Promise.resolve(refetchTF2Store()),
+          "TF2 Store reload failed",
+        ),
+      )
+      .match(
+        () => undefined,
+        (error) =>
+          setTF2Store((current): StoreSnapshot => ({
+            status: "error",
+            offers: current?.offers ?? [],
+            refreshedAt: new Date().toISOString(),
+            message: appErrorMessage(error, "Unable to refresh TF2 Store"),
+          })),
+      );
+  };
   createEffect(() => {
     const steamId =
       connection()?.state === "connected" ? connection()?.steamId : undefined;
@@ -228,6 +304,23 @@ export function createAppController(props: AppProps) {
     automaticStoreRefresh = key;
     void refreshStoreState();
   });
+  let automaticTF2StoreRefresh = "";
+  createEffect(() => {
+    const steamId =
+      connection()?.state === "connected" ? connection()?.steamId : undefined;
+    const enabled = settings()?.featureFlags.enableTf2Store !== false;
+    if (
+      shell.view() !== "tf2-store" ||
+      !steamId ||
+      !enabled ||
+      tf2Store()?.status === "ready"
+    )
+      return;
+    const key = `${steamId}\u0000tf2-store\u0000${enabled}`;
+    if (automaticTF2StoreRefresh === key) return;
+    automaticTF2StoreRefresh = key;
+    void refreshTF2StoreState();
+  });
   let automaticTradeRefresh = "";
   createEffect(() => {
     const steamId =
@@ -237,11 +330,6 @@ export function createAppController(props: AppProps) {
     if (automaticTradeRefresh === key) return;
     automaticTradeRefresh = key;
     void refreshTradeAccountsState();
-  });
-
-  createEffect(() => {
-    const snapshot = armory();
-    if (snapshot) console.info("[armory] validated snapshot", snapshot);
   });
 
   createEffect(() => {
@@ -340,11 +428,26 @@ export function createAppController(props: AppProps) {
       );
   });
 
-  const { syncAccountState, operationController,
-    saveSettings, addAccount, signInAccount, signOutAccount, deleteAccount,
-  } = createAccountController({ props, shell, settings, pushToast,
-    refreshInventoryState, refreshArmoryState, refetchConnection,
-    refetchInventory, refetchOperations, refetchEvents, refetchSettings,
+  const {
+    syncAccountState,
+    operationController,
+    saveSettings,
+    addAccount,
+    signInAccount,
+    signOutAccount,
+    deleteAccount,
+  } = createAccountController({
+    props,
+    shell,
+    settings,
+    pushToast,
+    refreshInventoryState,
+    refreshArmoryState,
+    refetchConnection,
+    refetchInventory,
+    refetchOperations,
+    refetchEvents,
+    refetchSettings,
   });
   return {
     view: shell.view,
@@ -378,6 +481,7 @@ export function createAppController(props: AppProps) {
     dota2Inventory,
     armory,
     store,
+    tf2Store,
     trades,
     tradeAccounts,
     receipts,
@@ -389,6 +493,7 @@ export function createAppController(props: AppProps) {
     refreshInventoryState,
     refreshArmoryState,
     refreshStoreState,
+    refreshTF2StoreState,
     refreshTradesState,
     refreshTradeAccountsState,
     requestMarketPreview,
@@ -405,6 +510,7 @@ export function createAppController(props: AppProps) {
     refetchTF2Features,
     refetchArmory,
     refetchStore,
+    refetchTF2Store,
     refetchOperations,
     refetchEvents,
     refetchConnection,

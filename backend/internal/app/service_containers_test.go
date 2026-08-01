@@ -87,6 +87,18 @@ func TestActiveTerminalNextOfferUsesTerminalAsToolAndSubject(t *testing.T) {
 	}
 }
 
+func TestTerminalOfferRouteUsesQuestPointsAttributePresence(t *testing.T) {
+	pointsRemaining := uint32(0)
+	returning := &domain.InventoryItem{IsTerminal: true, IsActiveTerminal: true, TerminalPointsRemaining: &pointsRemaining}
+	if shouldRequestFirstTerminalOffer(returning) {
+		t.Fatal("active terminal with attribute 169 was routed as a first offer")
+	}
+	firstOffer := &domain.InventoryItem{IsTerminal: true, IsActiveTerminal: true}
+	if !shouldRequestFirstTerminalOffer(firstOffer) {
+		t.Fatal("active terminal without attribute 169 was not routed as a first offer")
+	}
+}
+
 func decodeOpenCrateTest(t *testing.T, subject, tool uint64, points, limit *uint32) protoreflect.Message {
 	t.Helper()
 	body, err := gametracking.EncodeOpenCrate(subject, tool, points, limit)
@@ -103,10 +115,10 @@ func decodeOpenCrateTest(t *testing.T, subject, tool uint64, points, limit *uint
 func TestTerminalActivationCanReconcileAnInPlaceItemTransformation(t *testing.T) {
 	defIndexBefore, defIndexAfter := uint32(5001), uint32(5002)
 	before := domain.InventorySnapshot{Items: []domain.InventoryItem{{
-		ID: "101", Name: "Sealed Genesis Terminal", MarketName: "Sealed Genesis Terminal", Defindex: &defIndexBefore,
+		ID: "101", Name: "Sealed Genesis Terminal", MarketName: "Sealed Genesis Terminal", Defindex: &defIndexBefore, IsTerminal: true,
 	}}}
 	after := domain.InventorySnapshot{Items: []domain.InventoryItem{{
-		ID: "101", Name: "Active Genesis Terminal", MarketName: "Active Genesis Terminal", Defindex: &defIndexAfter,
+		ID: "101", Name: "Active Genesis Terminal", MarketName: "Active Genesis Terminal", Defindex: &defIndexAfter, IsTerminal: true, IsActiveTerminal: true,
 	}}}
 	transitioned := firstChangedTerminalItem(before, after)
 	if transitioned == nil || transitioned.Name != "Active Genesis Terminal" {

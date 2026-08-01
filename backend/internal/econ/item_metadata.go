@@ -146,6 +146,7 @@ func (s *Schema) metadataResult(item itemDefinition, name string, marketName str
 		PaintWearMin:          wearMin,
 		PaintWearMax:          wearMax,
 		DecodedAttributes:     s.decodeAttributes(attributes),
+		IsVolatileContainer:   item.IsVolatileContainer,
 		TradableAfter:         s.tradableAfterFromAttributes(attributes),
 	}
 	return metadata.NormalizeCS2TransferState()

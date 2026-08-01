@@ -114,7 +114,7 @@ function AppliedItemGallery(props: {
                 ? scrapePercent(applied.wear)
                 : undefined;
             return (
-              <div class="w-24 rounded-lg border border-slate-700/80 bg-slate-950/70 p-2">
+              <div class="w-24 rounded-lg border border-slate-700/80 bg-slate-950 p-2">
                 <div class="flex h-16 w-full items-center justify-center overflow-hidden rounded bg-slate-900">
                   <Show
                     when={applied.imageUrl}
@@ -211,7 +211,7 @@ function MarketField(props: {
 
 export function PropertyGrid(props: PropertyGridProps) {
   return (
-    <div class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-3 text-sm text-slate-300">
+    <div class="rounded-2xl border border-slate-800/80 bg-slate-900 p-3 text-sm text-slate-300">
       <div class="grid gap-3 sm:grid-cols-2">
         <Show when={props.selected.kind}>
           <PropertyField label="Type">

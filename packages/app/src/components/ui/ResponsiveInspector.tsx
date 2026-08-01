@@ -5,6 +5,7 @@ import {
   Show,
   type JSX,
 } from "solid-js";
+import { ModalBackdrop } from "./ModalBackdrop.js";
 
 export interface ResponsiveInspectorProps {
   open: boolean;
@@ -34,15 +35,14 @@ export function ResponsiveInspector(props: ResponsiveInspectorProps) {
   return (
     <>
       <Show when={props.open && expanded()}>
-        <button
-          type="button"
-          class="fixed inset-0 z-30 bg-slate-950/50 backdrop-blur-[2px] lg:hidden"
-          aria-label="Collapse item details"
+        <ModalBackdrop
+          class="fixed inset-0 z-30 lg:hidden"
+          label="Collapse item details"
           onClick={() => setExpanded(false)}
         />
       </Show>
       <aside
-        class={`border-slate-700 bg-slate-950/98 shadow-2xl lg:static lg:z-auto lg:block lg:h-full lg:min-h-0 lg:overflow-hidden lg:border-0 lg:bg-transparent lg:shadow-none ${
+        class={`border-slate-700 bg-slate-950 shadow-md shadow-black lg:sticky lg:top-20 lg:order-1 lg:z-auto lg:block lg:h-[calc(100vh-6rem)] lg:self-start lg:overflow-hidden lg:border-0 lg:bg-transparent lg:shadow-none ${
           props.open
             ? `fixed inset-x-0 bottom-0 z-40 rounded-t-2xl border border-b-0 pb-[env(safe-area-inset-bottom)] ${
                 expanded() ? "h-[min(82dvh,52rem)]" : "h-20"
@@ -77,9 +77,9 @@ export function ResponsiveInspector(props: ResponsiveInspectorProps) {
           </svg>
         </button>
         <div
-          class={`min-h-0 border-t border-slate-800 lg:h-full lg:border-0 ${
+          class={`min-h-0 border-t border-slate-800 lg:border-0 ${
             expanded() ? "h-[calc(100%-5rem)] overflow-y-auto p-3" : "hidden"
-          } lg:block lg:p-0`}
+          } lg:block lg:h-full lg:overflow-hidden lg:p-0`}
         >
           {props.children}
         </div>

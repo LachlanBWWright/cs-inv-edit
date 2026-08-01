@@ -25,9 +25,9 @@ export function SidebarModePicker(props: {
           onOpenChange={props.setModeMenuOpen}
         >
           <button
-            class={`group flex items-center gap-2.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-2.5 text-left shadow-sm transition hover:border-cyan-400/50 hover:bg-slate-900 ${
+            class={`group flex items-center gap-2.5 rounded-xl border border-slate-700/80 bg-slate-900 px-2.5 text-left shadow-sm transition hover:border-cyan-400/50 hover:bg-slate-900 ${
               props.compact
-                ? "h-10 w-28 min-w-0 sm:h-11 sm:w-auto sm:min-w-48"
+                ? "h-[38px] w-[6.3rem] min-w-0 lg:w-auto lg:min-w-48"
                 : "h-11 min-w-48"
             }`}
             aria-label={`Mode: ${modeDetails[props.currentMode()].label}`}
@@ -42,7 +42,7 @@ export function SidebarModePicker(props: {
           >
             <span class="min-w-0 flex-1 leading-tight">
               <span
-                class={`${props.compact ? "hidden sm:block" : "block"} text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500`}
+                class={`${props.compact ? "hidden lg:block" : "block"} text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500`}
               >
                 {props.currentGroup()}
               </span>
@@ -64,7 +64,7 @@ export function SidebarModePicker(props: {
           </button>
           <Show when={props.modeMenuOpen()}>
             <div
-              class="absolute left-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/98 p-2 shadow-2xl shadow-black/40"
+              class="absolute left-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950 p-2 shadow-2xl shadow-black/40"
               role="menu"
               aria-label="Application mode"
             >
@@ -98,7 +98,7 @@ export function SidebarModePicker(props: {
                                 props.currentMode() === mode;
                               return (
                                 <button
-                                  class={`flex w-full items-center gap-3 rounded-xl border px-2.5 py-2 text-left transition ${selected() ? "border-cyan-400/25 bg-cyan-400/10" : "border-transparent hover:border-slate-700/70 hover:bg-slate-800/70"}`}
+                                  class={`flex w-full items-center gap-3 rounded-xl border px-2.5 py-2 text-left transition ${selected() ? "border-cyan-400/25 bg-cyan-950" : "border-transparent hover:border-slate-700/70 hover:bg-slate-800"}`}
                                   role="menuitemradio"
                                   aria-checked={selected()}
                                   onClick={() => props.chooseMode(mode)}

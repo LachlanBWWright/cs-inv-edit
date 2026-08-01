@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"cs-inv-edit/backend/internal/proto/gametracking"
+	"github.com/Lucino772/envelop/pkg/steam/steampb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestNameTagPurchasePayloadMatchesGameTrackingWireLayout(t *testing.T) {
@@ -37,6 +39,22 @@ func TestNameTagPurchasePayloadMatchesGameTrackingWireLayout(t *testing.T) {
 	}
 	if !bytes.Equal(envelope[8:], want) {
 		t.Fatalf("GC envelope body = %x, want %x", envelope[8:], want)
+	}
+}
+
+func TestStorePurchaseEnvelopeCarriesSourceJobID(t *testing.T) {
+	const sourceJobID uint64 = 421800430678694512
+	envelope, err := encodeGCProtoPayloadWithSourceJob(emsgStorePurchaseInit, []byte{8, 1}, sourceJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headerLen := int(binary.LittleEndian.Uint32(envelope[4:8]))
+	var header steampb.CMsgProtoBufHeader
+	if err := proto.Unmarshal(envelope[8:8+headerLen], &header); err != nil {
+		t.Fatal(err)
+	}
+	if header.GetJobidSource() != sourceJobID {
+		t.Fatalf("source job ID = %d, want %d", header.GetJobidSource(), sourceJobID)
 	}
 }
 
@@ -99,8 +117,17 @@ func TestStoreMessageIDsMatchGameTracking(t *testing.T) {
 	}
 }
 
+func TestTF2StoreFinalizeMessageIDsMatchGameTracking(t *testing.T) {
+	request, response := storeFinalizeMessageIDs(440)
+	if request != 2512 || response != 2513 {
+		t.Fatalf("TF2 store finalize IDs = %d/%d, want 2512/2513", request, response)
+	}
+}
+
 func TestSteamCheckoutURLUsesAuthorizationTransactionIDs(t *testing.T) {
-	checkout := steamCheckoutURL(12345, 67890)
+	const transID uint64 = 421800430678694512
+	const orderID uint64 = 2628343585
+	checkout := steamCheckoutURL(transID, orderID)
 	if err := ValidateSteamCheckoutURL(checkout); err != nil {
 		t.Fatalf("generated checkout URL was invalid: %v", err)
 	}
@@ -108,10 +135,50 @@ func TestSteamCheckoutURLUsesAuthorizationTransactionIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse generated checkout URL: %v", err)
 	}
-	if parsed.Hostname() != "checkout.steampowered.com" || !strings.Contains(parsed.Path, "/approvetxn/12345/") {
+	if parsed.Hostname() != "checkout.steampowered.com" || !strings.Contains(parsed.Path, "/approvetxn/421800430678694512/") {
 		t.Fatalf("checkout URL did not contain the authorization transaction: %q", checkout)
 	}
-	if returnURL := parsed.Query().Get("returnurl"); !strings.Contains(returnURL, "/buyitem/730/finalize/67890") {
-		t.Fatalf("return URL did not contain the Steam order: %q", returnURL)
+	returnURL := parsed.Query().Get("returnurl")
+	if !strings.Contains(returnURL, "/buyitem/730/finalize/2628343585") {
+		t.Fatalf("return URL does not finalize GC order: %q", returnURL)
 	}
+}
+
+func TestMicroTxnAuthorizationPreservesNestedLineItem(t *testing.T) {
+	var raw bytes.Buffer
+	raw.WriteByte(1)
+	writeBinaryKVUint64(&raw, "orderid", 2628343585)
+	writeBinaryKVUint64(&raw, "transid", 421800430678694512)
+	writeBinaryKVObjectStart(&raw, "lineitems")
+	writeBinaryKVObjectStart(&raw, "0")
+	writeBinaryKVUint64(&raw, "gameitemid", 1200)
+	writeBinaryKVUint64(&raw, "amount", 280)
+	writeBinaryKVUint32(&raw, "quantity", 1)
+	raw.Write([]byte{8, 8, 8})
+
+	auth, err := parseMicroTxnAuthorization(raw.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineItem, ok := authorizationLineItem(auth)
+	if !ok {
+		t.Fatalf("nested line item missing from %#v", auth)
+	}
+	if itemID, _ := kvUint64(lineItem, "gameitemid"); itemID != 1200 {
+		t.Fatalf("line item = %#v", lineItem)
+	}
+}
+
+func writeBinaryKVUint64(out *bytes.Buffer, key string, value uint64) {
+	out.WriteByte(7)
+	out.WriteString(key)
+	out.WriteByte(0)
+	_ = binary.Write(out, binary.LittleEndian, value)
+}
+
+func writeBinaryKVUint32(out *bytes.Buffer, key string, value uint32) {
+	out.WriteByte(2)
+	out.WriteString(key)
+	out.WriteByte(0)
+	_ = binary.Write(out, binary.LittleEndian, value)
 }

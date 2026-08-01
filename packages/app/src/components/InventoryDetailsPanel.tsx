@@ -10,9 +10,7 @@ import type {
   PriceScanResult,
   RelatedItemDto,
 } from "@cs-inv-edit/contracts";
-import {
-  type RelatedItemPreviewContext,
-} from "./RelatedItemPreview.js";
+import { type RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
 import { itemDisplayName } from "./inventory-view-utils.js";
 import { TradeUpContractReveal } from "./ui/TradeUpContractReveal.js";
@@ -343,9 +341,6 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
             title="Hypothetical trade-up"
             candidates={tradeUpPreview()?.candidates ?? []}
             result={tradeUpPreview()?.result ?? { name: "Trade-up result" }}
-            returnEstimate={tradeUpReturn()}
-            returnEstimateLoading={tradeUpReturnLoading()}
-            returnEstimateCostLabel="Estimated inputs"
             onComplete={() => {
               clearTradeUpPreviewTimer();
               setTradeUpPreview(undefined);
@@ -359,15 +354,13 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
           mode={props.settings?.animations?.tradeUp ?? "contract-slot-machine"}
           candidates={tradeUpPreview()?.candidates ?? []}
           result={tradeUpPreview()?.result ?? { name: "Trade-up result" }}
-          returnEstimate={tradeUpReturn()}
-          returnEstimateLoading={tradeUpReturnLoading()}
           onComplete={() => {
             clearTradeUpPreviewTimer();
             setTradeUpPreview(undefined);
           }}
         />
       </Show>
-      <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+      <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950 p-4">
         <div class="min-h-0 flex-1 overflow-y-auto">
           <Show
             keyed

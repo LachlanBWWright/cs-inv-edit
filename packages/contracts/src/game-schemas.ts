@@ -1,41 +1,17 @@
 import { z } from "zod";
-import type {
-  GameInventorySnapshot,
-  SettingsData,
-  SteamInventoryServiceGames,
-} from "./index.js";
+import {
+  zSettingsData,
+  zSteamInventoryServiceGames,
+} from "./generated/zod.gen.js";
+import type { GameInventorySnapshot } from "./index.js";
 
-const animationModeSchema = z.enum(["none", "countdown", "slot-machine"]);
-const tradeUpAnimationModeSchema = z.enum([
-  "none",
-  "countdown",
-  "slot-machine",
-  "contract-none",
-  "contract-countdown",
-  "contract-slot-machine",
-]);
 export const economyGameSchema = z.enum(["steam", "tf2", "dota2"]);
 export const steamInventoryServiceAppIdSchema = z
   .number()
   .int()
   .positive()
   .max(4_294_967_295);
-export const steamInventoryServiceGamesSchema: z.ZodType<SteamInventoryServiceGames> =
-  z.object({
-    games: z.array(
-      z.object({
-        appId: steamInventoryServiceAppIdSchema,
-        name: z.string().min(1),
-        playtimeMinutes: z.number().int().nonnegative(),
-        lastPlayed: z.number().int().nonnegative(),
-        hasMarket: z.boolean(),
-      }),
-    ),
-    refreshedAt: z.string(),
-    status: z.enum(["ready", "requires_connection", "error"]),
-    message: z.string().optional(),
-    diagnostics: z.array(z.string()),
-  });
+export const steamInventoryServiceGamesSchema = zSteamInventoryServiceGames;
 const economyItemBaseShape = {
   contextId: z.string().optional(),
   assetId: z.string(),
@@ -45,7 +21,10 @@ const economyItemBaseShape = {
   name: z.string(),
   marketName: z.string().optional(),
   imageUrl: z.string().url().optional(),
-  inspectUrl: z.string().regex(/^steam:\/\/(?:run|rungame)\/440\//i).optional(),
+  inspectUrl: z
+    .string()
+    .regex(/^steam:\/\/(?:run|rungame)\/440\//i)
+    .optional(),
   quantity: z.number().int().positive(),
   type: z.string().optional(),
   rarity: z.string().optional(),
@@ -225,48 +204,4 @@ export const gameInventorySnapshotSchema: z.ZodType<GameInventorySnapshot> =
       items: z.array(dota2EconomyItemSchema),
     }),
   ]);
-export const settingsDataSchema: z.ZodType<SettingsData> = z.object({
-  backendUrl: z.string(),
-  validationMode: z.boolean(),
-  sacrificialAccountMode: z.boolean(),
-  armoryPurchasePacingSeconds: z.number().int().min(1).max(60),
-  featureFlags: z.object({
-    enableStorageMutations: z.boolean(),
-    enableContainerOpening: z.boolean(),
-    enableInventoryDebug: z.boolean(),
-    showStorageUnitItems: z.boolean().default(false),
-    enableProtocolConsole: z.boolean().default(true),
-    enableTradeups: z.boolean(),
-    enableStickerExtract: z.boolean(),
-    enableNameTags: z.boolean(),
-    enableItemDeletion: z.boolean(),
-    enableStatTrakSwap: z.boolean(),
-    enableStrangeParts: z.boolean(),
-    enableItemUse: z.boolean(),
-    enableToolApplication: z.boolean(),
-    enableGifting: z.boolean(),
-    enableArmoryRead: z.boolean().optional(),
-    enableArmoryRedemption: z.boolean().optional(),
-    enableStoreRead: z.boolean().optional(),
-    enableStorePurchases: z.boolean().optional(),
-    enableCs2Loadouts: z.boolean().default(false),
-    enableSteamInventory: z.boolean().default(true),
-    enableSteamTradeMutations: z.boolean().default(false),
-    enableTf2Inventory: z.boolean().default(true),
-    enableTf2Loadouts: z.boolean().default(false),
-    enableTf2ItemUse: z.boolean().default(false),
-    enableTf2Tools: z.boolean().default(false),
-    enableTf2Crafting: z.boolean().default(false),
-    enableTf2Unboxing: z.boolean().default(false),
-    enableTf2Customization: z.boolean().default(false),
-    enableDota2Inventory: z.boolean().default(false),
-  }),
-  animations: z.object({
-    container: animationModeSchema,
-    tradeUp: tradeUpAnimationModeSchema,
-    armory: animationModeSchema,
-    terminal: animationModeSchema.default("slot-machine"),
-  }),
-});
-
-
+export const settingsDataSchema = zSettingsData;

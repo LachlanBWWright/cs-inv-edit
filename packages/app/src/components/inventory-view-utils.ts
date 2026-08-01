@@ -94,15 +94,11 @@ export function isOpenableContainer(item: InventoryItemDto | undefined) {
 }
 
 export function isTerminal(item: InventoryItemDto | undefined) {
-  if (!item) return false;
-  return /\bterminal\b/i.test(`${item.name} ${item.marketName ?? ""}`);
+  return item?.isTerminal === true;
 }
 
 export function isActiveTerminal(item: InventoryItemDto | undefined) {
-  return (
-    isTerminal(item) &&
-    /\bactive\b/i.test(`${item?.name ?? ""} ${item?.marketName ?? ""}`)
-  );
+  return item?.isTerminal === true && item.isActiveTerminal === true;
 }
 
 export function itemWeaponName(item: InventoryItemDto) {

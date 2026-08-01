@@ -53,9 +53,10 @@ export function watchSteamStatusWithRecovery(
     socket.onclose = scheduleReconnect;
   };
 
-  const fallbackPoll = globalThis.setInterval(() => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) poll();
-  }, 1_000);
+  // Keep a low-frequency authoritative read running even while the socket
+  // reports OPEN. Browsers can leave a dead local WebSocket half-open, which
+  // previously left QR renewal state stale until the whole page was refreshed.
+  const fallbackPoll = globalThis.setInterval(poll, 2_000);
   connect();
 
   return () => {

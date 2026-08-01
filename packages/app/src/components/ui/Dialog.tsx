@@ -1,5 +1,8 @@
-import { Show, createEffect, onCleanup, type JSX } from "solid-js";
+import { Show, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
+import { IconButton } from "./IconButton.js";
+import { ModalBackdrop } from "./ModalBackdrop.js";
+import { useEscapeDismiss } from "./modal-dismiss.js";
 
 export interface DialogProps {
   open: boolean;
@@ -10,14 +13,7 @@ export interface DialogProps {
 }
 
 export function Dialog(props: DialogProps) {
-  createEffect(() => {
-    if (!props.open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onOpenChange(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => document.removeEventListener("keydown", onKeyDown));
-  });
+  useEscapeDismiss(() => props.open, () => props.onOpenChange(false));
 
   return (
     <Show when={props.open}>
@@ -26,10 +22,9 @@ export function Dialog(props: DialogProps) {
           class="fixed inset-0 z-50 flex items-center justify-center p-4"
           role="presentation"
         >
-          <button
-            type="button"
-            class="absolute inset-0 cursor-default bg-slate-950/80 backdrop-blur-sm"
-            aria-label="Close dialog"
+          <ModalBackdrop
+            class="absolute inset-0"
+            label="Close dialog"
             onClick={() => props.onOpenChange(false)}
           />
           <section
@@ -47,14 +42,13 @@ export function Dialog(props: DialogProps) {
                   <p class="mt-1 text-sm text-slate-400">{props.description}</p>
                 </Show>
               </div>
-              <button
-                type="button"
-                class="rounded-md px-2 py-1 text-xl leading-none text-slate-400 hover:bg-slate-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                aria-label="Close"
+              <IconButton
+                label="Close"
+                class="border-transparent text-xl leading-none text-slate-400"
                 onClick={() => props.onOpenChange(false)}
               >
                 ×
-              </button>
+              </IconButton>
             </div>
             <div class="mt-5 min-h-0 overflow-y-auto">{props.children}</div>
           </section>

@@ -35,8 +35,10 @@ func (s *Service) activateAccountSessionLocked(nextSteamID string) {
 		s.inventory = emptyInventory()
 		s.armory = emptyArmory()
 		s.store = emptyStore()
+		s.tf2Store = emptyTF2Store()
 		s.purchaseSessions = make(map[string]domain.PurchaseSession)
 		s.purchaseItemIDs = make(map[string][]uint64)
+		s.purchaseAppIDs = make(map[string]uint32)
 	}
 }
 

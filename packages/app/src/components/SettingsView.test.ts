@@ -29,6 +29,7 @@ const settings: SettingsData = {
     enableGifting: false,
     enableArmoryRedemption: true,
     enableTf2Inventory: true,
+    enableTf2Store: true,
     enableTf2Loadouts: false,
     enableTf2ItemUse: false,
     enableTf2Tools: false,

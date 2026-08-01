@@ -11,6 +11,9 @@ import type { RevealAnimationMode } from "@cs-inv-edit/contracts";
 import { ResultAsync, fromThrowable } from "neverthrow";
 import type { ReturnEstimate } from "../roi-utils.js";
 import { ReturnEstimateCard } from "../ReturnEstimateCard.js";
+import { ModalCloseRow } from "./ModalBackdrop.js";
+import { useEscapeDismiss } from "./modal-dismiss.js";
+import { transformTranslateX } from "./reveal-animation-layout.js";
 import { ModeContent } from "./reveal-animation-content.js";
 import { generateRevealMiss, randomRevealCandidate } from "./reveal-animation-random.js";
 export {
@@ -76,11 +79,11 @@ const minimumLandingDurationMs = 2400;
 const landingDurationRangeMs = 1200;
 const linearDecelerationDistanceRatio = 1 / 2;
 
-function waitingVelocity(elapsedMs: number) {
+export function waitingVelocity(elapsedMs: number) {
+  const progress = Math.min(1, Math.max(0, elapsedMs / spinDecayMs));
   return (
-    floorSpinPixelsPerMs +
-    (initialSpinPixelsPerMs - floorSpinPixelsPerMs) *
-      Math.exp(-elapsedMs / spinDecayMs)
+    initialSpinPixelsPerMs -
+    (initialSpinPixelsPerMs - floorSpinPixelsPerMs) * progress
   );
 }
 
@@ -92,7 +95,7 @@ export function generateLandingDuration(random = Math.random) {
 
 export function landingProgress(progress: number) {
   const remaining = 1 - Math.min(1, Math.max(0, progress));
-  return 1 - remaining * remaining * remaining;
+  return 1 - remaining * remaining;
 }
 
 export function generateLandingJitter(random = Math.random) {
@@ -142,17 +145,6 @@ function playSound(url: string) {
   );
 }
 
-function transformTranslateX(transform: string): number | undefined {
-  const values = transform
-    .match(/^matrix(?:3d)?\((.+)\)$/)?.[1]
-    ?.split(",")
-    .map((value) => Number.parseFloat(value.trim()));
-  if (!values?.every(Number.isFinite)) return undefined;
-  if (values.length === 6) return values[4];
-  if (values.length === 16) return values[12];
-  return undefined;
-}
-
 const readRenderedReelOffset = fromThrowable(
   (element: HTMLDivElement | undefined) => {
     if (!element) return waitingLoopStartOffsetPx;
@@ -192,6 +184,8 @@ export function RevealAnimation(props: RevealAnimationProps) {
         startOffset: number;
       }
     | undefined;
+
+  useEscapeDismiss(() => props.open, props.onComplete);
 
   createEffect(
     on(isOpen, (open) => {
@@ -281,9 +275,9 @@ export function RevealAnimation(props: RevealAnimationProps) {
         const offset =
           landingIndex * reelItemStridePx + reelItemCenterPx + landingJitter;
         const landingDistance = offset - startOffset;
-        // Once the result is available, the waiting velocity floor no longer
-        // controls the landing. Use a fresh randomized deceleration window and
-        // let the landing easing decelerate all the way to zero.
+        // Distance = average velocity × time for linear deceleration from the
+        // current reel velocity to zero. The quadratic position easing below
+        // therefore begins without a velocity discontinuity.
         const duration = Math.round(targetLandingDuration);
         setWaiting(false);
         setRolling(false);
@@ -376,7 +370,7 @@ export function RevealAnimation(props: RevealAnimationProps) {
     <Portal>
       <Show when={props.open && (props.mode !== "none" || props.immediate)}>
         <div
-          class="reveal-overlay"
+          class="modal-backdrop reveal-overlay"
           role="dialog"
           aria-modal="true"
           aria-label={props.title}
@@ -388,6 +382,12 @@ export function RevealAnimation(props: RevealAnimationProps) {
               "w-[530px] max-w-full": props.mode === "slot-machine",
             }}
           >
+            <Show when={props.mode !== "slot-machine"}>
+              <ModalCloseRow
+                label="Close animation"
+                buttonClass="border-slate-600 bg-slate-950"
+                onClose={props.onComplete} />
+            </Show>
             <Show when={props.mode !== "slot-machine"}>
               <p class="reveal-eyebrow">{props.title}</p>
             </Show>

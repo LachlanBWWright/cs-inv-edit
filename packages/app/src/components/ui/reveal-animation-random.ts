@@ -24,11 +24,12 @@ export function generateRevealMiss(
   return {
     ...item,
     isStatTrak:
-      !isSouvenir &&
-      isSkin &&
-      item.supportsStatTrak === true &&
-      random() < STATTRAK_ODDS,
-    isSouvenir,
+      item.isStatTrak ??
+      (!isSouvenir &&
+        isSkin &&
+        item.supportsStatTrak === true &&
+        random() < STATTRAK_ODDS),
+    isSouvenir: item.isSouvenir ?? isSouvenir,
     wear: isSkin
       ? (item.wear ?? generateCappedWear(item.wearMin, item.wearMax, random))
       : undefined,

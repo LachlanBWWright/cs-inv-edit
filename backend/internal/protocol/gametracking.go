@@ -13,6 +13,7 @@ type MessageMapping struct {
 
 var operationMessageMappings = map[string]MessageMapping{
 	"store.refresh":             {Operation: "store.refresh", RequestEMsg: EMsgStoreGetUserData, RequestBody: "CMsgStoreGetUserData", ResponseEMsgs: []uint32{EMsgStoreGetUserDataResponse}, Source: "proto/vendor/gametracking-cs2/Protobufs/base_gcmessages.proto", Status: "exact", FeatureFlag: "enableStoreRead", Notes: "Loads the versioned, compressed GC cash-store price sheet."},
+	"tf2.store.refresh":         {Operation: "tf2.store.refresh", RequestEMsg: EMsgStoreGetUserData, RequestBody: "CMsgStoreGetUserData", ResponseEMsgs: []uint32{EMsgStoreGetUserDataResponse}, Source: "proto/vendor/gametracking-tf2/Protobufs/base_gcmessages.proto", Status: "exact", FeatureFlag: "enableTf2Store", Notes: "Loads the AppID 440 versioned, compressed Mann Co. Store price sheet."},
 	"store.purchase.initialize": {Operation: "store.purchase.initialize", RequestEMsg: EMsgStorePurchaseInit, RequestBody: "CMsgGCStorePurchaseInit", ResponseEMsgs: []uint32{EMsgStorePurchaseInitResponse}, Source: "proto/vendor/gametracking-cs2/Protobufs/base_gcmessages.proto", Status: "exact", FeatureFlag: "enableStorePurchases", Notes: "The GC response establishes whether initialization was accepted and supplies its order/transaction identifier. Any later Steam authorization handoff is observed independently; it is not assumed to arrive as one specific CM message."},
 	"storage.load": {
 		Operation:     "storage.load",

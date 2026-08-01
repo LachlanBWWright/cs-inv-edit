@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on } from "solid-js";
+import { createEffect, createSignal, on } from "solid-js";
 import type {
   ConnectionStatus,
   InitializeStorePurchaseRequest,
@@ -70,16 +70,14 @@ export interface InventoryViewProps {
     casketId: string;
     itemId: string;
   }) => Promise<OperationReceipt>;
+  onMoveIntoStorage: (input: {
+    casketId: string;
+    itemId: string;
+  }) => Promise<OperationReceipt>;
   onRefresh: () => void;
-  onToast?: (toast: {
-    title: string;
-    description?: string;
-    variant?: "default" | "success" | "warning" | "danger";
-  }) => void;
 }
 
 export function InventoryView(props: InventoryViewProps) {
-  const mode = createMemo(() => props.mode);
   const [renameOpen, setRenameOpen] = createSignal(false);
   const [draftName, setDraftName] = createSignal("");
   const [selectedToolId, setSelectedToolId] = createSignal("");
@@ -100,6 +98,8 @@ export function InventoryView(props: InventoryViewProps) {
   const [browsingStorageUnit, setBrowsingStorageUnit] =
     createSignal<InventoryItemDto>();
   const [removeFromStorageMode, setRemoveFromStorageMode] = createSignal(false);
+  const [movingIntoStorageUnit, setMovingIntoStorageUnit] =
+    createSignal<InventoryItemDto>();
   const [storageSelectedItemIds, setStorageSelectedItemIds] = createSignal<
     string[]
   >([]);
@@ -163,8 +163,15 @@ export function InventoryView(props: InventoryViewProps) {
       ? (props.inventory?.items ?? []).filter(
           (item) => item.casketId === browsingStorageUnit()!.id,
         )
-      : filteredItems();
+      : movingIntoStorageUnit()
+        ? filteredItems().filter(
+            (item) =>
+              item.id !== movingIntoStorageUnit()!.id &&
+              item.storageEligible !== false,
+          )
+        : filteredItems();
   const selectedItem = () =>
+    movingIntoStorageUnit() ??
     resolveSelectedInventoryItem(visibleItems(), props.selectedItemId);
   createEffect(() => {
     const selected = selectedItem();
@@ -231,9 +238,18 @@ export function InventoryView(props: InventoryViewProps) {
     return itemKey(selected, index);
   };
 
-  const selectItem = (item: InventoryItemDto, options?: { range: boolean }) => {
-    if (browsingStorageUnit() && removeFromStorageMode()) {
+  const selectItem = (
+    item: InventoryItemDto,
+    options?: { range: boolean; selected?: boolean },
+  ) => {
+    if (
+      movingIntoStorageUnit() ||
+      (browsingStorageUnit() && removeFromStorageMode())
+    ) {
       const anchorId = storageSelectionAnchorId();
+      const selectionLimit = movingIntoStorageUnit()
+        ? Math.max(0, 1000 - (movingIntoStorageUnit()!.storageCount ?? 0))
+        : Number.POSITIVE_INFINITY;
       if (options?.range && anchorId) {
         const items = visibleItems();
         const anchorIndex = items.findIndex(
@@ -248,27 +264,26 @@ export function InventoryView(props: InventoryViewProps) {
           const rangeIds = items
             .slice(start, end + 1)
             .map((candidate) => candidate.id);
-          setStorageSelectedItemIds((current) => [
-            ...new Set([...current, ...rangeIds]),
-          ]);
+          setStorageSelectedItemIds((current) =>
+            [...new Set([...current, ...rangeIds])].slice(0, selectionLimit),
+          );
           return;
         }
       }
-      setStorageSelectedItemIds((current) =>
-        current.includes(item.id)
-          ? current.filter((id) => id !== item.id)
-          : [...current, item.id],
-      );
+      setStorageSelectedItemIds((current) => {
+        const currentlySelected = current.includes(item.id);
+        const shouldSelect = options?.selected ?? !currentlySelected;
+        if (!shouldSelect) return current.filter((id) => id !== item.id);
+        if (currentlySelected) return current;
+        if (current.length >= selectionLimit) {
+          setStatusMessage(
+            `This unit only has ${selectionLimit} available slot${selectionLimit === 1 ? "" : "s"}.`,
+          );
+          return current;
+        }
+        return [...current, item.id];
+      });
       setStorageSelectionAnchorId(item.id);
-      return;
-    }
-    if (mode() !== "inventory") {
-      setSelectedItemIds((current) =>
-        current.includes(item.id)
-          ? current.filter((id) => id !== item.id)
-          : [...current, item.id],
-      );
-      props.setSelectedItemId(item.id);
       return;
     }
     setSelectedItemIds([]);
@@ -293,7 +308,9 @@ export function InventoryView(props: InventoryViewProps) {
       () => setSelectedContainerKeyId(""),
     ),
   );
-  const connected = () => props.connection?.state === "connected";
+  const connected = () =>
+    props.connection?.state === "connected" ||
+    props.connection?.state === "session_conflict";
   const inventoryError = () =>
     props.inventory?.error || props.inventory?.message;
   const inventoryDiagnostics = () => props.inventory?.diagnostics ?? [];
@@ -328,6 +345,7 @@ export function InventoryView(props: InventoryViewProps) {
     handleLoadStorageContents,
     backFromStorage,
     retrieveFromStorage,
+    moveIntoStorage,
   } = createInventoryActionHandlers({
     props,
     selectedItem,
@@ -346,12 +364,14 @@ export function InventoryView(props: InventoryViewProps) {
     setStorageSelectedItemIds,
     setStorageSelectionAnchorId,
     setStorageRetrieval,
+    movingIntoStorageUnit,
+    setMovingIntoStorageUnit,
   });
   return (
     <>
       <InventoryViewContent
         inventory={props.inventory}
-        selectionMode={mode()}
+        selectionMode="inventory"
         selectedItemIds={selectedItemIds()}
         connection={props.connection}
         settings={props.settings}
@@ -389,6 +409,12 @@ export function InventoryView(props: InventoryViewProps) {
         onOpenContainer={handleOpenContainer}
         onTerminalPurchase={props.onTerminalPurchase}
         onLoadStorageContents={handleLoadStorageContents}
+        onBeginMoveIntoStorage={(unit) => {
+          setMovingIntoStorageUnit(unit);
+          setStorageSelectedItemIds([]);
+          setStorageSelectionAnchorId(undefined);
+        }}
+        movingIntoStorageUnit={movingIntoStorageUnit()}
         browsingStorageUnit={browsingStorageUnit()}
         removeFromStorageMode={removeFromStorageMode()}
         storageSelectedItemIds={storageSelectedItemIds()}
@@ -401,6 +427,12 @@ export function InventoryView(props: InventoryViewProps) {
         }}
         onRetrieveFromStorage={() => retrieveFromStorage(false)}
         onRetrieveAllFromStorage={() => retrieveFromStorage(true)}
+        onCancelMoveIntoStorage={() => {
+          setMovingIntoStorageUnit(undefined);
+          setStorageSelectedItemIds([]);
+          setStorageSelectionAnchorId(undefined);
+        }}
+        onConfirmMoveIntoStorage={moveIntoStorage}
         onCloseRename={() => setRenameOpen(false)}
         onDraftNameChange={setDraftName}
         onSelectedToolChange={setSelectedToolId}

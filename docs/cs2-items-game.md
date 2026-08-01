@@ -1,5 +1,7 @@
 # CS2 `items_game.txt` Metadata
 
+> TF2 campaign metadata uses the live GameTracking-TF2 mirror: `tf/scripts/items/items_game.txt`, `tf/resource/tf_english.txt`, and `tf/resource/tf_quests_english.txt`. The quest localization file resolves GC contract definition indexes to contract names, descriptions, and objective text; the GC shared-object cache remains authoritative for owned contracts, progress, campaign nodes, and reward-redemption records.
+
 `items_game.txt` is CS2's live economy schema file. This app fetches it from the public SteamDatabase GameTracking-CS2 mirror during inventory refresh so item names and categories do not depend on stale bundled data.
 
 Source:
@@ -29,6 +31,12 @@ schema. An isolated descriptor registry avoids globally registering another
 copy of Valve's package-less GC definitions. Checkout URLs originate in a
 correlated GC/Steam transaction response and are never derived from item
 metadata.
+
+See [`cs2-store-purchases.md`](cs2-store-purchases.md) for the complete coupon
+and headless GC checkout lifecycle. That document also records
+[CS2Interface](https://github.com/Citrinate/CS2Interface) as a useful working
+reference for Steam/GC session orchestration while retaining SteamTracking as
+the authority for message definitions.
 
 ## Documentation Sources
 

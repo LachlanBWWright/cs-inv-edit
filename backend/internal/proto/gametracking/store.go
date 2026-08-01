@@ -57,6 +57,10 @@ type StorePurchaseResponse struct {
 	URL           string
 	ItemIDs       []uint64
 }
+type StorePurchaseFinalizeResponse struct {
+	Result  uint32
+	ItemIDs []uint64
+}
 
 type ClientWelcomeStoreContext struct {
 	Currency int32
@@ -228,8 +232,6 @@ func MessageNameForEMsg(emsg uint32) (string, bool) {
 				"CMsgSO" + strings.TrimPrefix(raw, "_"),
 				"CMsgSOCache" + raw,
 				"CMsgSOCache" + strings.TrimPrefix(raw, "_"),
-				"CMsgSOSingleObject",
-				"CMsgSOMultipleObjects",
 			}
 			for _, candidate := range candidates {
 				if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
@@ -323,6 +325,27 @@ func UnmarshalStorePurchaseInitResponse(body []byte) (StorePurchaseResponse, err
 		ids[i] = list.Get(i).Uint()
 	}
 	return StorePurchaseResponse{Result: int32(getInt(message, "result")), TransactionID: getUint(message, "txn_id"), URL: getString(message, "url"), ItemIDs: ids}, nil
+}
+
+func MarshalStorePurchaseFinalize(transactionID uint64) ([]byte, error) {
+	return Marshal("CMsgGCStorePurchaseFinalize", map[string]uint64{"txn_id": transactionID})
+}
+
+func UnmarshalStorePurchaseFinalizeResponse(body []byte) (StorePurchaseFinalizeResponse, error) {
+	message, err := newMessage("CMsgGCStorePurchaseFinalizeResponse")
+	if err != nil {
+		return StorePurchaseFinalizeResponse{}, err
+	}
+	if err := proto.Unmarshal(body, message); err != nil {
+		return StorePurchaseFinalizeResponse{}, err
+	}
+	field := message.Descriptor().Fields().ByName("item_ids")
+	list := message.Get(field).List()
+	ids := make([]uint64, list.Len())
+	for i := 0; i < list.Len(); i++ {
+		ids[i] = list.Get(i).Uint()
+	}
+	return StorePurchaseFinalizeResponse{Result: uint32(getUint(message, "result")), ItemIDs: ids}, nil
 }
 
 func UnmarshalClientWelcomeStoreContext(body []byte) (ClientWelcomeStoreContext, error) {

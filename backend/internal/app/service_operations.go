@@ -16,7 +16,7 @@ import (
 func (s *Service) RefreshInventory() operations.Receipt {
 	receipt := s.newReceipt("inventory.refresh")
 	s.mu.Lock()
-	if s.connection.State != domain.ConnectionStateConnected {
+	if s.connection.State != domain.ConnectionStateConnected && s.connection.State != domain.ConnectionStateSessionConflict {
 		s.inventory.Status = "requires_connection"
 		s.inventory.RefreshedAt = now()
 		receipt.State = "requires_connection"
@@ -52,8 +52,18 @@ func (s *Service) RefreshInventory() operations.Receipt {
 		s.inventory = inventoryError(err.Error(), transport.DiagnosticsFromError(err))
 		receipt.State = "failed"
 		receipt.Message = err.Error()
+		if transport.IsSteamSessionConflict(err) {
+			s.connection.State = domain.ConnectionStateSessionConflict
+			s.connection.Detail = "This Steam account is active in another Steam or CS2 session. Close CS2 or sign out there, then retry the inventory sync."
+			s.connection.Diagnostics = transport.DiagnosticsFromError(err)
+		}
 	} else {
 		s.inventory = snapshot
+		if s.connection.State == domain.ConnectionStateSessionConflict {
+			s.connection.State = domain.ConnectionStateConnected
+			s.connection.Detail = "Steam and CS2 Game Coordinator session recovered"
+			s.connection.Diagnostics = nil
+		}
 		receipt.State = "completed"
 		receipt.Message = "inventory refreshed"
 	}
@@ -157,8 +167,14 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if value, ok := next["enableStorePurchases"].(bool); ok {
 				flags.EnableStorePurchases = value
 			}
+			if value, ok := next["enableFullCs2Store"].(bool); ok {
+				flags.EnableFullCS2Store = value
+			}
 			if value, ok := next["enableTf2Inventory"].(bool); ok {
 				flags.EnableTF2Inventory = value
+			}
+			if value, ok := next["enableTf2Store"].(bool); ok {
+				flags.EnableTF2Store = value
 			}
 			if value, ok := next["enableTf2Loadouts"].(bool); ok {
 				flags.EnableTF2Loadouts = value
@@ -300,7 +316,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if opType == "storage.move-out" {
+	if opType == "storage.move-in" || opType == "storage.move-out" {
 		casketIDText, _ := input["casketId"].(string)
 		itemIDText, _ := input["itemId"].(string)
 		casketID, casketParseErr := strconv.ParseUint(casketIDText, 10, 64)
@@ -308,23 +324,32 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.mu.Lock()
 		enabled := s.settings.FeatureFlags.EnableStorageMutations
 		connected := s.connection.State == domain.ConnectionStateConnected
+		storageValidation := s.validateStorageChangeLocked(opType, casketIDText, itemIDText)
 		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 		s.mu.Unlock()
 		switch {
 		case !enabled:
 			receipt.State, receipt.Message = "blocked_by_feature_flag", "storage operations disabled"
 		case !connected || sessionErr != nil:
-			receipt.State, receipt.Message = "failed", "connect a Steam account before retrieving storage contents"
+			receipt.State, receipt.Message = "failed", "connect a Steam account before changing storage contents"
 		case casketParseErr != nil || casketID == 0 || itemParseErr != nil || itemID == 0:
 			receipt.State, receipt.Message = "failed", "storage unit and item ids must be valid Steam item ids"
+		case storageValidation != "":
+			receipt.State, receipt.Message = "failed", storageValidation
 		default:
 			body, encodeErr := cs2pb.EncodeCasketItem(casketID, itemID)
 			if encodeErr != nil {
-				receipt.State, receipt.Message = "failed", "encode storage retrieval request: "+encodeErr.Error()
-			} else if sendErr := s.gcClient.SendProtoToGC(accountCtx, protocol.AppIDCS2, protocol.EMsgCasketItemExtract, body); sendErr != nil {
-				receipt.State, receipt.Message = "failed", "send storage retrieval request: "+sendErr.Error()
+				receipt.State, receipt.Message = "failed", "encode storage change request: "+encodeErr.Error()
 			} else {
-				receipt.State, receipt.Message = "awaiting_gc_confirmation", "storage retrieval request sent to CS2"
+				emsg := protocol.EMsgCasketItemExtract
+				if opType == "storage.move-in" {
+					emsg = protocol.EMsgCasketItemAdd
+				}
+				if sendErr := s.gcClient.SendProtoToGC(accountCtx, protocol.AppIDCS2, emsg, body); sendErr != nil {
+					receipt.State, receipt.Message = "failed", "send storage change request: "+sendErr.Error()
+				} else {
+					receipt.State, receipt.Message = "awaiting_gc_confirmation", "storage change request sent to CS2"
+				}
 			}
 		}
 		s.addEvent(receipt, receipt.State, receipt.Message)

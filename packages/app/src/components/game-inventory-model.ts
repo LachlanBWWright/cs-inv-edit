@@ -1,35 +1,32 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  onMount,
-} from "solid-js";
+import { createEffect, createMemo, createSignal } from "solid-js";
 import type {
   EconomyInventoryItemDto,
   PriceScanResult,
 } from "@cs-inv-edit/contracts";
 import {
-  calculateVirtualInventoryWindow,
   snapshotForGame,
-  virtualInventoryWindowChanged,
+  sortEconomyInventoryItems,
 } from "./game-inventory-utils.js";
 import {
   steamHostedSaleURL,
   steamInventoryAssetURL,
 } from "./steam-hosted-selling.js";
-import { randomRevealCandidate, type RevealItem } from "./ui/RevealAnimation.js";
+import {
+  randomRevealCandidate,
+  type RevealItem,
+} from "./ui/RevealAnimation.js";
 
-import { readTF2DismissedActivity,
-  writeTF2DismissedActivity } from "./game-inventory-elements.js";
+import {
+  readTF2DismissedActivity,
+  writeTF2DismissedActivity,
+} from "./game-inventory-elements.js";
 import type { GameInventoryViewProps } from "./GameInventoryView.js";
 
 export function createGameInventoryModel(props: GameInventoryViewProps) {
-  const [scrollTop, setScrollTop] = createSignal(0);
-  const [viewport, setViewport] = createSignal({ width: 800, height: 600 });
   const [operationStatus, setOperationStatus] = createSignal("");
   const [confirmUseItemId, setConfirmUseItemId] = createSignal<string>();
-  const [confirmStrangeResetId, setConfirmStrangeResetId] = createSignal<string>();
+  const [confirmStrangeResetId, setConfirmStrangeResetId] =
+    createSignal<string>();
   const [inspectRequestedAt, setInspectRequestedAt] = createSignal(0);
   const [matchGroup, setMatchGroup] = createSignal(7);
   const [dismissedActivity, setDismissedActivity] = createSignal<string[]>([]);
@@ -48,7 +45,6 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
   let priceInventoryKey = "";
   let requestedSelectedPrice = "";
   let requestedTF2Market = false;
-  let gridViewport: HTMLDivElement | undefined;
   const snapshot = () => snapshotForGame(props.game, props.snapshot);
   const title = () =>
     props.game === "steam"
@@ -71,7 +67,7 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
   const items = createMemo(() => {
     const query = props.query.trim().toLowerCase();
     const [filterCategory, filterName] = props.tagFilter.split("\u0000");
-    return (snapshot()?.items ?? []).filter((item) => {
+    const filtered = (snapshot()?.items ?? []).filter((item) => {
       const queryMatches =
         !query ||
         `${item.name} ${item.marketName ?? ""} ${item.type ?? ""} ${item.rarity ?? ""} ${item.quality ?? ""}`
@@ -86,6 +82,7 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
         );
       return queryMatches && tagMatches;
     });
+    return sortEconomyInventoryItems(filtered, props.sort, marketPrices());
   });
   const selected = createMemo(
     () =>
@@ -138,9 +135,7 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
       setDismissedActivity([]);
       return;
     }
-    setDismissedActivity(
-      readTF2DismissedActivity(props.steamId).unwrapOr([]),
-    );
+    setDismissedActivity(readTF2DismissedActivity(props.steamId).unwrapOr([]));
   });
   const dismissActivity = (key: string) => {
     const next = [...new Set([...dismissedActivity(), key])];
@@ -218,7 +213,10 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
       game: "tf2",
       inspectUrl,
     });
-    if (receipt && !["awaiting_gc_confirmation", "completed"].includes(receipt.state)) {
+    if (
+      receipt &&
+      !["awaiting_gc_confirmation", "completed"].includes(receipt.state)
+    ) {
       setInspectRequestedAt(0);
     }
   };
@@ -247,7 +245,8 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
     const market = selectedTF2Market();
     if (!market) return "";
     const currency = props.tf2Features?.currency;
-    if (!currency) return `${(market.priceMinor / 100).toFixed(2)} local currency`;
+    if (!currency)
+      return `${(market.priceMinor / 100).toFixed(2)} local currency`;
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
@@ -263,19 +262,6 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
     }
     return props.tf2Features?.inspectedItem;
   });
-  const virtualGrid = createMemo(() => {
-    const window = calculateVirtualInventoryWindow(
-      items().length,
-      viewport().width,
-      viewport().height,
-      scrollTop(),
-      props.compactMode,
-    );
-    return {
-      ...window,
-      visibleItems: items().slice(window.firstItem, window.lastItem),
-    };
-  });
   createEffect(() => {
     const current = snapshot();
     const inventoryKey = `${current?.appId ?? 0}\u0000${current?.refreshedAt ?? ""}`;
@@ -286,8 +272,8 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
     }
     const names = [
       ...new Set(
-        virtualGrid()
-          .visibleItems.filter((item) => item.marketable)
+        items()
+          .filter((item) => item.marketable)
           .map((item) => item.marketName)
           .filter(
             (value): value is string =>
@@ -311,34 +297,37 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
       });
     });
   });
-  const handleInventoryScroll = (nextScrollTop: number) => {
-    if (
-      virtualInventoryWindowChanged(
-        items().length,
-        viewport().width,
-        viewport().height,
-        scrollTop(),
-        nextScrollTop,
-        props.compactMode,
-      )
-    )
-      setScrollTop(nextScrollTop);
+  return {
+    operationStatus,
+    confirmUseItemId,
+    setConfirmUseItemId,
+    confirmStrangeResetId,
+    setConfirmStrangeResetId,
+    inspectRequestedAt,
+    matchGroup,
+    setMatchGroup,
+    marketPrices,
+    selectedPriceScan,
+    selectedPriceScanLoading,
+    tf2ContainerPreview,
+    setTF2ContainerPreview,
+    snapshot,
+    title,
+    items,
+    selected,
+    selectedTF2Details,
+    selectedTF2Item,
+    selectedSteamItem,
+    selectedServiceDetails,
+    dismissActivity,
+    tf2Activity,
+    previewTF2Container,
+    selectedSaleURL,
+    selectedInventoryURL,
+    submitTF2Operation,
+    resolveTF2Inspect,
+    selectedTF2Market,
+    selectedTF2MarketPrice,
+    inspectedTF2Item,
   };
-  onMount(() => {
-    if (!gridViewport) return;
-    const update = () =>
-      setViewport({
-        width: gridViewport?.clientWidth ?? 800,
-        height: gridViewport?.clientHeight ?? 600,
-      });
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(gridViewport);
-    onCleanup(() => observer.disconnect());
-  });
-
-  const setGridViewport = (element: HTMLDivElement) => {
-    gridViewport = element;
-  };
-  return { operationStatus, confirmUseItemId, setConfirmUseItemId, confirmStrangeResetId, setConfirmStrangeResetId, inspectRequestedAt, matchGroup, setMatchGroup, marketPrices, selectedPriceScan, selectedPriceScanLoading, tf2ContainerPreview, setTF2ContainerPreview, snapshot, title, items, selected, selectedTF2Details, selectedTF2Item, selectedSteamItem, selectedServiceDetails, dismissActivity, tf2Activity, previewTF2Container, selectedSaleURL, selectedInventoryURL, submitTF2Operation, resolveTF2Inspect, selectedTF2Market, selectedTF2MarketPrice, inspectedTF2Item, virtualGrid, handleInventoryScroll, setGridViewport };
 }

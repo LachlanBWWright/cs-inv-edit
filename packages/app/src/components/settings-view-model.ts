@@ -1,5 +1,6 @@
 import type { FeatureFlags, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
 import type { RevealItem } from "./ui/RevealAnimation.js";
+import type { UIActionOutcome } from "../lib/ui-action-outcome.js";
 
 export const emptyDebugReveal: RevealItem = { name: "Collection item" };
 
@@ -134,12 +135,7 @@ export interface SettingsViewProps {
   settings: SettingsData | undefined;
   inventory?: InventorySnapshot;
   onRefresh: () => void;
-  onSave: (next: SettingsData) => Promise<void>;
-  onToast?: (toast: {
-    title: string;
-    description?: string;
-    variant?: "default" | "success" | "warning" | "danger";
-  }) => void;
+  onSave: (next: SettingsData) => Promise<UIActionOutcome>;
 }
 
 export function settingsEqual(

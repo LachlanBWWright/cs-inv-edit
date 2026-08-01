@@ -294,5 +294,14 @@ func firstNonEmpty(values ...string) string {
 }
 
 func marketNameMatches(want string, got string) bool {
-	return strings.EqualFold(strings.TrimSpace(want), strings.TrimSpace(got))
+	return strings.EqualFold(normalizeTF2MarketName(want), normalizeTF2MarketName(got))
+}
+
+func normalizeTF2MarketName(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "The ")
+	for _, quality := range []string{"Unique ", "Genuine ", "Vintage ", "Strange ", "Unusual ", "Haunted ", "Collector's ", "Decorated Weapon "} {
+		value = strings.TrimPrefix(value, quality)
+	}
+	return strings.TrimSpace(value)
 }

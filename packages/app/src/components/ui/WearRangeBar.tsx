@@ -55,7 +55,7 @@ export function WearRangeBar(props: {
       class={
         props.compact
           ? "w-full px-1"
-          : "rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4"
+          : "rounded-2xl border border-slate-800/80 bg-slate-900 p-4"
       }
     >
       <Show when={!props.compact}>

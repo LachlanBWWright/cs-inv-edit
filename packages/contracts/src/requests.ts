@@ -1,49 +1,3 @@
-export interface FeatureFlags {
-  enableStorageMutations: boolean;
-  enableContainerOpening: boolean;
-  enableInventoryDebug: boolean;
-  showStorageUnitItems: boolean;
-  enableProtocolConsole?: boolean;
-  enableTradeups: boolean;
-  enableStickerExtract: boolean;
-  enableNameTags: boolean;
-  enableItemDeletion: boolean;
-  enableStatTrakSwap: boolean;
-  enableStrangeParts: boolean;
-  enableItemUse: boolean;
-  enableToolApplication: boolean;
-  enableGifting: boolean;
-  enableArmoryRead?: boolean;
-  enableArmoryRedemption?: boolean;
-  enableStoreRead?: boolean;
-  enableStorePurchases?: boolean;
-  enableCs2Loadouts?: boolean;
-  enableTf2Inventory: boolean;
-  enableTf2Loadouts: boolean;
-  enableTf2ItemUse: boolean;
-  enableTf2Tools: boolean;
-  enableTf2Crafting: boolean;
-  enableTf2Unboxing: boolean;
-  enableTf2Customization: boolean;
-  enableDota2Inventory: boolean;
-  enableSteamInventory: boolean;
-  enableSteamTradeMutations?: boolean;
-}
-
-export interface SteamTradeMutationAssetRequest {
-  appId: number;
-  contextId: string;
-  assetId: string;
-  amount: number;
-}
-export interface CreateSteamTradeOfferRequest {
-  partnerSteamId: string;
-  message?: string;
-  itemsToGive: SteamTradeMutationAssetRequest[];
-  itemsToReceive: SteamTradeMutationAssetRequest[];
-  tradeToken?: string;
-}
-
 export type EconomyGame = "steam" | "tf2" | "dota2";
 export type EconomyInventorySource = EconomyGame | "steam-service";
 
@@ -131,67 +85,6 @@ export type TF2OperationRequest =
       keyItemId?: string;
       confirmed?: boolean;
     };
-
-export interface TF2InspectedItem {
-  id: string;
-  originalId?: string;
-  definitionId: number;
-  quantity: number;
-  level: number;
-  qualityId: number;
-  flags: number;
-  originId: number;
-  customName?: string;
-  customDescription?: string;
-  style: number;
-  attributes: { definitionId: number; value?: string; valueBytes?: string }[];
-  equippedStates: { classId: number; slotId: number }[];
-  interiorItem?: TF2InspectedItem;
-}
-
-export interface TF2FeatureSnapshot {
-  status: "waiting" | "ready" | "disabled" | "requires_connection";
-  refreshedAt?: string;
-  presetItems: { classId: number; presetId: number; slotId: number; itemId: string }[];
-  classPresets: { classId: number; activePresetId: number }[];
-  matches: Record<string, unknown>[];
-  ladder: Record<string, unknown>[];
-  ratings: Record<string, unknown>[];
-  quests: Record<string, unknown>[];
-  questNodes: Record<string, unknown>[];
-  questRewards: Record<string, unknown>[];
-  matchmaking?: Record<string, unknown>;
-  dataCenterPing?: Record<string, unknown>;
-  dailyStats?: Record<string, unknown>;
-  activity: { kind: string; id?: string; timestamp?: number; data: Record<string, unknown> }[];
-  market: { definitionId: number; qualityId: number; sellListings: number; priceMinor: number }[];
-  inspectedItem?: TF2InspectedItem;
-  inspectedAt?: string;
-  marketAt?: string;
-  currency?: string;
-  diagnostics: string[];
-}
-
-export interface CS2FeatureSnapshot {
-  status: "waiting" | "ready" | "requires_connection";
-  refreshedAt?: string;
-  equipSlots: { classId: number; slotId: number; itemId: string; definitionId: number }[];
-  matches: Record<string, unknown>[];
-  profile?: Record<string, unknown>;
-  premier?: Record<string, unknown>;
-  deepStats?: Record<string, unknown>;
-  searchStats?: Record<string, unknown>;
-  inspectedItem?: Record<string, unknown>;
-  inspectedAt?: string;
-  rentals: Record<string, unknown>[];
-  quests: Record<string, unknown>[];
-  recurringMissions: Record<string, unknown>[];
-  seasonalOperations: Record<string, unknown>[];
-  xpShop?: Record<string, unknown>;
-  recurringSchema?: Record<string, unknown>;
-  activity: { kind: string; id?: string; timestamp?: number; data: Record<string, unknown> }[];
-  diagnostics: string[];
-}
 
 export interface EconomyTagDto {
   category: string;
@@ -331,22 +224,6 @@ export interface SteamInventoryServiceItemDetails extends EconomyItemDetailsBase
   capabilities?: never;
 }
 
-export interface SteamInventoryServiceGame {
-  appId: number;
-  name: string;
-  playtimeMinutes: number;
-  lastPlayed: number;
-  hasMarket: boolean;
-}
-
-export interface SteamInventoryServiceGames {
-  games: SteamInventoryServiceGame[];
-  refreshedAt: string;
-  status: "ready" | "requires_connection" | "error";
-  message?: string;
-  diagnostics: string[];
-}
-
 export type EconomyInventoryItemDto =
   | (EconomyInventoryItemBase & {
       game: "steam";
@@ -400,13 +277,26 @@ export type GameInventorySnapshot =
       items: Extract<EconomyInventoryItemDto, { game: "dota2" }>[];
     });
 
-export interface SettingsData {
-  backendUrl: string;
-  validationMode: boolean;
-  sacrificialAccountMode: boolean;
-  featureFlags: FeatureFlags;
-  animations: AnimationSettings;
-  armoryPurchasePacingSeconds: number;
-}
+import type {
+  Cs2FeatureSnapshot as CS2FeatureSnapshot,
+  CreateSteamTradeOfferRequest,
+  FeatureFlags,
+  SettingsData,
+  SteamTradeAssetRequest as SteamTradeMutationAssetRequest,
+  SteamInventoryServiceGame,
+  SteamInventoryServiceGames,
+  Tf2FeatureSnapshot as TF2FeatureSnapshot,
+  Tf2InspectedItem as TF2InspectedItem,
+} from "./generated/types.gen.js";
 
-import type { AnimationSettings } from "./settings-contracts.js";
+export type {
+  CreateSteamTradeOfferRequest,
+  CS2FeatureSnapshot,
+  FeatureFlags,
+  SettingsData,
+  SteamTradeMutationAssetRequest,
+  SteamInventoryServiceGame,
+  SteamInventoryServiceGames,
+  TF2FeatureSnapshot,
+  TF2InspectedItem,
+};

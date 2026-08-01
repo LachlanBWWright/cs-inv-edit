@@ -59,6 +59,17 @@ type Metadata struct {
 	PaintWearMin          *float64
 	PaintWearMax          *float64
 	DecodedAttributes     []DecodedEconAttribute
+	IsVolatileContainer   bool
+}
+
+// IsCoupon reports whether the definition uses Valve's coupon item schema.
+// This is the authoritative boundary for Steam's public /buyitem route.
+func (s *Schema) IsCoupon(defIndex uint32) bool {
+	item, ok := s.items[defIndex]
+	if !ok {
+		return false
+	}
+	return strings.Contains(strings.ToLower(item.Prefab+" "+item.Name), "coupon")
 }
 
 type econAttributeDefinition struct {
@@ -197,6 +208,7 @@ type itemDefinition struct {
 	Capabilities          map[string]string
 	LootList              string
 	SupplyCrateSeries     string
+	IsVolatileContainer   bool
 	RequiredKeyDefIndexes []uint32
 }
 

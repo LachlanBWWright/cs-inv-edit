@@ -2,6 +2,7 @@ import { For, Show } from "solid-js";
 import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
 import { Button } from "./ui/Button.js";
 import { Select } from "./ui/Select.js";
+import { Alert } from "./ui/Alert.js";
 import {
   isActiveTerminal,
   isOpenableContainer,
@@ -33,7 +34,7 @@ export interface TradeUpOutcomesProps {
 function TradeUpOutcomeCard(props: { outcome: RelatedItemDto }) {
   return (
     <article
-      class={`rounded-xl border-2 bg-slate-950/70 p-3 ${rarityBorderClass(props.outcome.rarity)}`}
+      class={`rounded-xl border-2 bg-slate-950 p-3 ${rarityBorderClass(props.outcome.rarity)}`}
     >
       <div class="flex gap-3">
         <Show
@@ -89,14 +90,14 @@ export function TradeUpOutcomes(props: TradeUpOutcomesProps) {
         (props.selected.tradeUpItems?.length ?? 0) > 0
       }
     >
-      <section class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4">
+      <section class="rounded-2xl border border-slate-800/80 bg-slate-900 p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <h4 class="font-semibold text-slate-100">
             Identical-copy trade-up outcomes
           </h4>
           <button
             type="button"
-            class="rounded-md border border-cyan-500/40 bg-cyan-600/80 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500"
+            class="rounded-md border border-cyan-500/40 bg-cyan-950 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500"
             onClick={() => props.onPreview?.(props.selected)}
           >
             Preview trade-up animation
@@ -145,6 +146,7 @@ export interface ActionBarProps {
   onRemoveName: () => Promise<void> | void;
   onShowContents: () => void;
   onViewStorageContents: () => Promise<void> | void;
+  onBeginMoveIntoStorage: (item: InventoryItemDto) => void;
   onSelectedContainerKeyChange: (value: string) => void;
 }
 
@@ -163,17 +165,20 @@ function ContainerKeyControl(
   }
   if (props.compatibleContainerKeys.length === 0) {
     return (
-      <p class="max-w-sm text-xs text-amber-300">
-        This container requires a compatible key, but none is present in your
-        inventory.
-      </p>
+      <Alert variant="warning" class="p-3">
+        <p class="font-medium">Compatible key required</p>
+        <p class="mt-1 text-xs text-amber-200">
+          This container requires a compatible key, but none is present in your
+          inventory.
+        </p>
+      </Alert>
     );
   }
   return (
-    <label class="max-w-sm text-xs text-slate-300">
-      Compatible key
+    <label class="block text-sm font-medium text-slate-200">
+      Choose a compatible key
       <Select
-        class="mt-1 w-full"
+        class="mt-2 w-full"
         value={props.selectedContainerKeyId}
         onChange={(event) =>
           props.onSelectedContainerKeyChange(
@@ -200,39 +205,64 @@ export function ActionBar(props: ActionBarProps) {
 
   return (
     <div class="flex flex-wrap gap-2">
-      <Show when={props.selected.containerItems?.length}>
-        <Button variant="secondary" onClick={() => props.onShowContents()}>
-          View possible contents ({props.selected.containerItems?.length})
-        </Button>
+      <Show when={showOpenContainer() || props.selected.containerItems?.length}>
+        <section class="w-full space-y-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+          <p class="text-sm font-semibold text-slate-100">Open container</p>
+          <Show when={showOpenContainer()}>
+            <ContainerKeyControl
+              selected={props.selected}
+              compatibleContainerKeys={props.compatibleContainerKeys}
+              selectedContainerKeyId={props.selectedContainerKeyId}
+              onSelectedContainerKeyChange={props.onSelectedContainerKeyChange}
+            />
+          </Show>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <Show when={props.selected.containerItems?.length}>
+              <Button
+                variant="secondary"
+                class="w-full"
+                onClick={() => props.onShowContents()}
+              >
+                View contents ({props.selected.containerItems?.length})
+              </Button>
+            </Show>
+            <Show when={showOpenContainer()}>
+              <Button
+                class="w-full"
+                onClick={() => void props.onOpenContainer()}
+                disabled={props.pending}
+              >
+                {requiresKeySelection() ? "Choose key" : "Open"}
+              </Button>
+            </Show>
+          </div>
+          <Show when={props.containerStatusMessage}>
+            <p class="text-sm text-slate-400">{props.containerStatusMessage}</p>
+          </Show>
+        </section>
       </Show>
       <Show when={props.selected.kind === "storage_unit"}>
-        <Button
-          variant="secondary"
-          onClick={() => void props.onViewStorageContents()}
-          disabled={props.pending}
-        >
-          View contents ({props.selected.storageCount ?? 0})
-        </Button>
-      </Show>
-      <Show when={showOpenContainer()}>
-        <div class="flex flex-col gap-2">
-          <ContainerKeyControl
-            selected={props.selected}
-            compatibleContainerKeys={props.compatibleContainerKeys}
-            selectedContainerKeyId={props.selectedContainerKeyId}
-            onSelectedContainerKeyChange={props.onSelectedContainerKeyChange}
-          />
+        <div class="grid gap-2 sm:grid-cols-2">
           <Button
-            onClick={() => void props.onOpenContainer()}
+            variant="action"
+            size="lg"
+            class="w-full rounded-xl py-3"
+            onClick={() => void props.onViewStorageContents()}
             disabled={props.pending}
           >
-            {requiresKeySelection() ? "Choose key" : "Open"}
+            View contents ({props.selected.storageCount ?? 0})
           </Button>
-          <Show when={props.containerStatusMessage}>
-            <p class="max-w-sm text-sm text-slate-400">
-              {props.containerStatusMessage}
-            </p>
-          </Show>
+          <Button
+            variant="action"
+            size="lg"
+            class="w-full rounded-xl py-3"
+            onClick={() => props.onBeginMoveIntoStorage(props.selected)}
+            disabled={
+              props.pending || (props.selected.storageCount ?? 0) >= 1000
+            }
+          >
+            Move items into unit
+          </Button>
         </div>
       </Show>
       <Show when={props.canUseNameTagOn}>
@@ -247,7 +277,7 @@ export function ActionBar(props: ActionBarProps) {
       <Show when={props.selected.hasCustomName || props.selected.customName}>
         <Button
           variant="danger"
-          class="bg-rose-600/90 hover:bg-rose-500"
+          class="bg-rose-950 hover:bg-rose-500"
           onClick={() => void props.onRemoveName()}
           disabled={props.pending}
         >

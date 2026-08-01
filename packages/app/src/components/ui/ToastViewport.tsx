@@ -18,15 +18,17 @@ function ToastCard(props: {
   onDismiss: (id: string) => void;
 }) {
   const variants = {
-    default: "border-slate-700 bg-slate-900/95 text-slate-100",
-    success: "border-emerald-500/30 bg-emerald-950/90 text-emerald-100",
-    warning: "border-amber-500/30 bg-amber-950/90 text-amber-100",
-    danger: "border-rose-500/30 bg-rose-950/90 text-rose-100",
+    default: "border-slate-700 bg-slate-900 text-slate-100",
+    success: "border-emerald-700 bg-emerald-950 text-emerald-100",
+    warning: "border-amber-700 bg-amber-950 text-amber-100",
+    danger: "border-rose-700 bg-rose-950 text-rose-100",
   };
 
   return (
     <div
-      class={`pointer-events-auto rounded-xl border p-4 shadow-2xl ${variants[props.toast.variant ?? "default"]}`}
+      role={props.toast.variant === "danger" ? "alert" : "status"}
+      aria-live={props.toast.variant === "danger" ? "assertive" : "polite"}
+      class={`pointer-events-auto rounded-xl border p-4 shadow-md shadow-black ${variants[props.toast.variant ?? "default"]}`}
     >
       <div class="flex items-start justify-between gap-3">
         <div>
@@ -39,6 +41,7 @@ function ToastCard(props: {
           variant="ghost"
           size="sm"
           class="p-1"
+          label={`Dismiss ${props.toast.title}`}
           onClick={() => props.onDismiss(props.toast.id)}
         >
           ×

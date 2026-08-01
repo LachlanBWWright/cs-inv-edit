@@ -76,7 +76,7 @@ export function ItemMarketBadges(props: {
       <Show when={price()}>
         {(label) => (
           <span
-            class="pointer-events-none absolute left-2 top-2 z-20 rounded-md border border-emerald-400/35 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-200 shadow-lg backdrop-blur"
+            class="pointer-events-none absolute left-2 top-2 z-20 rounded-md border border-emerald-400/35 bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-200 shadow-sm shadow-black"
             aria-label={`Steam Market price ${label()}`}
           >
             {label()}
@@ -86,7 +86,7 @@ export function ItemMarketBadges(props: {
       <Show when={tradeStatus()}>
         {(label) => (
           <span
-            class={`pointer-events-none absolute right-2 top-2 z-20 min-w-6 rounded-md border bg-slate-950/90 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase shadow-lg backdrop-blur ${statusClasses()}`}
+            class={`pointer-events-none absolute right-2 top-2 z-20 min-w-6 rounded-md border bg-slate-950 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase shadow-sm shadow-black ${statusClasses()}`}
             aria-label={
               label() === "✓"
                 ? "Tradable"

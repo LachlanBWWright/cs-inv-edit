@@ -4,6 +4,54 @@ import type {
   GameInventorySnapshot,
 } from "@cs-inv-edit/contracts";
 
+export type EconomyInventorySort =
+  | "name"
+  | "quality-high"
+  | "quality-low"
+  | "price-high"
+  | "price-low"
+  | "quantity-high";
+
+const tf2QualityRanks: Record<number, number> = {
+  0: 0,
+  6: 1,
+  3: 2,
+  1: 3,
+  11: 4,
+  5: 5,
+  13: 6,
+  14: 7,
+  15: 8,
+  7: 9,
+  9: 9,
+  8: 10,
+};
+
+export function sortEconomyInventoryItems(
+  items: EconomyInventoryItemDto[],
+  sort: EconomyInventorySort,
+  prices: ReadonlyMap<string, number>,
+) {
+  const result = [...items];
+  result.sort((left, right) => {
+    const byName = left.name.localeCompare(right.name);
+    if (sort === "name") return byName;
+    if (sort === "quantity-high")
+      return right.quantity - left.quantity || byName;
+    if (sort === "quality-high" || sort === "quality-low") {
+      const comparison =
+        (tf2QualityRanks[left.details.qualityId] ?? 0) -
+        (tf2QualityRanks[right.details.qualityId] ?? 0);
+      return (sort === "quality-low" ? comparison : -comparison) || byName;
+    }
+    const comparison =
+      (prices.get(left.marketName ?? "") ?? 0) -
+      (prices.get(right.marketName ?? "") ?? 0);
+    return (sort === "price-low" ? comparison : -comparison) || byName;
+  });
+  return result;
+}
+
 export function snapshotForGame(
   game: EconomyInventorySource,
   snapshot?: GameInventorySnapshot,
@@ -58,6 +106,29 @@ const tf2QualityClasses: Record<string, string> = {
   collectors: "economy-outline--tf2-collectors",
   community: "economy-outline--tf2-community",
   selfmade: "economy-outline--tf2-selfmade",
+  "self-made": "economy-outline--tf2-selfmade",
+  developer: "economy-outline--tf2-valve",
+  valve: "economy-outline--tf2-valve",
+  paintkitweapon: "economy-outline--tf2-decorated",
+  decorated: "economy-outline--tf2-decorated",
+  "collector's": "economy-outline--tf2-collectors",
+  collector: "economy-outline--tf2-collectors",
+};
+
+const tf2QualityIdClasses: Record<number, string> = {
+  0: "economy-outline--tf2-normal",
+  1: "economy-outline--tf2-genuine",
+  3: "economy-outline--tf2-vintage",
+  5: "economy-outline--tf2-unusual",
+  6: "economy-outline--tf2-unique",
+  7: "economy-outline--tf2-community",
+  8: "economy-outline--tf2-valve",
+  9: "economy-outline--tf2-selfmade",
+  11: "economy-outline--tf2-strange",
+  12: "economy-outline--tf2-unusual",
+  13: "economy-outline--tf2-haunted",
+  14: "economy-outline--tf2-collectors",
+  15: "economy-outline--tf2-decorated",
 };
 const dotaRarityClasses: Record<string, string> = {
   common: "economy-outline--dota-common",
@@ -84,8 +155,45 @@ export function economyOutlineClass(item: EconomyInventoryItemDto) {
     .toLowerCase()
     .replace(/^rarity_/, "");
   return item.game === "tf2"
-    ? (tf2QualityClasses[internalName] ?? "")
+    ? (tf2QualityClasses[internalName] ??
+        tf2QualityIdClasses[item.details.qualityId] ??
+        "")
     : (dotaRarityClasses[internalName] ?? "");
+}
+
+export type TF2ItemEffect = "strange" | "unusual";
+
+export function tf2ItemEffects(item: EconomyInventoryItemDto): TF2ItemEffect[] {
+  if (item.game !== "tf2") return [];
+  const searchable = [
+    item.name,
+    item.marketName,
+    item.quality,
+    item.details.schemaQuality,
+    ...(item.descriptions ?? []),
+    ...item.tags.flatMap((tag) => [tag.internalName, tag.name]),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .toLowerCase();
+  const decodedNames =
+    item.details.decodedAttributes?.map((entry) =>
+      `${entry.name} ${entry.attributeClass ?? ""}`.toLowerCase(),
+    ) ?? [];
+  const effects: TF2ItemEffect[] = [];
+  if (
+    item.details.qualityId === 11 ||
+    searchable.includes("strange") ||
+    decodedNames.some((name) => name.includes("kill eater"))
+  )
+    effects.push("strange");
+  if (
+    item.details.qualityId === 5 ||
+    searchable.includes("unusual") ||
+    decodedNames.some((name) => name.includes("particle effect"))
+  )
+    effects.push("unusual");
+  return effects;
 }
 
 export function calculateVirtualInventoryWindow(

@@ -26,7 +26,7 @@ import type {
   TF2FeatureSnapshot,
   CS2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
-import { backendSchemas } from "@cs-inv-edit/contracts";
+import { backendSchemas, localAgentPaths } from "@cs-inv-edit/contracts";
 import "@cs-inv-edit/app/styles.css";
 import { createWasmBackendClient } from "./wasmBackend.js";
 
@@ -55,179 +55,215 @@ function createPostResult<T>(
 function createHttpBackendClient(): LocalAgentClient {
   return {
     health: () =>
-      createRequestResult<HealthStatus>("/health", backendSchemas.health),
+      createRequestResult<HealthStatus>(
+        localAgentPaths.health,
+        backendSchemas.health,
+      ),
     inventory: () =>
       createRequestResult<InventorySnapshot>(
-        "/inventory",
+        localAgentPaths.inventory,
         backendSchemas.inventory,
       ),
     refreshInventory: () =>
       createRequestResult<OperationReceipt>(
-        "/inventory/refresh",
+        localAgentPaths.refreshInventory,
         backendSchemas.receipt,
         { method: "POST" },
       ),
     gameInventory: (game) =>
       createRequestResult<GameInventorySnapshot>(
-        `/games/${game}/inventory`,
+        localAgentPaths.gameInventory(game),
         backendSchemas.gameInventory,
       ),
     refreshGameInventory: (game) =>
       createRequestResult<OperationReceipt>(
-        `/games/${game}/inventory/refresh`,
+        localAgentPaths.refreshGameInventory(game),
         backendSchemas.receipt,
         { method: "POST" },
       ),
     tf2Features: () =>
       createRequestResult<TF2FeatureSnapshot>(
-        "/games/tf2/features",
+        localAgentPaths.tf2Features,
         backendSchemas.tf2Features,
       ),
     cs2Features: () =>
       createRequestResult<CS2FeatureSnapshot>(
-        "/games/cs2/features",
+        localAgentPaths.cs2Features,
         backendSchemas.cs2Features,
       ),
     steamInventoryService: (appId) =>
       createRequestResult<GameInventorySnapshot>(
-        `/steam-inventory-service/${appId}`,
+        localAgentPaths.steamInventoryService(appId),
         backendSchemas.gameInventory,
       ),
     steamInventoryServiceGames: () =>
       createRequestResult(
-        `/steam-inventory-service/games`,
+        localAgentPaths.steamInventoryServiceGames,
         backendSchemas.steamInventoryServiceGames,
       ),
     refreshSteamInventoryService: (appId) =>
       createRequestResult<OperationReceipt>(
-        `/steam-inventory-service/${appId}/refresh`,
+        localAgentPaths.refreshSteamInventoryService(appId),
         backendSchemas.receipt,
         { method: "POST" },
       ),
     armory: () =>
-      createRequestResult<ArmorySnapshot>("/armory", backendSchemas.armory),
+      createRequestResult<ArmorySnapshot>(
+        localAgentPaths.armory,
+        backendSchemas.armory,
+      ),
     marketPreview: (marketName) =>
       createRequestResult(
-        `/market/preview?marketName=${encodeURIComponent(marketName)}`,
+        localAgentPaths.marketPreview(marketName),
         backendSchemas.marketPreview,
       ),
     refreshArmory: () =>
       createRequestResult<OperationReceipt>(
-        "/armory/refresh",
+        localAgentPaths.refreshArmory,
         backendSchemas.receipt,
         { method: "POST" },
       ),
     redeemArmory: (input) =>
       createPostResult<OperationReceipt>(
-        "/armory/redeem",
+        localAgentPaths.redeemArmory,
         backendSchemas.receipt,
         input,
       ),
     store: () =>
-      createRequestResult<StoreSnapshot>("/store", backendSchemas.store),
+      createRequestResult<StoreSnapshot>(
+        localAgentPaths.store,
+        backendSchemas.store,
+      ),
     refreshStore: () =>
       createRequestResult<OperationReceipt>(
-        "/store/refresh",
+        localAgentPaths.refreshStore,
         backendSchemas.receipt,
         { method: "POST" },
       ),
+    tf2Store: () =>
+      createRequestResult<StoreSnapshot>(
+        localAgentPaths.tf2Store,
+        backendSchemas.store,
+      ),
+    refreshTF2Store: () =>
+      createRequestResult<OperationReceipt>(
+        localAgentPaths.refreshTf2Store,
+        backendSchemas.receipt,
+        { method: "POST" },
+      ),
+    initializeTF2StorePurchase: (input) =>
+      createPostResult<PurchaseSession>(
+        localAgentPaths.initializeTf2StorePurchase,
+        backendSchemas.purchaseSession,
+        input,
+      ),
     trades: () =>
       createRequestResult<SteamTradesSnapshot>(
-        "/trades",
+        localAgentPaths.trades,
         backendSchemas.trades,
       ),
     refreshTrades: () =>
       createRequestResult<SteamTradesSnapshot>(
-        "/trades/refresh",
+        localAgentPaths.refreshTrades,
         backendSchemas.trades,
         { method: "POST" },
       ),
     tradeAccounts: () =>
       createRequestResult<SteamAccountTradesCollection>(
-        "/trade-accounts",
+        localAgentPaths.tradeAccounts,
         backendSchemas.tradeAccounts,
       ),
     refreshTradeAccounts: (steamId) =>
       createRequestResult<SteamAccountTradesCollection>(
-        `/trade-accounts${steamId ? `?steamId=${encodeURIComponent(steamId)}` : ""}`,
+        localAgentPaths.refreshTradeAccounts(steamId),
         backendSchemas.tradeAccounts,
         { method: "POST" },
       ),
     createTradeOffer: (input) =>
-      createPostResult("/trades/offers", backendSchemas.tradeMutation, input),
+      createPostResult(
+        localAgentPaths.createTradeOffer,
+        backendSchemas.tradeMutation,
+        input,
+      ),
     acceptTradeOffer: (id) =>
       createPostResult(
-        `/trades/offers/${encodeURIComponent(id)}/accept`,
+        localAgentPaths.acceptTradeOffer(id),
         backendSchemas.tradeMutation,
         {},
       ),
     counterTradeOffer: (id, input) =>
       createPostResult(
-        `/trades/offers/${encodeURIComponent(id)}/counter`,
+        localAgentPaths.counterTradeOffer(id),
         backendSchemas.tradeMutation,
         input,
       ),
     initializeStorePurchase: (input) =>
       createPostResult<PurchaseSession>(
-        "/store/purchases",
+        localAgentPaths.initializeStorePurchase,
         backendSchemas.purchaseSession,
         input,
       ),
     storePurchase: (id) =>
       createRequestResult<PurchaseSession>(
-        `/store/purchases/${encodeURIComponent(id)}`,
+        localAgentPaths.storePurchase(id),
         backendSchemas.purchaseSession,
       ),
     reconcileStorePurchase: (id) =>
       createRequestResult<PurchaseSession>(
-        `/store/purchases/${encodeURIComponent(id)}/reconcile`,
+        localAgentPaths.reconcileStorePurchase(id),
         backendSchemas.purchaseSession,
         { method: "POST" },
       ),
     submitOperation: (type, input) =>
       createPostResult<OperationReceipt>(
-        `/operations/${encodeURIComponent(type)}`,
+        localAgentPaths.submitOperation(type),
         backendSchemas.receipt,
         input,
       ),
     operations: () =>
       createRequestResult<OperationReceipt[]>(
-        "/operations",
+        localAgentPaths.operations,
         backendSchemas.receipts,
       ),
     events: () =>
-      createRequestResult<OperationEvent[]>("/events", backendSchemas.events),
+      createRequestResult<OperationEvent[]>(
+        localAgentPaths.events,
+        backendSchemas.events,
+      ),
     protocolTrace: (after) =>
       createRequestResult<ProtocolTraceEntry[]>(
-        `/protocol-trace?after=${after}`,
+        localAgentPaths.protocolTrace(after),
         backendSchemas.protocolTrace,
       ),
     settings: () =>
-      createRequestResult<SettingsData>("/settings", backendSchemas.settings),
+      createRequestResult<SettingsData>(
+        localAgentPaths.settings,
+        backendSchemas.settings,
+      ),
     steamStatus: () =>
       createRequestResult<ConnectionStatus>(
-        "/steam/status",
+        localAgentPaths.steamStatus,
         backendSchemas.connection,
       ),
     connectSteam: (input) =>
       createPostResult<ConnectionStatus>(
-        "/steam/connect",
+        localAgentPaths.connectSteam,
         backendSchemas.connection,
         input,
       ),
     startSteamQR: () =>
       createPostResult<ConnectionStatus>(
-        "/steam/qr",
+        localAgentPaths.startSteamQr,
         backendSchemas.connection,
         {},
       ),
     watchSteamStatus: (listener) => {
       const parse = fromThrowable(JSON.parse, (cause) => cause);
       return watchSteamStatusWithRecovery({
-        socketUrl: "ws://127.0.0.1:7331/steam/status/ws",
+        socketUrl: `ws://127.0.0.1:7331${localAgentPaths.steamStatusWebSocket}`,
         readStatus: () =>
           createRequestResult<ConnectionStatus>(
-            "/steam/status",
+            localAgentPaths.steamStatus,
             backendSchemas.connection,
           ),
         listener,
@@ -242,73 +278,73 @@ function createHttpBackendClient(): LocalAgentClient {
     },
     submitSteamGuard: (input) =>
       createPostResult<ConnectionStatus>(
-        "/steam/guard",
+        localAgentPaths.submitSteamGuard,
         backendSchemas.connection,
         input,
       ),
     disconnectSteam: () =>
       createRequestResult<ConnectionStatus>(
-        "/steam/disconnect",
+        localAgentPaths.disconnectSteam,
         backendSchemas.connection,
         { method: "POST" },
       ),
     applyNameTag: (input) =>
       createPostResult<OperationReceipt>(
-        "/nametags/apply",
+        localAgentPaths.applyNameTag,
         backendSchemas.receipt,
         input,
       ),
     removeNameTag: (input) =>
       createPostResult<OperationReceipt>(
-        "/nametags/remove",
+        localAgentPaths.removeNameTag,
         backendSchemas.receipt,
         input,
       ),
     deleteItem: (input) =>
       createPostResult<OperationReceipt>(
-        "/items/delete",
+        localAgentPaths.deleteItem,
         backendSchemas.receipt,
         input,
       ),
     applyStatTrakSwap: (input) =>
       createPostResult<OperationReceipt>(
-        "/stattrak/swap",
+        localAgentPaths.applyStatTrakSwap,
         backendSchemas.receipt,
         input,
       ),
     applyStrangePart: (input) =>
       createPostResult<OperationReceipt>(
-        "/strange-parts/apply",
+        localAgentPaths.applyStrangePart,
         backendSchemas.receipt,
         input,
       ),
     useItem: (input) =>
       createPostResult<OperationReceipt>(
-        "/items/use",
+        localAgentPaths.useItem,
         backendSchemas.receipt,
         input,
       ),
     useMultipleItems: (input) =>
       createPostResult<OperationReceipt>(
-        "/items/use-multiple",
+        localAgentPaths.useMultipleItems,
         backendSchemas.receipt,
         input,
       ),
     applyToolToItem: (input) =>
       createPostResult<OperationReceipt>(
-        "/tools/apply",
+        localAgentPaths.applyToolToItem,
         backendSchemas.receipt,
         input,
       ),
     applyToolToBaseItem: (input) =>
       createPostResult<OperationReceipt>(
-        "/tools/apply-base",
+        localAgentPaths.applyToolToBaseItem,
         backendSchemas.receipt,
         input,
       ),
     giftItem: (input) =>
       createPostResult<OperationReceipt>(
-        "/gifts/send",
+        localAgentPaths.sendGift,
         backendSchemas.receipt,
         input,
       ),

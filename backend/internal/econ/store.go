@@ -19,6 +19,7 @@ type StoreCatalogOffer struct {
 	SalePrices               map[string]uint64
 	PurchaseType             uint32
 	SupplementalDataRequired bool
+	LocalPrice               *uint64
 }
 type StoreCatalog struct{ Offers []StoreCatalogOffer }
 type binaryKVNode struct {
@@ -28,10 +29,21 @@ type binaryKVNode struct {
 }
 
 func ParseStorePriceSheet(compressed []byte) (StoreCatalog, error) {
+	if len(compressed) == 0 {
+		return StoreCatalog{}, fmt.Errorf("store price sheet payload was empty")
+	}
+	if catalog, rawErr := parseStoreCatalog(compressed); rawErr == nil {
+		return catalog, nil
+	}
 	plain, err := decompressValveLZMA(compressed)
 	if err != nil {
-		return StoreCatalog{}, err
+		prefixLength := min(len(compressed), 16)
+		return StoreCatalog{}, fmt.Errorf("%w (payload_bytes=%d prefix=%x)", err, len(compressed), compressed[:prefixLength])
 	}
+	return parseStoreCatalog(plain)
+}
+
+func parseStoreCatalog(plain []byte) (StoreCatalog, error) {
 	root := &binaryKVNode{Values: map[string]any{}}
 	if err := parseStoreKV(bytes.NewReader(plain), root); err != nil {
 		return StoreCatalog{}, fmt.Errorf("parse store price sheet: %w", err)
@@ -146,10 +158,16 @@ func storeCString(r *bytes.Reader) (string, error) {
 func storeOfferFromNode(node *binaryKVNode) (StoreCatalogOffer, bool) {
 	itemLink, ok := node.Values["item_link"].(string)
 	prices := storeCurrencyValues(storeChild(node, "prices"))
+	if basePrice, present := storeUint(node.Values, "base_price"); present {
+		prices["BASE_USD"] = basePrice
+	}
 	if !ok || itemLink == "" || len(prices) == 0 {
 		return StoreCatalogOffer{}, false
 	}
 	offer := StoreCatalogOffer{ID: itemLink, ItemLink: itemLink, Prices: prices, SalePrices: storeCurrencyValues(storeChild(node, "sale_prices"))}
+	if localPrice, present := storeUint(node.Values, "price_in_local_currency", "cost_in_local_currency", "price"); present {
+		offer.LocalPrice = &localPrice
+	}
 	if category, ok := node.Values["category_tags"].(string); ok {
 		offer.Category = category
 	}

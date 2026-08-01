@@ -7,7 +7,6 @@ import type { OperationReceipt } from "@cs-inv-edit/contracts";
 
 describe("createOperationsController", () => {
   it("settles successful receipts and refreshes inventory and operation state", async () => {
-    const pushToast = vi.fn();
     const refreshInventory = vi.fn(() => okAsync(undefined));
     const refetchOperations = vi.fn(() => Promise.resolve(undefined));
     const refetchEvents = vi.fn(() => Promise.resolve(undefined));
@@ -17,7 +16,6 @@ describe("createOperationsController", () => {
 
     const controller = createOperationsController({
       backend,
-      pushToast,
       refreshInventory,
       refetchOperations,
       refetchEvents,
@@ -37,13 +35,9 @@ describe("createOperationsController", () => {
     expect(refreshInventory).toHaveBeenCalledTimes(1);
     expect(refetchOperations).toHaveBeenCalledTimes(1);
     expect(refetchEvents).toHaveBeenCalledTimes(1);
-    expect(pushToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Operation completed" }),
-    );
   });
 
   it("returns a failed fallback receipt for a backend error", async () => {
-    const pushToast = vi.fn();
     const backend = {
       refreshInventory: vi.fn(() => okAsync(undefined)),
     } as unknown as AppBackendClient;
@@ -51,7 +45,6 @@ describe("createOperationsController", () => {
 
     const controller = createOperationsController({
       backend,
-      pushToast,
       refreshInventory: () => errAsync(error),
       refetchOperations: () => Promise.resolve(undefined),
       refetchEvents: () => Promise.resolve(undefined),
@@ -60,23 +53,18 @@ describe("createOperationsController", () => {
     const failed = await controller.settleOperation(errAsync(error));
 
     expect(failed.state).toBe("failed");
-    expect(pushToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Operation error" }),
-    );
   });
 
-  it("does not toast for silent terminal operations or their transport failures", async () => {
-    const pushToast = vi.fn();
+  it("returns terminal receipts and transport failures to the caller", async () => {
     const error = { message: "terminal request failed" } as AppError;
     const controller = createOperationsController({
       backend: {} as AppBackendClient,
-      pushToast,
       refreshInventory: () => okAsync(undefined),
       refetchOperations: () => Promise.resolve(undefined),
       refetchEvents: () => Promise.resolve(undefined),
     });
 
-    await controller.settleOperation(
+    const terminal = await controller.settleOperation(
       okAsync({
         operationId: "terminal-load",
         type: "terminal.load-offer",
@@ -86,8 +74,11 @@ describe("createOperationsController", () => {
       }),
       { suppressToast: true },
     );
-    await controller.settleOperation(errAsync(error), { suppressToast: true });
+    const failed = await controller.settleOperation(errAsync(error), {
+      suppressToast: true,
+    });
 
-    expect(pushToast).not.toHaveBeenCalled();
+    expect(terminal.state).toBe("awaiting_gc_confirmation");
+    expect(failed).toMatchObject({ state: "failed", message: error.message });
   });
 });

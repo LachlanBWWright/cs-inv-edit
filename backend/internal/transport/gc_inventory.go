@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -22,6 +23,14 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
+
+func sessionConflictError(err error) error {
+	var resultErr steamResultError
+	if errors.As(err, &resultErr) && (resultErr.result == steamlang.EResult_LoggedInElsewhere || resultErr.result == steamlang.EResult_AlreadyLoggedInElsewhere) {
+		return SteamSessionConflictError{Result: int32(resultErr.result)}
+	}
+	return err
+}
 
 // cs2ClientVersion must match game/csgo/steam.inf in the pinned
 // proto/vendor/gametracking-cs2 revision.
@@ -52,7 +61,7 @@ func (s *SteamGCClient) sendGamesPlayed(appIDs []uint32) error {
 	s.mu.Lock()
 	s.gamesPlayed = append([]uint32(nil), appIDs...)
 	s.mu.Unlock()
-	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appids=%v", steamlang.EMsg_ClientGamesPlayed.String(), appIDs)}
+	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appids=%v", steamlang.EMsg_ClientGamesPlayedWithDataBlob.String(), appIDs)}
 	return nil
 }
 
@@ -462,8 +471,23 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 				continue
 			}
 			if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
-				wrapped := fmt.Errorf("cs2 gc client hello retry failed: %w", err)
-				return nil, trace.Error(wrapped)
+				if errors.Is(err, ErrNotConnected) {
+					trace.Add("steam transport dropped while waiting for CS2 GC; attempting one session recovery")
+					if recoveryErr := s.ensureSteamSession(ctx); recoveryErr != nil {
+						wrapped := fmt.Errorf("cs2 gc session recovery failed: %w", sessionConflictError(recoveryErr))
+						return nil, trace.Error(wrapped)
+					}
+					if recoveryErr := s.ensureGamesPlayedIncludes(protocol.AppIDCS2); recoveryErr != nil {
+						return nil, trace.Error(fmt.Errorf("cs2 presence recovery failed: %w", recoveryErr))
+					}
+					trace.Add("steam session and CS2 presence recovered")
+				} else {
+					wrapped := fmt.Errorf("cs2 gc client hello retry failed: %w", err)
+					return nil, trace.Error(wrapped)
+				}
+				if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
+					return nil, trace.Error(fmt.Errorf("cs2 gc client hello send after session recovery failed: %w", err))
+				}
 			}
 			helloRetryCount++
 			trace.Add(fmt.Sprintf("cs2 gc ClientHello retry sent emsg=%d delay=%s retry=%d", helloEMsg, helloRetryDelay, helloRetryCount))
@@ -474,6 +498,15 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 			helloRetry.Reset(helloRetryDelay)
 		case event := <-s.events:
 			trace.Add(fmt.Sprintf("cs2 gc observed event type=%s", event.Type))
+			if event.Type == "steam.logged_off" {
+				if loggedOff, ok := event.Payload.(*steampb.CMsgClientLoggedOff); ok {
+					result := loggedOff.GetEresult()
+					if result == int32(steamlang.EResult_LoggedInElsewhere) || result == int32(steamlang.EResult_AlreadyLoggedInElsewhere) {
+						return nil, trace.Error(SteamSessionConflictError{Result: result})
+					}
+				}
+				return nil, trace.Error(fmt.Errorf("Steam ended the session while waiting for CS2 GC; retry to reconnect"))
+			}
 			if event.Type == "steam.games_played.sent" || event.Type == "gc.sent" {
 				trace.Add(fmt.Sprintf("cs2 gc observed event payload=%v", event.Payload))
 			}
@@ -557,6 +590,35 @@ func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem
 type cs2IncrementalInventoryUpdate struct {
 	Items          []GCInventoryItem
 	VolatileOffers map[uint32][]GCVolatileOffer
+}
+
+func (s *SteamGCClient) WaitForNewCS2InventoryItem(ctx context.Context, knownIDs map[uint64]struct{}) (GCInventoryItem, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return GCInventoryItem{}, fmt.Errorf("wait for CS2 economy item creation: %w", ctx.Err())
+		case event := <-s.events:
+			message, ok := event.Payload.(GCMessage)
+			if !ok || event.Type != "gc.message" || message.AppID != protocol.AppIDCS2 {
+				continue
+			}
+			update, found, err := decodeCS2IncrementalInventory(message)
+			if err != nil {
+				return GCInventoryItem{}, err
+			}
+			if !found {
+				continue
+			}
+			for _, item := range update.Items {
+				if item.ID == 0 {
+					continue
+				}
+				if _, known := knownIDs[item.ID]; !known {
+					return item, nil
+				}
+			}
+		}
+	}
 }
 
 // The current CS2 client registers
@@ -1067,6 +1129,19 @@ func encodeGCProtoPayload(emsg uint32, body []byte) ([]byte, error) {
 	return payload, nil
 }
 
+func encodeGCProtoPayloadWithSourceJob(emsg uint32, body []byte, sourceJobID uint64) ([]byte, error) {
+	headerBytes, err := proto.Marshal(&steampb.CMsgProtoBufHeader{JobidSource: proto.Uint64(sourceJobID)})
+	if err != nil {
+		return nil, err
+	}
+	payload := make([]byte, 8, 8+len(headerBytes)+len(body))
+	binary.LittleEndian.PutUint32(payload[0:4], emsg|protoMask)
+	binary.LittleEndian.PutUint32(payload[4:8], uint32(len(headerBytes)))
+	payload = append(payload, headerBytes...)
+	payload = append(payload, body...)
+	return payload, nil
+}
+
 func decodeGCProtoPayload(message GCMessage) (gcProtoMessage, error) {
 	if message.EMsg&protoMask == 0 {
 		return gcProtoMessage{EMsg: message.EMsg, Body: append([]byte(nil), message.Body...)}, nil
@@ -1226,20 +1301,23 @@ func encodeGamesPlayedPacket(appID uint32) (*steammsg.Packet, error) {
 }
 
 func encodeGamesPlayedPacketForApps(appIDs []uint32) (*steammsg.Packet, error) {
-	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientGamesPlayed)
+	// Current SteamKit/ASF clients announce active apps with the data-blob EMsg.
+	// The legacy ClientGamesPlayed (742) is accepted for basic presence but does
+	// not establish the same client routing used by commerce messages such as
+	// ClientMicroTxnAuthRequest (5504).
+	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientGamesPlayedWithDataBlob)
 	// Match the SteamClient/Linux identity used by authentication and ClientLogon.
 	// Leaving this absent makes the later game-session announcement disagree with
 	// the CM session that owns it, which matters for messages routed to the active
 	// game client (including microtransaction authorization handoffs).
-	msg := &steampb.CMsgClientGamesPlayed{ClientOsType: proto.Uint32(20)}
-	labels := map[uint32]string{730: "Counter-Strike 2", 440: "Team Fortress 2", 570: "Dota 2"}
+	msg := &steampb.CMsgClientGamesPlayed{ClientOsType: proto.Uint32(uint32(steamClientOSType()))}
 	seen := make(map[uint32]bool)
 	for _, appID := range appIDs {
 		if appID == 0 || seen[appID] {
 			continue
 		}
 		seen[appID] = true
-		msg.GamesPlayed = append(msg.GamesPlayed, &steampb.CMsgClientGamesPlayed_GamePlayed{GameId: proto.Uint64(steamAppGameID(appID)), GameExtraInfo: proto.String(labels[appID])})
+		msg.GamesPlayed = append(msg.GamesPlayed, &steampb.CMsgClientGamesPlayed_GamePlayed{GameId: proto.Uint64(steamAppGameID(appID))})
 	}
 	if len(msg.GamesPlayed) == 0 {
 		return nil, fmt.Errorf("at least one app id is required")

@@ -6,12 +6,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/multigame"
 	"cs-inv-edit/backend/internal/operations"
 	"cs-inv-edit/backend/internal/steaminventory"
+	"cs-inv-edit/backend/internal/transport"
 )
 
 var steamInventoryServiceExcludedAppIDs = map[uint32]struct{}{
@@ -43,11 +45,56 @@ func (s *Service) SteamInventoryServiceGames(ctx context.Context) domain.SteamIn
 		result.Status, result.Message = "error", err.Error()
 		return result
 	}
+	candidates := make([]transport.SteamOwnedGame, 0, len(games))
 	for _, game := range games {
 		if game.AppID == 0 {
 			continue
 		}
 		if _, excluded := steamInventoryServiceExcludedAppIDs[game.AppID]; excluded {
+			continue
+		}
+		candidates = append(candidates, game)
+	}
+	type inventoryProbe struct {
+		snapshot domain.GameInventorySnapshot
+		ok       bool
+	}
+	probes := make([]inventoryProbe, len(candidates))
+	jobs := make(chan int)
+	workerCount := min(4, len(candidates))
+	var workers sync.WaitGroup
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				game := candidates[index]
+				response, requestErr := s.gcClient.RequestSteamInventoryService(ctx, game.AppID, steamID)
+				if requestErr != nil {
+					continue
+				}
+				snapshot, snapshotErr := steaminventory.Snapshot(game.AppID, response)
+				if snapshotErr == nil && len(snapshot.Items) > 0 {
+					probes[index] = inventoryProbe{snapshot: snapshot, ok: true}
+				}
+			}
+		}()
+	}
+	for index := range candidates {
+		select {
+		case jobs <- index:
+		case <-ctx.Done():
+			close(jobs)
+			workers.Wait()
+			result.Status, result.Message = "error", ctx.Err().Error()
+			return result
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	for index, game := range candidates {
+		probe := probes[index]
+		if !probe.ok {
 			continue
 		}
 		name := strings.TrimSpace(game.Name)
@@ -57,6 +104,9 @@ func (s *Service) SteamInventoryServiceGames(ctx context.Context) domain.SteamIn
 		result.Games = append(result.Games, domain.SteamInventoryServiceGame{
 			AppID: game.AppID, Name: name, PlaytimeMinutes: game.PlaytimeForever, LastPlayed: game.LastPlayed, HasMarket: game.HasMarket,
 		})
+		s.mu.Lock()
+		s.gameInventories[gameInventoryKey(steamIDText, steamInventoryServiceKey(game.AppID))] = probe.snapshot
+		s.mu.Unlock()
 	}
 	sort.Slice(result.Games, func(i, j int) bool {
 		left, right := strings.ToLower(result.Games[i].Name), strings.ToLower(result.Games[j].Name)
@@ -66,7 +116,7 @@ func (s *Service) SteamInventoryServiceGames(ctx context.Context) domain.SteamIn
 		return left < right
 	})
 	if len(result.Games) == 0 {
-		result.Message = "No eligible owned games were returned by Steam"
+		result.Message = "No owned games with Steam Inventory Service items were found"
 	}
 	return result
 }

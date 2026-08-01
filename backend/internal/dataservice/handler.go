@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	dataContract "cs-inv-edit/backend/internal/dataapi"
 	"cs-inv-edit/backend/pricescanner"
 )
 
@@ -16,11 +17,7 @@ type Handler struct {
 	allowedOrigins map[string]bool
 }
 
-type priceQuery struct {
-	MarketNames []string `json:"marketNames"`
-	Currency    string   `json:"currency"`
-	AppID       int      `json:"appId,omitempty"`
-}
+var _ dataContract.ServerInterface = (*Handler)(nil)
 
 func NewHandler(prices *PriceCache) http.Handler {
 	return NewHandlerWithOrigins(prices, []string{"*"})
@@ -34,35 +31,31 @@ func NewHandlerWithOrigins(prices *PriceCache, origins []string) http.Handler {
 		}
 	}
 	handler := &Handler{prices: prices, mux: http.NewServeMux(), allowedOrigins: allowedOrigins}
-	handler.mux.HandleFunc("/healthz", handler.health)
-	handler.mux.HandleFunc("/readyz", handler.health)
-	handler.mux.HandleFunc("/v1/providers", handler.providers)
-	handler.mux.HandleFunc("/v1/prices/query", handler.queryPrices)
+	dataContract.HandlerFromMux(handler, handler.mux)
 	return handler.withCORS(handler.mux)
 }
 
-func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "health route requires GET")
-		return
-	}
-	writeJSON(w, map[string]any{"status": "ok", "service": "cs-inv-edit-data", "version": "0.1.0", "time": time.Now().UTC().Format(time.RFC3339)})
+func (h *Handler) GetHealth(w http.ResponseWriter, _ *http.Request) {
+	h.writeHealth(w)
 }
 
-func (h *Handler) providers(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "provider route requires GET")
-		return
-	}
-	writeJSON(w, map[string]any{"providers": []string{"steam", "skinport", "csfloat", "waxpeer", "marketcsgo", "marketdota", "pricedb"}})
+func (h *Handler) GetReadiness(w http.ResponseWriter, _ *http.Request) {
+	h.writeHealth(w)
 }
 
-func (h *Handler) queryPrices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "price query requires POST")
-		return
-	}
-	var input priceQuery
+func (h *Handler) writeHealth(w http.ResponseWriter) {
+	writeJSON(w, dataContract.DataServiceHealth{
+		Status: dataContract.DataServiceHealthStatus("ok"), Service: dataContract.DataServiceHealthService("cs-inv-edit-data"),
+		Version: "0.1.0", Time: time.Now().UTC(),
+	})
+}
+
+func (h *Handler) ListProviders(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, dataContract.ProviderList{Providers: []string{"steam", "skinport", "csfloat", "waxpeer", "marketcsgo", "marketdota", "pricedb"}})
+}
+
+func (h *Handler) QueryPrices(w http.ResponseWriter, r *http.Request) {
+	var input dataContract.PriceQuery
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
@@ -71,7 +64,11 @@ func (h *Handler) queryPrices(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
-	query := pricescanner.Query{MarketNames: input.MarketNames, Currency: input.Currency, AppID: input.AppID}
+	appID := 0
+	if input.AppId != nil {
+		appID = *input.AppId
+	}
+	query := pricescanner.Query{MarketNames: input.MarketNames, Currency: input.Currency, AppID: appID}
 	result, err := h.prices.Query(ctx, query)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

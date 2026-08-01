@@ -26,12 +26,15 @@ import {
   settingsDataSchema,
   steamInventoryServiceGamesSchema,
 } from "./game-schemas.js";
+import { zDataServiceHealth } from "./generated-data/zod.gen.js";
 
 export * from "./game-schemas.js";
 export * from "./inventory-schemas.js";
+export { zDataServiceHealth as dataServiceHealthSchema } from "./generated-data/zod.gen.js";
 export * from "./operation-schemas.js";
 
 export const backendSchemas = {
+  dataServiceHealth: zDataServiceHealth,
   health: healthStatusSchema,
   inventory: inventorySnapshotSchema,
   armory: armorySnapshotSchema,

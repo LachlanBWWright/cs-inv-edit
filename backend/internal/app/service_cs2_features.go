@@ -74,6 +74,9 @@ func encodeCS2FeatureOperation(operation string, input map[string]any, steamID s
 		}
 		body, err := gametracking.Marshal("CMsgGCCStrike15_v2_MatchListRequestRecentUserGames", map[string]uint64{"accountid": steam64 & 0xffffffff})
 		return body, nil, err
+	case "cs2.profile.refresh":
+		body, err := gametracking.Marshal("CMsgGCCStrike15_v2_MatchmakingClient2GCHello", map[string]uint64{})
+		return body, nil, err
 	case "cs2.matches.details":
 		matchID, err := requiredUint64Input(input, "matchId")
 		if err != nil {

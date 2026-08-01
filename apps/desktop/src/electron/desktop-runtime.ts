@@ -12,12 +12,10 @@ import {
 import {
   backendSchemas,
   economyGameSchema,
+  localAgentPaths,
   steamInventoryServiceAppIdSchema,
 } from "@cs-inv-edit/contracts";
-import {
-  serializeResult,
-  type IpcResult,
-} from "./ipc-result.js";
+import { serializeResult, type IpcResult } from "./ipc-result.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendURL = "http://127.0.0.1:7331";
@@ -109,8 +107,12 @@ function isAllowedExternalURL(raw: string): boolean {
     (url) => {
       if (url.protocol === "steam:")
         return (
-          /^steam:\/\/rungame\/730\/[^/]*\/\+csgo_econ_action_preview%20/i.test(raw) ||
-          /^steam:\/\/(?:run|rungame)\/440\/[^/]*\/\+tf_econ_item_preview%20/i.test(raw)
+          /^steam:\/\/rungame\/730\/[^/]*\/\+csgo_econ_action_preview%20/i.test(
+            raw,
+          ) ||
+          /^steam:\/\/(?:run|rungame)\/440\/[^/]*\/\+tf_econ_item_preview%20/i.test(
+            raw,
+          )
         );
       if (
         url.protocol !== "https:" ||
@@ -122,6 +124,7 @@ function isAllowedExternalURL(raw: string): boolean {
       const host = url.hostname.toLowerCase();
       if (/^[\d.:]+$/.test(host)) return false;
       return (
+        host === "swap.gg" ||
         host === "steampowered.com" ||
         host.endsWith(".steampowered.com") ||
         host === "steamcommunity.com" ||
@@ -152,20 +155,28 @@ function postJson<T>(
   );
 }
 
+function registerReceiptMutation(channel: string, pathName: string) {
+  ipcMain.handle(channel, (_event, input?: unknown) =>
+    postJson(pathName, backendSchemas.receipt, input),
+  );
+}
+
 ipcMain.handle("backend:health", async () =>
-  requestJson("/health", backendSchemas.health),
+  requestJson(localAgentPaths.health, backendSchemas.health),
 );
 ipcMain.handle("backend:inventory", async () =>
-  requestJson("/inventory", backendSchemas.inventory),
+  requestJson(localAgentPaths.inventory, backendSchemas.inventory),
 );
 ipcMain.handle("backend:refreshInventory", async () =>
-  requestJson("/inventory/refresh", backendSchemas.receipt, { method: "POST" }),
+  requestJson(localAgentPaths.refreshInventory, backendSchemas.receipt, {
+    method: "POST",
+  }),
 );
 ipcMain.handle("backend:gameInventory", async (_event, game: unknown) => {
   const parsed = economyGameSchema.safeParse(game);
   return parsed.success
     ? requestJson(
-        `/games/${parsed.data}/inventory`,
+        localAgentPaths.gameInventory(parsed.data),
         backendSchemas.gameInventory,
       )
     : {
@@ -177,10 +188,10 @@ ipcMain.handle("backend:gameInventory", async (_event, game: unknown) => {
       };
 });
 ipcMain.handle("backend:tf2Features", async () =>
-  requestJson("/games/tf2/features", backendSchemas.tf2Features),
+  requestJson(localAgentPaths.tf2Features, backendSchemas.tf2Features),
 );
 ipcMain.handle("backend:cs2Features", async () =>
-  requestJson("/games/cs2/features", backendSchemas.cs2Features),
+  requestJson(localAgentPaths.cs2Features, backendSchemas.cs2Features),
 );
 ipcMain.handle(
   "backend:refreshGameInventory",
@@ -188,7 +199,7 @@ ipcMain.handle(
     const parsed = economyGameSchema.safeParse(game);
     return parsed.success
       ? requestJson(
-          `/games/${parsed.data}/inventory/refresh`,
+          localAgentPaths.refreshGameInventory(parsed.data),
           backendSchemas.receipt,
           { method: "POST" },
         )
@@ -207,7 +218,7 @@ ipcMain.handle(
     const parsed = steamInventoryServiceAppIdSchema.safeParse(appId);
     return parsed.success
       ? requestJson(
-          `/steam-inventory-service/${parsed.data}`,
+          localAgentPaths.steamInventoryService(parsed.data),
           backendSchemas.gameInventory,
         )
       : {
@@ -221,7 +232,7 @@ ipcMain.handle(
 );
 ipcMain.handle("backend:steamInventoryServiceGames", () =>
   requestJson(
-    "/steam-inventory-service/games",
+    localAgentPaths.steamInventoryServiceGames,
     backendSchemas.steamInventoryServiceGames,
   ),
 );
@@ -231,7 +242,7 @@ ipcMain.handle(
     const parsed = steamInventoryServiceAppIdSchema.safeParse(appId);
     return parsed.success
       ? requestJson(
-          `/steam-inventory-service/${parsed.data}/refresh`,
+          localAgentPaths.refreshSteamInventoryService(parsed.data),
           backendSchemas.receipt,
           { method: "POST" },
         )
@@ -245,50 +256,60 @@ ipcMain.handle(
   },
 );
 ipcMain.handle("backend:armory", async () =>
-  requestJson("/armory", backendSchemas.armory),
+  requestJson(localAgentPaths.armory, backendSchemas.armory),
 );
 ipcMain.handle("backend:marketPreview", async (_event, marketName: string) =>
   requestJson(
-    `/market/preview?marketName=${encodeURIComponent(marketName)}`,
+    localAgentPaths.marketPreview(marketName),
     backendSchemas.marketPreview,
   ),
 );
 ipcMain.handle("backend:refreshArmory", async () =>
-  requestJson("/armory/refresh", backendSchemas.receipt, { method: "POST" }),
+  requestJson(localAgentPaths.refreshArmory, backendSchemas.receipt, {
+    method: "POST",
+  }),
 );
 ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) =>
-  postJson("/armory/redeem", backendSchemas.receipt, input),
+  postJson(localAgentPaths.redeemArmory, backendSchemas.receipt, input),
 );
 ipcMain.handle("backend:store", async () =>
-  requestJson("/store", backendSchemas.store),
+  requestJson(localAgentPaths.store, backendSchemas.store),
 );
 ipcMain.handle("backend:refreshStore", async () =>
-  requestJson("/store/refresh", backendSchemas.receipt, { method: "POST" }),
+  requestJson(localAgentPaths.refreshStore, backendSchemas.receipt, {
+    method: "POST",
+  }),
 );
 ipcMain.handle("backend:trades", async () =>
-  requestJson("/trades", backendSchemas.trades),
+  requestJson(localAgentPaths.trades, backendSchemas.trades),
 );
 ipcMain.handle("backend:refreshTrades", async () =>
-  requestJson("/trades/refresh", backendSchemas.trades, { method: "POST" }),
+  requestJson(localAgentPaths.refreshTrades, backendSchemas.trades, {
+    method: "POST",
+  }),
 );
 ipcMain.handle("backend:tradeAccounts", async () =>
-  requestJson("/trade-accounts", backendSchemas.tradeAccounts),
+  requestJson(localAgentPaths.tradeAccounts, backendSchemas.tradeAccounts),
 );
 ipcMain.handle(
   "backend:refreshTradeAccounts",
   async (_event, steamId?: string) =>
     requestJson(
-      `/trade-accounts${steamId ? `?steamId=${encodeURIComponent(steamId)}` : ""}`,
+      localAgentPaths.refreshTradeAccounts(steamId),
       backendSchemas.tradeAccounts,
       { method: "POST" },
     ),
 );
 ipcMain.handle("backend:createTradeOffer", async (_event, input: unknown) =>
-  postJson("/trades/offers", backendSchemas.tradeMutation, input),
+  postJson(
+    localAgentPaths.createTradeOffer,
+    backendSchemas.tradeMutation,
+    input,
+  ),
 );
 ipcMain.handle("backend:acceptTradeOffer", async (_event, id: string) =>
   postJson(
-    `/trades/offers/${encodeURIComponent(id)}/accept`,
+    localAgentPaths.acceptTradeOffer(id),
     backendSchemas.tradeMutation,
     {},
   ),
@@ -297,7 +318,7 @@ ipcMain.handle(
   "backend:counterTradeOffer",
   async (_event, id: string, input: unknown) =>
     postJson(
-      `/trades/offers/${encodeURIComponent(id)}/counter`,
+      localAgentPaths.counterTradeOffer(id),
       backendSchemas.tradeMutation,
       input,
     ),
@@ -308,7 +329,7 @@ ipcMain.handle(
     const parsed = backendSchemas.initializeStorePurchase.safeParse(input);
     return parsed.success
       ? postJson(
-          "/store/purchases",
+          localAgentPaths.initializeStorePurchase,
           backendSchemas.purchaseSession,
           parsed.data,
         )
@@ -323,13 +344,13 @@ ipcMain.handle(
 );
 ipcMain.handle("backend:storePurchase", async (_event, id: string) =>
   requestJson(
-    `/store/purchases/${encodeURIComponent(id)}`,
+    localAgentPaths.storePurchase(id),
     backendSchemas.purchaseSession,
   ),
 );
 ipcMain.handle("backend:reconcileStorePurchase", async (_event, id: string) =>
   requestJson(
-    `/store/purchases/${encodeURIComponent(id)}/reconcile`,
+    localAgentPaths.reconcileStorePurchase(id),
     backendSchemas.purchaseSession,
     { method: "POST" },
   ),
@@ -337,75 +358,56 @@ ipcMain.handle("backend:reconcileStorePurchase", async (_event, id: string) =>
 ipcMain.handle(
   "backend:submitOperation",
   async (_event, type: string, input?: unknown) =>
-    requestJson(
-      `/operations/${encodeURIComponent(type)}`,
-      backendSchemas.receipt,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input ?? {}),
-      },
-    ),
+    requestJson(localAgentPaths.submitOperation(type), backendSchemas.receipt, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? {}),
+    }),
 );
 ipcMain.handle("backend:operations", async () =>
-  requestJson("/operations", backendSchemas.receipts),
+  requestJson(localAgentPaths.operations, backendSchemas.receipts),
 );
 ipcMain.handle("backend:events", async () =>
-  requestJson("/events", backendSchemas.events),
+  requestJson(localAgentPaths.events, backendSchemas.events),
 );
 ipcMain.handle("backend:protocolTrace", async (_event, after: number) =>
   requestJson(
-    `/protocol-trace?after=${encodeURIComponent(String(after))}`,
+    localAgentPaths.protocolTrace(after),
     backendSchemas.protocolTrace,
   ),
 );
 ipcMain.handle("backend:settings", async () =>
-  requestJson("/settings", backendSchemas.settings),
+  requestJson(localAgentPaths.settings, backendSchemas.settings),
 );
 ipcMain.handle("backend:steamStatus", async () =>
-  requestJson("/steam/status", backendSchemas.connection),
+  requestJson(localAgentPaths.steamStatus, backendSchemas.connection),
 );
 ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) =>
-  postJson("/steam/connect", backendSchemas.connection, input),
+  postJson(localAgentPaths.connectSteam, backendSchemas.connection, input),
 );
 ipcMain.handle("backend:startSteamQR", async () =>
-  postJson("/steam/qr", backendSchemas.connection, {}),
+  postJson(localAgentPaths.startSteamQr, backendSchemas.connection, {}),
 );
 ipcMain.handle("backend:submitSteamGuard", async (_event, input?: unknown) =>
-  postJson("/steam/guard", backendSchemas.connection, input),
+  postJson(localAgentPaths.submitSteamGuard, backendSchemas.connection, input),
 );
 ipcMain.handle("backend:disconnectSteam", async () =>
-  requestJson("/steam/disconnect", backendSchemas.connection, {
+  requestJson(localAgentPaths.disconnectSteam, backendSchemas.connection, {
     method: "POST",
   }),
 );
-ipcMain.handle("backend:applyNameTag", async (_event, input?: unknown) =>
-  postJson("/nametags/apply", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:removeNameTag", async (_event, input?: unknown) =>
-  postJson("/nametags/remove", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:deleteItem", async (_event, input?: unknown) =>
-  postJson("/items/delete", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:applyStatTrakSwap", async (_event, input?: unknown) =>
-  postJson("/stattrak/swap", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:applyStrangePart", async (_event, input?: unknown) =>
-  postJson("/strange-parts/apply", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:useItem", async (_event, input?: unknown) =>
-  postJson("/items/use", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:useMultipleItems", async (_event, input?: unknown) =>
-  postJson("/items/use-multiple", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:applyToolToItem", async (_event, input?: unknown) =>
-  postJson("/tools/apply", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:applyToolToBaseItem", async (_event, input?: unknown) =>
-  postJson("/tools/apply-base", backendSchemas.receipt, input),
-);
-ipcMain.handle("backend:giftItem", async (_event, input?: unknown) =>
-  postJson("/gifts/send", backendSchemas.receipt, input),
-);
+const receiptMutations = {
+  applyNameTag: localAgentPaths.applyNameTag,
+  removeNameTag: localAgentPaths.removeNameTag,
+  deleteItem: localAgentPaths.deleteItem,
+  applyStatTrakSwap: localAgentPaths.applyStatTrakSwap,
+  applyStrangePart: localAgentPaths.applyStrangePart,
+  useItem: localAgentPaths.useItem,
+  useMultipleItems: localAgentPaths.useMultipleItems,
+  applyToolToItem: localAgentPaths.applyToolToItem,
+  applyToolToBaseItem: localAgentPaths.applyToolToBaseItem,
+  giftItem: localAgentPaths.sendGift,
+};
+for (const [operation, pathName] of Object.entries(receiptMutations)) {
+  registerReceiptMutation(`backend:${operation}`, pathName);
+}

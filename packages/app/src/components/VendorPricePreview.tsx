@@ -68,7 +68,7 @@ function VendorRow(props: {
         when={!props.loading}
         fallback={
           <span
-            class="h-4 w-20 animate-pulse rounded bg-slate-700/80"
+            class="h-4 w-20 animate-pulse rounded bg-slate-700"
             aria-hidden="true"
           />
         }
@@ -119,7 +119,7 @@ export function VendorPricePreview(props: {
   return (
     <Show when={props.marketName}>
       <section
-        class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-3"
+        class="rounded-2xl border border-slate-800/80 bg-slate-900 p-3"
         aria-label="Vendor prices"
         aria-busy={props.loading}
       >

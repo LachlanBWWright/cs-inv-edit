@@ -1,12 +1,17 @@
 import { For, Show } from "solid-js";
 import type { SidebarProps } from "./Sidebar.js";
 import type { InventorySort } from "./inventory-view-utils.js";
+import type { EconomyInventorySort } from "./game-inventory-utils.js";
 import { InventoryFilters } from "./inventory-view-content-sections.js";
 import { SettingsView } from "./SettingsView.js";
 import { Button } from "./ui/Button.js";
 import { MobileSheet } from "./ui/MobileSheet.js";
 import { Select } from "./ui/Select.js";
-import { isEconomyInventoryScreen, isInventoryScreen } from "../view.js";
+import {
+  isCommerceScreen,
+  isEconomyInventoryScreen,
+  isInventoryScreen,
+} from "../view.js";
 
 export interface MobileNavOptionsProps {
   open: boolean;
@@ -38,7 +43,7 @@ export function MobileNavOptions(input: MobileNavOptionsProps) {
               </h3>
               <button
                 type="button"
-                class="rounded-lg px-2 py-1 text-xs font-medium text-cyan-300 hover:bg-cyan-400/10"
+                class="rounded-lg px-2 py-1 text-xs font-medium text-cyan-300 hover:bg-cyan-950"
                 onClick={() => {
                   props.setKindFilter("all");
                   props.setRarityFilter("all");
@@ -86,6 +91,30 @@ export function MobileNavOptions(input: MobileNavOptionsProps) {
           </section>
         </Show>
 
+        <Show when={isEconomyInventoryScreen(props.view)}>
+          <section class="border-t border-slate-800 pt-4">
+            <label class="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Sort
+              <Select
+                class="mt-2 h-10 w-full"
+                value={props.economySort}
+                onInput={(event) =>
+                  props.setEconomySort(
+                    event.currentTarget.value as EconomyInventorySort,
+                  )
+                }
+              >
+                <option value="name">Name · A to Z</option>
+                <option value="quality-high">Quality · High to low</option>
+                <option value="quality-low">Quality · Low to high</option>
+                <option value="price-high">Steam price · High to low</option>
+                <option value="price-low">Steam price · Low to high</option>
+                <option value="quantity-high">Quantity · High to low</option>
+              </Select>
+            </label>
+          </section>
+        </Show>
+
         <Show
           when={
             isEconomyInventoryScreen(props.view) &&
@@ -111,29 +140,72 @@ export function MobileNavOptions(input: MobileNavOptionsProps) {
           </section>
         </Show>
 
-        <section class="border-t border-slate-800 pt-4">
-          <h3 class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-            Display density
-          </h3>
-          <div class="mt-2 grid grid-cols-3 gap-2">
-            <For each={["icons", "concise", "detailed"] as const}>
-              {(mode) => (
-                <button
-                  type="button"
-                  class={`rounded-lg border px-2 py-2 text-sm font-medium capitalize ${
-                    props.compactMode === mode
-                      ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
-                      : "border-slate-700 bg-slate-900 text-slate-300"
-                  }`}
-                  aria-pressed={props.compactMode === mode}
-                  onClick={() => props.setCompactMode(mode)}
-                >
-                  {mode}
-                </button>
-              )}
-            </For>
-          </div>
-        </section>
+        <Show when={isCommerceScreen(props.view)}>
+          <section class="space-y-4">
+            <label class="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Category
+              <Select
+                class="mt-2 h-10 w-full"
+                value={props.commerceCategoryFilter}
+                onInput={(event) =>
+                  props.setCommerceCategoryFilter(event.currentTarget.value)
+                }
+              >
+                <option value="">All categories</option>
+                <For each={props.commerceCategoryOptions}>
+                  {(category) => <option value={category}>{category}</option>}
+                </For>
+              </Select>
+            </label>
+            <label class="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Sort
+              <Select
+                class="mt-2 h-10 w-full"
+                value={props.commerceSort}
+                onInput={(event) =>
+                  props.setCommerceSort(
+                    event.currentTarget.value as typeof props.commerceSort,
+                  )
+                }
+              >
+                <option value="name">Name</option>
+                <option value="price-low">Price: low to high</option>
+                <option value="price-high">Price: high to low</option>
+              </Select>
+            </label>
+          </section>
+        </Show>
+
+        <Show
+          when={
+            isInventoryScreen(props.view) ||
+            isEconomyInventoryScreen(props.view)
+          }
+        >
+          <section class="border-t border-slate-800 pt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Display density
+            </h3>
+            <div class="mt-2 grid grid-cols-3 gap-2">
+              <For each={["icons", "concise", "detailed"] as const}>
+                {(mode) => (
+                  <button
+                    type="button"
+                    class={`rounded-lg border px-2 py-2 text-sm font-medium capitalize ${
+                      props.compactMode === mode
+                        ? "border-cyan-400/40 bg-cyan-950 text-cyan-100"
+                        : "border-slate-700 bg-slate-900 text-slate-300"
+                    }`}
+                    aria-pressed={props.compactMode === mode}
+                    onClick={() => props.setCompactMode(mode)}
+                  >
+                    {mode}
+                  </button>
+                )}
+              </For>
+            </div>
+          </section>
+        </Show>
 
         <section class="space-y-2 border-t border-slate-800 pt-4">
           <Button
@@ -144,13 +216,13 @@ export function MobileNavOptions(input: MobileNavOptionsProps) {
               input.onClose();
             }}
           >
-            Refresh inventory
+            Refresh current page
           </Button>
           <details class="group">
             <summary class="flex h-full cursor-pointer list-none items-center justify-center rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700">
               Settings
             </summary>
-            <div class="mt-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+            <div class="mt-3 rounded-2xl border border-slate-800 bg-slate-900 p-3">
               <SettingsView
                 settings={props.settings}
                 inventory={props.inventory}

@@ -13,8 +13,10 @@ import { InventoryLoadingState } from "./ui/InventoryLoadingState.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { ResponsiveInspector } from "./ui/ResponsiveInspector.js";
 import { economyOutlineClass } from "./game-inventory-utils.js";
+import type { EconomyInventorySort } from "./game-inventory-utils.js";
 import { ItemMarketBadges } from "./ItemMarketBadges.js";
 import { RevealAnimation } from "./ui/RevealAnimation.js";
+import { TF2ItemEffectBadges } from "./TF2ItemEffectBadges.js";
 
 import {
   economyInventoryLoadingStages,
@@ -35,6 +37,7 @@ export interface GameInventoryViewProps {
   selectedAssetId?: string;
   setSelectedAssetId: (id: string | undefined) => void;
   compactMode: "icons" | "concise" | "detailed";
+  sort: EconomyInventorySort;
   onRefresh: () => void;
   onScanPrices: (
     marketNames: string[],
@@ -42,6 +45,7 @@ export interface GameInventoryViewProps {
   ) => Promise<PriceScanResult | undefined>;
   onOperation?: (type: string, input: unknown) => Promise<OperationReceipt>;
   tf2Features?: TF2FeatureSnapshot;
+  showTF2Activity?: boolean;
   protocolEntries?: ProtocolTraceEntry[];
 }
 
@@ -60,9 +64,6 @@ export function GameInventoryView(props: GameInventoryViewProps) {
     dismissActivity,
     tf2Activity,
     submitTF2Operation,
-    virtualGrid,
-    handleInventoryScroll,
-    setGridViewport,
   } = model;
   return (
     <div class="flex min-h-0 flex-1 flex-col gap-4">
@@ -81,7 +82,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           {snapshot()?.error || "Inventory loading failed"}
         </Alert>
       </Show>
-      <Show when={props.game === "tf2"}>
+      <Show when={props.game === "tf2" && props.showTF2Activity}>
         <details class="rounded-xl border border-slate-800 bg-slate-900">
           <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-200">
             Activity and progression{" "}
@@ -324,88 +325,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           </div>
         </details>
       </Show>
-      <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">
-        <PullToRefresh
-          ref={setGridViewport}
-          class="min-h-0 overflow-y-auto pb-24 pr-1 lg:pb-0"
-          onRefresh={props.onRefresh}
-          onScroll={(event) =>
-            handleInventoryScroll(event.currentTarget.scrollTop)
-          }
-        >
-          <div
-            class="relative"
-            style={{
-              height: `${virtualGrid().totalRows * virtualGrid().rowHeight}px`,
-            }}
-          >
-            <div
-              class="absolute inset-x-0 grid gap-3"
-              style={{
-                transform: `translateY(${virtualGrid().firstRow * virtualGrid().rowHeight}px)`,
-                "grid-template-columns": `repeat(${virtualGrid().columns}, minmax(0, 1fr))`,
-              }}
-            >
-              <For each={virtualGrid().visibleItems}>
-                {(item) => (
-                  <button
-                    type="button"
-                    style={{
-                      height: props.compactMode === "icons" ? "104px" : "146px",
-                      contain: "layout paint style",
-                    }}
-                    class={
-                      item.game === "tf2"
-                        ? `inventory-item-card group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 p-3 text-left transition focus:outline-none ${selected()?.assetId === item.assetId ? "border-slate-400 bg-slate-900" : "border-slate-800 hover:border-slate-600"}`
-                        : `inventory-item-card rarity-outline group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 p-3 text-left transition duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${economyOutlineClass(item)} ${selected()?.assetId === item.assetId ? "is-selected ring-2 ring-cyan-300" : "hover:brightness-110"}`
-                    }
-                    aria-pressed={selected()?.assetId === item.assetId}
-                    onClick={() => props.setSelectedAssetId(item.assetId)}
-                  >
-                    <ItemMarketBadges
-                      item={item}
-                      priceMinor={marketPrices().get(item.marketName ?? "")}
-                    />
-                    <ItemImage item={item} />
-                    <Show when={props.compactMode !== "icons"}>
-                      <p class="mt-2 line-clamp-2 text-sm font-medium text-slate-100">
-                        {item.name}
-                      </p>
-                      <Show when={item.details.customName}>
-                        <p class="mt-0.5 truncate text-xs text-cyan-200">
-                          “{item.details.customName}”
-                        </p>
-                      </Show>
-                      <Show when={item.quantity > 1}>
-                        <p class="mt-1 text-xs text-slate-400">
-                          Quantity {item.quantity}
-                        </p>
-                      </Show>
-                    </Show>
-                  </button>
-                )}
-              </For>
-            </div>
-          </div>
-          <Show
-            when={
-              (props.loading || snapshot()?.status === "loading") &&
-              items().length === 0
-            }
-          >
-            <InventoryLoadingState
-              active
-              title={`Loading ${title()}`}
-              stages={economyInventoryLoadingStages[props.game]}
-              currentStage={snapshot()?.message}
-            />
-          </Show>
-          <Show when={snapshot()?.status === "ready" && items().length === 0}>
-            <p class="rounded-2xl border border-slate-800 p-5 text-sm text-slate-400">
-              No matching items.
-            </p>
-          </Show>
-        </PullToRefresh>
+      <div class="grid flex-1 items-start gap-4 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1fr)]">
         <ResponsiveInspector
           open={!!props.selectedAssetId}
           selectionKey={selected()?.assetId}
@@ -425,6 +345,96 @@ export function GameInventoryView(props: GameInventoryViewProps) {
         >
           <GameInventoryDetails props={props} model={model} />
         </ResponsiveInspector>
+        <PullToRefresh
+          class="pb-24 lg:order-2 lg:pb-0"
+          onRefresh={props.onRefresh}
+        >
+          <div
+            class="grid gap-3"
+            style={{
+              "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))",
+            }}
+          >
+            <For each={items()}>
+              {(item) => (
+                <button
+                  type="button"
+                  class={
+                    item.game === "tf2"
+                      ? `inventory-item-card rarity-outline group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${economyOutlineClass(item)} ${selected()?.assetId === item.assetId ? "is-selected ring-2 ring-cyan-300" : "hover:brightness-110"}`
+                      : `inventory-item-card rarity-outline group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${economyOutlineClass(item)} ${selected()?.assetId === item.assetId ? "is-selected ring-2 ring-cyan-300" : "hover:brightness-110"}`
+                  }
+                  aria-pressed={selected()?.assetId === item.assetId}
+                  onClick={() => props.setSelectedAssetId(item.assetId)}
+                >
+                  <ItemMarketBadges
+                    item={item}
+                    priceMinor={marketPrices().get(item.marketName ?? "")}
+                  />
+                  <Show when={item.game === "tf2"}>
+                    <TF2ItemEffectBadges item={item} />
+                  </Show>
+                  <ItemImage item={item} card />
+                  <div
+                    class={
+                      props.compactMode === "icons"
+                        ? "flex flex-1 flex-col px-3 py-3 text-center"
+                        : "flex flex-1 flex-col px-3 py-3"
+                    }
+                  >
+                    <p
+                      class={`${props.compactMode === "icons" ? "text-xs" : "text-base"} line-clamp-2 font-medium leading-tight text-slate-100`}
+                      title={item.name}
+                    >
+                      {item.name}
+                    </p>
+                    <Show when={props.compactMode !== "icons"}>
+                      <Show when={item.details.customName}>
+                        <p class="mt-1 truncate text-sm text-cyan-200">
+                          “{item.details.customName}”
+                        </p>
+                      </Show>
+                      <Show when={item.type || item.quality}>
+                        <p class="mt-1 truncate text-sm text-slate-400">
+                          {[item.type, item.quality]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </Show>
+                    </Show>
+                    <Show when={item.quantity > 1}>
+                      <p class="mt-1 text-xs text-slate-400">
+                        Quantity {item.quantity}
+                      </p>
+                    </Show>
+                  </div>
+                </button>
+              )}
+            </For>
+          </div>
+          <Show
+            when={
+              (props.loading || snapshot()?.status === "loading") &&
+              (snapshot()?.items.length ?? 0) === 0
+            }
+          >
+            <InventoryLoadingState
+              active
+              title={`Loading ${title()}`}
+              stages={economyInventoryLoadingStages[props.game]}
+              currentStage={snapshot()?.message}
+            />
+          </Show>
+          <Show
+            when={
+              (snapshot()?.items.length ?? 0) > 0 && items().length === 0
+            }
+          >
+            <p class="rounded-2xl border border-slate-800 p-5 text-sm text-slate-400">
+              No matching items.
+            </p>
+          </Show>
+        </PullToRefresh>
       </div>
       <RevealAnimation
         open={!!tf2ContainerPreview()}

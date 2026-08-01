@@ -147,7 +147,7 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 		}
 		itemMetadata := metadata.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
 		casketID := gcItemCasketID(item)
-		if item.Inventory == 0 && !isTerminalMetadata(itemMetadata) && !activeTerminalIDSet[casketID] && (casketID == 0 || (!showStorageUnitItems && !requestedStorageUnits[casketID])) {
+		if item.Inventory == 0 && !isTerminalGCItem(item, itemMetadata) && !activeTerminalIDSet[casketID] && (casketID == 0 || (!showStorageUnitItems && !requestedStorageUnits[casketID])) {
 			continue
 		}
 		descriptionMatched := false
@@ -205,6 +205,8 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			MarketPrice:           itemMetadata.MarketPrice.SellPriceText,
 			MarketSalePrice:       itemMetadata.MarketPrice.SalePriceText,
 			MarketSellListings:    ptrInt(itemMetadata.MarketPrice.SellListings),
+			IsTerminal:            isTerminalGCItem(item, itemMetadata),
+			IsActiveTerminal:      isActiveTerminalGCItem(item, itemMetadata),
 			AppliedItems:          domainAppliedItems(metadata.AppliedItems(item.DefIndex, item.Attributes), itemMetadata.AppliedItemImages),
 			// CEconItem quality 9 is Strange/StatTrak and 12 is Tournament/Souvenir.
 			IsStatTrak:    item.Quality == 9 || strings.HasPrefix(itemMetadata.MarketName, "StatTrak™"),
@@ -213,6 +215,9 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			Marketable:    itemMetadata.Marketable,
 			TradableAfter: itemMetadata.TradableAfter,
 		}
+		storageEligible, storageReason := storageEligibility(item, inventoryItem)
+		inventoryItem.StorageEligible = &storageEligible
+		inventoryItem.StorageIneligibleReason = storageReason
 		if terminalID := gcItemCasketID(item); activeTerminalIDSet[terminalID] {
 			terminalOffers[terminalID] = append(terminalOffers[terminalID], domain.TerminalOffer{
 				FauxItemID:    strconv.FormatUint(item.ID, 10),
@@ -434,17 +439,20 @@ const xRayScannerLoadedCaseInventoryPosition uint32 = 0xc0000005
 // than the player's regular inventory.
 func isXRayScannerLoadedCase(item transport.GCInventoryItem, metadata econ.Metadata) bool {
 	return metadata.Kind == "container" &&
-		!isTerminalMetadata(metadata) &&
+		!isTerminalGCItem(item, metadata) &&
 		item.Quantity == 0 &&
 		item.Inventory == xRayScannerLoadedCaseInventoryPosition
 }
 
-func isTerminalMetadata(metadata econ.Metadata) bool {
-	return strings.Contains(strings.ToLower(metadata.Name+" "+metadata.MarketName), "terminal")
+const volatileContainerAttributeDefIndex uint32 = 315
+
+func isTerminalGCItem(item transport.GCInventoryItem, metadata econ.Metadata) bool {
+	value, present := item.Attributes[volatileContainerAttributeDefIndex]
+	return metadata.IsVolatileContainer || present && value != 0
 }
 
 func isActiveTerminalGCItem(item transport.GCInventoryItem, metadata econ.Metadata) bool {
-	return isTerminalMetadata(metadata) &&
+	return isTerminalGCItem(item, metadata) &&
 		item.Quantity == 0 &&
 		item.Inventory == xRayScannerLoadedCaseInventoryPosition
 }

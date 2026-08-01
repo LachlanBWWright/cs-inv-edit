@@ -16,6 +16,16 @@ func (fn marketRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 	return fn(request)
 }
 
+func TestTF2MarketNameMatchingNormalizesArticleAndQuality(t *testing.T) {
+	if !marketNameMatches("The Team Captain", "Unique Team Captain") {
+		t.Fatal("TF2 article and quality prefixes should not prevent an exact item-name match")
+	}
+	queries := marketSearchQueries("The Team Captain")
+	if !containsStringFold(queries, "Team Captain") {
+		t.Fatalf("TF2 market queries = %#v, want normalized name", queries)
+	}
+}
+
 func TestMarketDescriptionLookupUsesRequestedAppIDAndSteamImageToken(t *testing.T) {
 	provider := NewProvider()
 	provider.client = &http.Client{Transport: marketRoundTripFunc(func(request *http.Request) (*http.Response, error) {

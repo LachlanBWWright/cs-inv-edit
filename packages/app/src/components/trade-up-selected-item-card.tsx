@@ -13,7 +13,7 @@ export function SelectedTradeUpItemCard(props: {
 }) {
   return (
     <article
-      class={`rounded-xl border-2 bg-slate-900/80 p-3 ${rarityBorderClass(props.item.rarity)}`}
+      class={`rounded-xl border-2 bg-slate-900 p-3 ${rarityBorderClass(props.item.rarity)}`}
     >
       <div class="flex items-start justify-between gap-2">
         <p class="min-w-0 truncate font-medium text-slate-100">

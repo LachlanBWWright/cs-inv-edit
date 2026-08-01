@@ -41,6 +41,7 @@ export function App(props: AppProps) {
       }}
       armory={controller.armory()}
       store={controller.store()}
+      tf2Store={controller.tf2Store()}
       trades={controller.trades()}
       tradeAccounts={controller.tradeAccounts()}
       settings={controller.settings()}
@@ -64,7 +65,7 @@ export function App(props: AppProps) {
         const result = props.backend.connectSteam
           ? props.backend.connectSteam(input)
           : ({ match: () => undefined } as never);
-        await result
+        return result
           .andThen((res: any) => {
             console.info("[app] connecting Steam account", input);
             console.info("[app] connect result", res);
@@ -74,14 +75,11 @@ export function App(props: AppProps) {
             );
           })
           .match(
-            () => undefined,
-            (error: any) => {
-              controller.pushToast({
-                title: "Sign-in failed",
-                description: error.message ?? "Unable to sign in to Steam",
-                variant: "danger",
-              });
-            },
+            () => ({ ok: true as const }),
+            (error: any) => ({
+              ok: false as const,
+              message: error.message ?? "Unable to sign in to Steam",
+            }),
           );
       }}
       onStartSteamQR={async () => {
@@ -91,21 +89,22 @@ export function App(props: AppProps) {
               match: (onOk: any, onErr: any) =>
                 onErr({ message: "Steam QR login unavailable" }),
             } as never);
-        await result.match(
-          (status: any) => controller.setConnection(status),
-          (error: any) =>
-            controller.pushToast({
-              title: "QR sign-in failed",
-              description: error.message ?? "Unable to start QR sign-in",
-              variant: "danger",
-            }),
+        return result.match(
+          (status: any) => {
+            controller.setConnection(status);
+            return { ok: true as const };
+          },
+          (error: any) => ({
+            ok: false as const,
+            message: error.message ?? "Unable to start QR sign-in",
+          }),
         );
       }}
       onSubmitSteamGuard={async (input) => {
         const result = props.backend.submitSteamGuard
           ? props.backend.submitSteamGuard(input)
           : ({ andThen: () => ({ match: () => undefined }) } as never);
-        await result
+        return result
           .andThen((res: any) => {
             console.info("[app] submitting Steam Guard code");
             console.info("[app] Steam Guard result", res);
@@ -115,21 +114,18 @@ export function App(props: AppProps) {
             );
           })
           .match(
-            () => undefined,
-            (error: any) => {
-              controller.pushToast({
-                title: "Steam Guard failed",
-                description: error.message ?? "Unable to verify the code",
-                variant: "danger",
-              });
-            },
+            () => ({ ok: true as const }),
+            (error: any) => ({
+              ok: false as const,
+              message: error.message ?? "Unable to verify the code",
+            }),
           );
       }}
       onDisconnect={async () => {
         const disconnect =
           props.backend.disconnectSteam?.() ??
           ({ andThen: () => ({ match: () => undefined }) } as never);
-        await disconnect
+        return disconnect
           .andThen(() =>
             fromAppPromise(
               Promise.resolve(controller.refetchConnection()),
@@ -139,24 +135,18 @@ export function App(props: AppProps) {
           .match(
             () => {
               controller.setView("account");
-              controller.pushToast({
-                title: "Account disconnected",
-                description: "The session has been cleared.",
-                variant: "warning",
-              });
+              return { ok: true as const };
             },
-            (error: any) => {
-              controller.pushToast({
-                title: "Disconnect failed",
-                description: error.message ?? "Unable to disconnect",
-                variant: "danger",
-              });
-            },
+            (error: any) => ({
+              ok: false as const,
+              message: error.message ?? "Unable to disconnect",
+            }),
           );
       }}
-      onToast={controller.pushToast}
-      onInventoryRefresh={() => void controller.refreshInventoryState()}
-      onGameInventoryRefresh={(game) =>
+      onInventoryRefresh={(suppressToast) =>
+        controller.refreshInventoryState({ suppressToast })
+      }
+      onGameInventoryRefresh={(game, suppressToast) =>
         void props.backend
           .refreshGameInventory(game)
           .andThen(() =>
@@ -173,13 +163,15 @@ export function App(props: AppProps) {
           )
           .match(
             () => undefined,
-            (error: any) =>
+            (error: any) => {
+              if (suppressToast) return;
               controller.pushToast({
                 title: "Inventory refresh failed",
                 description:
                   error.message ?? `Unable to refresh ${game} inventory`,
                 variant: "danger",
-              }),
+              });
+            },
           )
       }
       onSteamServiceRefresh={(appId) =>
@@ -202,8 +194,10 @@ export function App(props: AppProps) {
               }),
           )
       }
-      onGameOperation={(type, input) =>
-        controller.settleOperation(props.backend.submitOperation(type, input))
+      onGameOperation={(type, input, suppressToast) =>
+        controller.settleOperation(props.backend.submitOperation(type, input), {
+          suppressToast,
+        })
       }
       onArmoryRefresh={controller.refreshArmoryState}
       onMarketPreview={controller.requestMarketPreview}
@@ -220,15 +214,32 @@ export function App(props: AppProps) {
           },
         )
       }
-      onArmoryRedeem={(input) =>
-        controller
-          .settleOperation(props.backend.redeemArmory(input))
-          .then(async (receipt) => {
-            await controller.refetchArmory();
-            return receipt;
+      onArmoryRedeem={(input) => {
+        const beforeItemIds = new Set(
+          (controller.inventory()?.items ?? []).map((item) => item.id),
+        );
+        return controller
+          .settleOperation(props.backend.redeemArmory(input), {
+            skipInventoryRefresh: true,
           })
-      }
+          .then((receipt) => {
+            const openedItem = (controller.inventory()?.items ?? []).find(
+              (item) => !beforeItemIds.has(item.id),
+            );
+            void controller.refetchArmory();
+            void controller.refreshInventoryState({ suppressToast: true });
+            return openedItem
+              ? {
+                  ...receipt,
+                  state: "completed" as const,
+                  message: `Armory reward received: ${openedItem.marketName || openedItem.name}`,
+                  result: { ...receipt.result, openedItem },
+                }
+              : receipt;
+          });
+      }}
       onStoreRefresh={controller.refreshStoreState}
+      onTF2StoreRefresh={controller.refreshTF2StoreState}
       onStorePurchase={(input) =>
         props.backend.initializeStorePurchase(input).match(
           (session) => session,
@@ -244,6 +255,24 @@ export function App(props: AppProps) {
             formattedAmount: "",
             createdAt: new Date().toISOString(),
             message: error.message ?? "Purchase initialization failed",
+          }),
+        )
+      }
+      onTF2StorePurchase={(input) =>
+        props.backend.initializeTF2StorePurchase(input).match(
+          (session) => session,
+          (error) => ({
+            id: "failed",
+            status: "failed" as const,
+            offerId: input.offerId,
+            defIndex: 0,
+            name: input.offerId,
+            quantity: input.quantity,
+            currency: "",
+            amountMinor: input.expectedAmountMinor,
+            formattedAmount: "",
+            createdAt: new Date().toISOString(),
+            message: error.message,
           }),
         )
       }

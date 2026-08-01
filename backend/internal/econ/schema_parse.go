@@ -43,6 +43,7 @@ func (s *Schema) parseItems(root kvObject) {
 			Capabilities:          merged.object("capabilities").strings(),
 			LootList:              merged.string("loot_list_name"),
 			SupplyCrateSeries:     merged.object("attributes").object("set supply crate series").string("value"),
+			IsVolatileContainer:   schemaBool(merged.object("attributes").object("volatile container").string("value")),
 			RequiredKeyDefIndexes: requiredKeyDefIndexes,
 		}
 	}

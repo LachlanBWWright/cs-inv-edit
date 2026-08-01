@@ -54,6 +54,11 @@ export interface LocalAgentClient {
   redeemArmory(input: ArmoryRedeemRequest): BackendResult<OperationReceipt>;
   store(): BackendResult<StoreSnapshot>;
   refreshStore(): BackendResult<OperationReceipt>;
+  tf2Store(): BackendResult<StoreSnapshot>;
+  refreshTF2Store(): BackendResult<OperationReceipt>;
+  initializeTF2StorePurchase(
+    input: InitializeStorePurchaseRequest,
+  ): BackendResult<PurchaseSession>;
   trades(): BackendResult<SteamTradesSnapshot>;
   refreshTrades(): BackendResult<SteamTradesSnapshot>;
   tradeAccounts(): BackendResult<SteamAccountTradesCollection>;

@@ -1,0 +1,7 @@
+package: dataapi
+output: internal/dataapi/openapi.gen.go
+generate:
+  models: true
+  std-http-server: true
+output-options:
+  skip-prune: true

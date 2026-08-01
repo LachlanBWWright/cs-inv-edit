@@ -137,12 +137,18 @@ export function marketURL(item: EconomyInventoryItemDto) {
   return `https://steamcommunity.com/market/listings/${item.appId}/${encodeURIComponent(item.marketName ?? "")}`;
 }
 
-export function ItemImage(props: { item: EconomyInventoryItemDto; large?: boolean }) {
+export function ItemImage(props: {
+  item: EconomyInventoryItemDto;
+  large?: boolean;
+  card?: boolean;
+}) {
   return (
     <ItemPreviewMedia
       name={props.item.name}
       imageUrl={props.item.imageUrl}
-      variant={props.large ? "details" : "economy-card"}
+      variant={
+        props.large ? "details" : props.card ? "inventory-card" : "economy-card"
+      }
     />
   );
 }

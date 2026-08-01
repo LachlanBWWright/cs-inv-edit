@@ -82,7 +82,7 @@ export function ToolsView(props: ToolsViewProps) {
         description="Run StatTrak, strange-part, and generic tool-to-item/base-item operations."
       />
       <Show when={status()}>
-        <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-200">
+        <div class="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200">
           {status()}
         </div>
       </Show>

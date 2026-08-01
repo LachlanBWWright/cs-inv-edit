@@ -20,16 +20,16 @@ describe("terminalOfferLimit", () => {
     });
   });
 
-  it("supports rare ten-offer terminal sessions", () => {
-    expect(terminalOfferLimit(9)).toMatchObject({
+  it("accepts GC counters without imposing a Panorama-absent offer cap", () => {
+    expect(terminalOfferLimit(10)).toMatchObject({
       state: "known",
-      additionalOffers: 9,
-      offersIncludingCurrent: 10,
+      additionalOffers: 10,
+      offersIncludingCurrent: 11,
     });
   });
 
-  it("rejects counters beyond the terminal protocol limit", () => {
-    expect(terminalOfferLimit(10)).toEqual({ state: "unknown" });
-    expect(terminalOfferLimit(0xfffffffb)).toEqual({ state: "unknown" });
+  it("rejects counters outside the protobuf uint32 range", () => {
+    expect(terminalOfferLimit(0x1_0000_0000)).toEqual({ state: "unknown" });
+    expect(terminalOfferLimit(-1)).toEqual({ state: "unknown" });
   });
 });

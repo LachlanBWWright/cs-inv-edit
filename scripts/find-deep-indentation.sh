@@ -27,7 +27,7 @@ matches = []
 for path in root.rglob("*"):
     if not path.is_file() or any(part in exclude_dirs for part in path.parts):
         continue
-    if "wasm" in path.parts or path.suffix.lower() not in extensions or path.name.endswith(test_suffixes):
+    if "wasm" in path.parts or path.suffix.lower() not in extensions or path.name.endswith(test_suffixes) or path.name.endswith(".gen.go"):
         continue
     try:
         text = path.read_text(encoding="utf-8")

@@ -37,8 +37,10 @@ func defaultSettings() domain.Settings {
 			EnableArmoryRedemption: true,
 			EnableStoreRead:        true,
 			EnableStorePurchases:   true,
+			EnableFullCS2Store:     false,
 			EnableCS2Loadouts:      false,
 			EnableTF2Inventory:     true,
+			EnableTF2Store:         true,
 			EnableTF2Loadouts:      false,
 			EnableTF2ItemUse:       false,
 			EnableTF2Tools:         false,
@@ -52,6 +54,9 @@ func defaultSettings() domain.Settings {
 
 func emptyStore() domain.StoreSnapshot {
 	return domain.StoreSnapshot{Status: "requires_connection", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "Connect Steam to load the CS2 cash store."}
+}
+func emptyTF2Store() domain.StoreSnapshot {
+	return domain.StoreSnapshot{Status: "requires_connection", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "Connect Steam to load the TF2 Mann Co. Store."}
 }
 func cloneStore(store domain.StoreSnapshot) domain.StoreSnapshot {
 	offers := make([]domain.StoreOffer, len(store.Offers))

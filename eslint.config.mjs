@@ -42,6 +42,7 @@ export default [
       "backend/**",
       "**/*.d.ts",
       "**/coverage/**",
+      "**/src/generated/**",
       "**/*.config.{ts,js,mjs,cjs}",
       "**/vite.config.ts",
       "**/vitest.config.ts",

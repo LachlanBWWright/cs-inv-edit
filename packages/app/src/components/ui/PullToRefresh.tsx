@@ -75,7 +75,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
           style={{ transform: `translateY(${pullDistance() - 44}px)` }}
           aria-hidden="true"
         >
-          <div class="flex h-9 items-center gap-2 rounded-full border border-cyan-400/20 bg-slate-950/95 px-3 text-xs font-medium text-cyan-200 shadow-lg">
+          <div class="flex h-9 items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 text-xs font-medium text-cyan-200 shadow-sm shadow-black">
             <span
               class={`h-4 w-4 rounded-full border-2 border-slate-700 border-t-cyan-300 ${refreshing() ? "animate-spin" : ""}`}
             />

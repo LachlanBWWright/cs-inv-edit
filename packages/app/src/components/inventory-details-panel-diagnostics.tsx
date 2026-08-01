@@ -301,7 +301,7 @@ function DiagnosticCard(props: { diagnostic: string }) {
   return (
     <details
       open
-      class="mt-2 rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-xs"
+      class="mt-2 rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs"
     >
       <summary class="cursor-pointer font-semibold text-cyan-300">
         {parsed().title}
@@ -313,7 +313,7 @@ function DiagnosticCard(props: { diagnostic: string }) {
               formatDecodedDiagnosticEntry(entry.label, entry.value),
             );
             return (
-              <div class="flex flex-col rounded-lg bg-slate-900/60 p-2">
+              <div class="flex flex-col rounded-lg bg-slate-900 p-2">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   {entry.label}
                 </span>
@@ -376,7 +376,7 @@ export interface ContentsDialogProps {
 export function ContentsDialog(props: ContentsDialogProps) {
   const odds = containerItemOdds(props.items ?? []);
   return (
-    <div class="rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-3 text-xs leading-relaxed text-slate-400">
+    <div class="rounded-xl border border-cyan-900/60 bg-cyan-950 p-3 text-xs leading-relaxed text-slate-400">
       <div class="grid gap-2 sm:grid-cols-2">
         <For each={props.items}>
           {(item) => (

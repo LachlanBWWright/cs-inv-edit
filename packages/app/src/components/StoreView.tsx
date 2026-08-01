@@ -7,17 +7,22 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
-import { Card } from "./ui/Card.js";
 import { Dialog } from "./ui/Dialog.js";
 import { StoreContentsDialog } from "./store-contents-dialog.js";
 import { StoreHeader } from "./store-header.js";
+import { StoreOfferCard } from "./store-offer-card.js";
+import { filterStoreOffers, type CommerceSort } from "./commerce-view-utils.js";
 
 type StoreOffer = StoreSnapshot["offers"][number];
 
 export function StoreView(props: {
   store?: StoreSnapshot;
   settings?: SettingsData;
-  onRefresh: () => Promise<unknown>;
+  browseOnly?: boolean;
+  gameName?: string;
+  query?: string;
+  categoryFilter?: string;
+  sort?: CommerceSort;
   onPurchase: (
     input: InitializeStorePurchaseRequest,
   ) => Promise<PurchaseSession>;
@@ -38,6 +43,10 @@ export function StoreView(props: {
     }));
   const purchaseEnabled = () =>
     props.settings?.featureFlags.enableStorePurchases === true;
+  const fullStoreEnabled = () =>
+    props.settings?.featureFlags.enableFullCs2Store === true;
+  const selectedUsesCouponFallback = () =>
+    selected()?.coupon === true && !fullStoreEnabled();
   const gcAccepted = () =>
     session()?.diagnostics?.some((line) => line.includes("result=1 (OK:")) ===
     true;
@@ -45,6 +54,14 @@ export function StoreView(props: {
     session()?.diagnostics?.some((line) =>
       line.includes("READY checkout_url="),
     ) === true;
+  const offers = () =>
+    filterStoreOffers(props.store?.offers ?? [], {
+      query: props.query ?? "",
+      category: props.categoryFilter ?? "",
+      sort: props.sort ?? "name",
+    });
+  const gameName = () => props.gameName ?? "CS2";
+  const appId = () => (gameName() === "TF2" ? 440 : 730);
 
   const purchase = async () => {
     const offer = selected();
@@ -53,18 +70,27 @@ export function StoreView(props: {
     setSession(undefined);
     setBusy(true);
     const amount = offer.saleAmountMinor ?? offer.amountMinor;
-    setOutgoingTrace([
-      `SEND GC appid=730 emsg=2510 (CMsgGCStorePurchaseInit)`,
-      `SEND preview country=<authoritative Steam wallet country> language=0 display_currency=${snapshot.currency ?? offer.currency} item_def_id=${offer.defIndex} quantity=${quantity(offer.id)} cost=${amount * quantity(offer.id)} (the exact country, numeric GC currency, purchase type, supplemental data, and wire bytes will appear below)`,
-      `WAIT GC emsg=2511 (CMsgGCStorePurchaseInitResponse); then observe every Steam and CS2 response carrying authorization transaction details`,
-    ]);
+    const couponFallback = offer.coupon && !fullStoreEnabled();
+    setOutgoingTrace(
+      couponFallback
+        ? [
+            `OPEN Steam BuyItem appid=${appId()} item_def_id=${offer.defIndex} quantity=${quantity(offer.id)}`,
+          ]
+        : [
+            `SEND GC appid=${appId()} emsg=2510 (CMsgGCStorePurchaseInit)`,
+            `SEND preview country=<authoritative Steam wallet country> language=0 display_currency=${snapshot.currency ?? offer.currency} item_def_id=${offer.defIndex} quantity=${quantity(offer.id)} cost=${amount * quantity(offer.id)} (the exact country, numeric GC currency, purchase type, supplemental data, and wire bytes will appear below)`,
+            `WAIT GC emsg=2511 (CMsgGCStorePurchaseInitResponse); then observe every Steam and ${gameName()} response carrying authorization transaction details`,
+          ],
+    );
     if (props.settings?.featureFlags.enableProtocolConsole !== false) {
-      console.groupCollapsed("[CS2 protocol] store purchase request");
+      console.groupCollapsed(`[${gameName()} protocol] store purchase request`);
       for (const line of outgoingTrace()) console.debug(line);
       console.groupEnd();
     }
     setPurchaseDetail(
-      "Sending the exact live price-sheet item, quantity, currency, total cost, and purchase type to the CS2 Game Coordinator. After the GC accepts it, observing every Steam and CS2 response that can carry the authorization handoff—not assuming one desktop-session message.",
+      couponFallback
+        ? "Preparing Steam's supported browser checkout for this coupon item."
+        : `Sending the exact live price-sheet item, quantity, currency, total cost, and purchase type to the ${gameName()} Game Coordinator. After the GC accepts it, observing every Steam and ${gameName()} response that can carry the authorization handoff.`,
     );
     const result = await props.onPurchase({
       offerId: offer.id,
@@ -74,7 +100,7 @@ export function StoreView(props: {
     });
     if (props.settings?.featureFlags.enableProtocolConsole !== false) {
       console.groupCollapsed(
-        `[CS2 protocol] store purchase result: ${result.status}`,
+        `[${gameName()} protocol] store purchase result: ${result.status}`,
       );
       console.debug("decoded result", result);
       for (const line of result.diagnostics ?? []) console.debug(line);
@@ -86,98 +112,30 @@ export function StoreView(props: {
   };
 
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <div class="mx-auto flex max-w-6xl flex-col gap-5">
+    <div class="flex-1">
+      <div class="flex w-full flex-col gap-5">
         <StoreHeader
           store={props.store}
           purchaseEnabled={purchaseEnabled()}
-          onRefresh={props.onRefresh}
+          browseOnly={props.browseOnly}
+          gameName={props.gameName}
         />
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <For each={props.store?.offers ?? []}>
+        <div class="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          <For each={offers()}>
             {(offer) => (
-              <Card class="p-5">
-                <button
-                  type="button"
-                  class="block w-full"
-                  onClick={() => setContentsOffer(offer)}
-                >
-                  <Show when={offer.imageUrl}>
-                    <img
-                      class="mx-auto h-32 object-contain"
-                      src={offer.imageUrl}
-                      alt=""
-                    />
-                  </Show>
-                  <h2 class="mt-3 text-left text-lg font-semibold text-cyan-200 hover:underline">
-                    {offer.name}
-                  </h2>
-                </button>
-                <p class="mt-1 text-sm text-slate-400">{offer.category}</p>
-                <div class="mt-4 flex items-end justify-between gap-3">
-                  <div>
-                    <Show when={offer.saleAmountMinor !== undefined}>
-                      <p class="text-sm text-slate-500 line-through">
-                        {offer.formattedPrice}
-                      </p>
-                    </Show>
-                    <p class="text-xl font-semibold text-cyan-300">
-                      {offer.formattedSalePrice || offer.formattedPrice}
-                    </p>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      disabled={quantity(offer.id) <= 1}
-                      onClick={() =>
-                        setQuantity(offer.id, quantity(offer.id) - 1)
-                      }
-                    >
-                      −
-                    </Button>
-                    <span class="min-w-7 text-center font-mono">
-                      {quantity(offer.id)}
-                    </span>
-                    <Button
-                      variant="secondary"
-                      disabled={quantity(offer.id) >= 20}
-                      onClick={() =>
-                        setQuantity(offer.id, quantity(offer.id) + 1)
-                      }
-                    >
-                      +
-                    </Button>
-                    <Button
-                      disabled={!offer.purchasable}
-                      onClick={() => setSelected(offer)}
-                    >
-                      Buy
-                    </Button>
-                  </div>
-                </div>
-                <p class="mt-2 text-right text-sm text-slate-400">
-                  Total: {offer.currency}{" "}
-                  {(
-                    ((offer.saleAmountMinor ?? offer.amountMinor) *
-                      quantity(offer.id)) /
-                    100
-                  ).toFixed(2)}
-                </p>
-                <Show when={!offer.purchasable}>
-                  <p class="mt-3 text-xs text-amber-300">
-                    {offer.unsupportedReason}
-                  </p>
-                </Show>
-              </Card>
+              <StoreOfferCard
+                offer={offer}
+                quantity={quantity(offer.id)}
+                onOpenContents={() => setContentsOffer(offer)}
+                onSetQuantity={(value) => setQuantity(offer.id, value)}
+                onBuy={() => setSelected(offer)}
+                browseOnly={props.browseOnly}
+              />
             )}
           </For>
         </div>
-        <Show
-          when={props.store?.status === "ready" && !props.store?.offers.length}
-        >
-          <Alert>
-            No supported offers were present in the current GC price sheet.
-          </Alert>
+        <Show when={props.store?.status === "ready" && !offers().length}>
+          <Alert>No offers match the current search and filters.</Alert>
         </Show>
       </div>
 
@@ -219,7 +177,7 @@ export function StoreView(props: {
           card details or auto-authorizes the transaction.
         </p>
         <Show when={busy()}>
-          <div class="mt-3 rounded-lg border border-cyan-900/60 bg-cyan-950/30 p-3">
+          <div class="mt-3 rounded-lg border border-cyan-900/60 bg-cyan-950 p-3">
             <p class="text-sm font-semibold text-cyan-200">
               Preparing the Steam purchase link…
             </p>
@@ -279,30 +237,40 @@ export function StoreView(props: {
           </Alert>
         </Show>
         <Show when={busy() || (session()?.diagnostics?.length ?? 0) > 0}>
-          <section class="mt-3 rounded-lg border border-slate-700 bg-slate-950/80 p-3">
+          <section class="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
             <h3 class="text-sm font-semibold text-slate-200">
               Purchase activity
             </h3>
             <div class="mt-3 space-y-2 text-sm text-slate-300">
-              <p>
-                ✓ Sent a request to purchase <strong>{selected()?.name}</strong>{" "}
-                × {selected() ? quantity(selected()!.id) : 1} for{" "}
-                <strong>
-                  {selected()
-                    ? `${selected()!.currency} ${(((selected()!.saleAmountMinor ?? selected()!.amountMinor) * quantity(selected()!.id)) / 100).toFixed(2)}`
-                    : ""}
-                </strong>
-                .
-              </p>
+              <Show
+                when={!selectedUsesCouponFallback()}
+                fallback={
+                  <p>
+                    ✓ Prepared Steam&apos;s browser checkout for this coupon.
+                  </p>
+                }
+              >
+                <p>
+                  ✓ Sent a request to purchase{" "}
+                  <strong>{selected()?.name}</strong> ×{" "}
+                  {selected() ? quantity(selected()!.id) : 1} for{" "}
+                  <strong>
+                    {selected()
+                      ? `${selected()!.currency} ${(((selected()!.saleAmountMinor ?? selected()!.amountMinor) * quantity(selected()!.id)) / 100).toFixed(2)}`
+                      : ""}
+                  </strong>
+                  .
+                </p>
+              </Show>
               <Show when={busy()}>
                 <p class="text-cyan-300">
-                  … Waiting for the CS2 Game Coordinator.
+                  … Waiting for the {gameName()} Game Coordinator.
                 </p>
               </Show>
               <Show when={gcAccepted()}>
                 <p class="text-emerald-300">
-                  ✓ The CS2 Game Coordinator accepted the purchase request and
-                  created an order.
+                  ✓ The {gameName()} Game Coordinator accepted the purchase
+                  request and created an order.
                 </p>
               </Show>
               <Show
@@ -328,7 +296,7 @@ export function StoreView(props: {
                 Raw protocol data (message IDs, enum values and hexadecimal
                 bytes)
               </summary>
-              <div class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-black/40 p-3 font-mono text-[11px] leading-5 text-slate-300">
+              <div class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-black p-3 font-mono text-[11px] leading-5 text-slate-300">
                 <For each={session()?.diagnostics ?? outgoingTrace()}>
                   {(line) => <div>{line}</div>}
                 </For>

@@ -101,6 +101,18 @@ func (s *Service) StartSteamQR() domain.ConnectionStatus {
 	s.connection = domain.ConnectionStatus{State: "awaiting_qr", Detail: "Scan this QR code with the Steam mobile app", QRChallengeURL: session.ChallengeURL}
 	status := s.connection
 	s.mu.Unlock()
+	session.OnChallengeURL = func(challengeURL string) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.authEpoch != epoch {
+			return
+		}
+		s.connection = domain.ConnectionStatus{
+			State:          "awaiting_qr",
+			Detail:         "Steam refreshed the sign-in code. Scan the current QR code with the Steam mobile app",
+			QRChallengeURL: challengeURL,
+		}
+	}
 	go s.completeQRLogin(ctx, session, epoch)
 	return status
 }
@@ -121,6 +133,10 @@ func (s *Service) completeQRLogin(ctx context.Context, session transport.QRAuthS
 	}
 	s.connection = domain.ConnectionStatus{State: "connecting", Detail: "Sign-in approved. Finishing your Steam session…", AccountName: auth.AccountName}
 	s.mu.Unlock()
+	if err := s.gcClient.Connect(ctx); err != nil {
+		s.setQRAuthError(epoch, "Steam CM reconnect after QR approval", err)
+		return
+	}
 	result, err := s.gcClient.LogOn(ctx, transport.LogonCredentials{Username: auth.AccountName, AccessToken: auth.RefreshToken, WebAccessToken: auth.AccessToken})
 	if err != nil {
 		s.setQRAuthError(epoch, "Steam QR CM logon", err)

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"cs-inv-edit/backend/internal/api"
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/econ"
 	"cs-inv-edit/backend/internal/multigame"
@@ -15,13 +16,6 @@ import (
 	"cs-inv-edit/backend/internal/steamtrade"
 	"cs-inv-edit/backend/internal/transport"
 )
-
-type HealthStatus struct {
-	Status  string `json:"status"`
-	Service string `json:"service"`
-	Version string `json:"version"`
-	Time    string `json:"time"`
-}
 
 type steamAccountSession struct {
 	Connection       domain.ConnectionStatus
@@ -37,11 +31,15 @@ type Service struct {
 	inventory          domain.InventorySnapshot
 	armory             domain.ArmorySnapshot
 	store              domain.StoreSnapshot
+	tf2Store           domain.StoreSnapshot
 	purchaseSessions   map[string]domain.PurchaseSession
 	purchaseItemIDs    map[string][]uint64
+	purchaseAppIDs     map[string]uint32
 	loadedStorageUnits map[uint64]bool
 	storeCountry       string
 	storeCurrencyID    int32
+	tf2StoreCountry    string
+	tf2StoreCurrencyID int32
 	settings           domain.Settings
 	connection         domain.ConnectionStatus
 	gcClient           transport.GCClient
@@ -73,8 +71,10 @@ func NewService() *Service {
 		inventory:          emptyInventory(),
 		armory:             emptyArmory(),
 		store:              emptyStore(),
+		tf2Store:           emptyTF2Store(),
 		purchaseSessions:   make(map[string]domain.PurchaseSession),
 		purchaseItemIDs:    make(map[string][]uint64),
+		purchaseAppIDs:     make(map[string]uint32),
 		loadedStorageUnits: make(map[uint64]bool),
 		settings:           defaultSettings(),
 		connection:         domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
@@ -304,6 +304,35 @@ func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 	return snapshot
 }
 
+func (s *Service) TF2FeaturesWithMetadata(ctx context.Context) transport.TF2FeatureSnapshot {
+	snapshot := s.TF2Features()
+	if snapshot.Status != "ready" {
+		return snapshot
+	}
+	definitions, _, err := s.multiProvider.TF2Definitions(ctx)
+	if err != nil {
+		snapshot.Diagnostics = append(snapshot.Diagnostics, "TF2 campaign metadata: "+err.Error())
+		return snapshot
+	}
+	enrich := func(entries []map[string]any, indexField string) {
+		for _, entry := range entries {
+			definition, found := definitions[resultUint32(entry[indexField])]
+			if !found {
+				continue
+			}
+			entry["name"] = definition.Name
+			entry["description"] = definition.Description
+			if len(definition.QuestObjectives) > 0 {
+				entry["objectives"] = definition.QuestObjectives
+			}
+		}
+	}
+	enrich(snapshot.Quests, "defindex")
+	enrich(snapshot.QuestNodes, "selected_quest_def")
+	enrich(snapshot.QuestRewards, "defindex")
+	return snapshot
+}
+
 func (s *Service) CS2Features() transport.CS2FeatureSnapshot {
 	s.mu.Lock()
 	connected := s.connection.State == domain.ConnectionStateConnected
@@ -347,6 +376,8 @@ func (s *Service) reconcileCS2FeatureOperations(snapshot transport.CS2FeatureSna
 			confirmed = timestampAfter(snapshot.InspectedAt, created)
 		case "cs2.matches.recent", "cs2.matches.details":
 			confirmed = timestampAfter(snapshot.RefreshedAt, created) && len(snapshot.Matches) > 0
+		case "cs2.profile.refresh":
+			confirmed = timestampAfter(snapshot.RefreshedAt, created) && snapshot.Profile != nil
 		case "cs2.progression.refresh":
 			confirmed = timestampAfter(snapshot.RefreshedAt, created) && snapshot.RecurringSchema != nil
 		}
@@ -443,12 +474,12 @@ func timestampAfter(value string, reference time.Time) bool {
 	return err == nil && !parsed.Before(reference)
 }
 
-func (s *Service) Health() HealthStatus {
-	return HealthStatus{
-		Status:  "ok",
+func (s *Service) Health() api.HealthStatus {
+	return api.HealthStatus{
+		Status:  api.HealthStatusStatus("ok"),
 		Service: "cs2-backend",
 		Version: "0.0.0",
-		Time:    now(),
+		Time:    time.Now().UTC(),
 	}
 }
 

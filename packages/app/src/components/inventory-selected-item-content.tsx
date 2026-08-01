@@ -17,6 +17,7 @@ import {
 import { swapScreenshotURL } from "./cs2-screenshot.js";
 import type { InventoryDetailsPanelProps } from "./InventoryDetailsPanel.js";
 import { TerminalItemSection } from "./terminal-item-section.js";
+import { ActionLink } from "./ui/ActionLink.js";
 export function SelectedItemContent(props: {
   selected: InventoryItemDto;
   panelProps: InventoryDetailsPanelProps;
@@ -64,50 +65,28 @@ export function SelectedItemContent(props: {
         <div class="grid gap-2 sm:grid-cols-2">
           <Show when={inventoryURL()}>
             {(viewURL) => (
-              <a
-                class="block w-full rounded-xl border border-sky-500/40 bg-sky-950/30 px-4 py-3 text-center text-sm font-semibold text-sky-100 hover:bg-sky-900/40"
-                href={viewURL()}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ActionLink href={viewURL()} tone="primary">
                 View in inventory ↗
-              </a>
+              </ActionLink>
             )}
           </Show>
           <Show when={saleURL()}>
             {(url) => (
-              <a
-                class="block w-full rounded-xl border border-emerald-500/40 bg-emerald-950/30 px-4 py-3 text-center text-sm font-semibold text-emerald-100 hover:bg-emerald-900/40"
-                href={url()}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ActionLink href={url()} tone="primary">
                 Sell on Steam ↗
-              </a>
+              </ActionLink>
             )}
           </Show>
           <Show when={props.selected.inspectUrl}>
             {(url) => (
-              <a
-                class="block w-full rounded-xl border border-cyan-500/40 bg-cyan-950/30 px-4 py-3 text-center text-sm font-semibold text-cyan-100 hover:bg-cyan-900/40"
-                href={url()}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ActionLink href={url()} tone="primary">
                 Inspect in game ↗
-              </a>
+              </ActionLink>
             )}
           </Show>
           <Show when={screenshotURL()}>
             {(url) => (
-              <a
-                class="block w-full rounded-xl border border-violet-500/40 bg-violet-950/30 px-4 py-3 text-center text-sm font-semibold text-violet-100 hover:bg-violet-900/40"
-                href={url()}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Generate screenshot ↗
-              </a>
+              <ActionLink href={url()}>Generate screenshot ↗</ActionLink>
             )}
           </Show>
         </div>
@@ -130,7 +109,10 @@ export function SelectedItemContent(props: {
         returnEstimate={props.panelProps.tradeUpReturnEstimate}
         returnEstimateLoading={props.panelProps.tradeUpReturnLoading}
       />
-      <TerminalItemSection selected={props.selected} panelProps={props.panelProps} />
+      <TerminalItemSection
+        selected={props.selected}
+        panelProps={props.panelProps}
+      />
       <ActionBar
         selected={props.selected}
         pending={props.panelProps.pending}
@@ -146,6 +128,9 @@ export function SelectedItemContent(props: {
         onShowContents={props.panelProps.onShowContents ?? (() => undefined)}
         onViewStorageContents={
           props.panelProps.onViewStorageContents ?? (() => undefined)
+        }
+        onBeginMoveIntoStorage={
+          props.panelProps.onBeginMoveIntoStorage ?? (() => undefined)
         }
         onSelectedContainerKeyChange={
           props.panelProps.onSelectedContainerKeyChange

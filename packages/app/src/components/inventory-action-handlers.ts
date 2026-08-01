@@ -22,32 +22,44 @@ interface InventoryActionContext {
   setStorageSelectedItemIds: Setter<string[]>;
   setStorageSelectionAnchorId: Setter<string | undefined>;
   setStorageRetrieval: Setter<{ completed: number; total: number } | undefined>;
+  movingIntoStorageUnit: Accessor<InventoryItemDto | undefined>;
+  setMovingIntoStorageUnit: Setter<InventoryItemDto | undefined>;
 }
 
 export function createInventoryActionHandlers(context: InventoryActionContext) {
-  const { props, selectedItem, connected, selectedToolId, nameTagTools, draftName, setPending, setStatusMessage, setRenameOpen, browsingStorageUnit, storageSelectedItemIds, visibleItems, setBrowsingStorageUnit, setRemoveFromStorageMode, setStorageSelectedItemIds, setStorageSelectionAnchorId, setStorageRetrieval } = context;
+  const {
+    props,
+    selectedItem,
+    connected,
+    selectedToolId,
+    nameTagTools,
+    draftName,
+    setPending,
+    setStatusMessage,
+    setRenameOpen,
+    browsingStorageUnit,
+    storageSelectedItemIds,
+    visibleItems,
+    setBrowsingStorageUnit,
+    setRemoveFromStorageMode,
+    setStorageSelectedItemIds,
+    setStorageSelectionAnchorId,
+    setStorageRetrieval,
+    movingIntoStorageUnit,
+    setMovingIntoStorageUnit,
+  } = context;
   const handleRenameSubmit = async () => {
     const item = selectedItem();
     if (!item) return;
     if (!connected()) {
       const message = "Connect to Steam before editing inventory.";
       setStatusMessage(message);
-      props.onToast?.({
-        title: "Account required",
-        description: message,
-        variant: "warning",
-      });
       return;
     }
     const toolId = selectedToolId() || nameTagTools()[0]?.id || "";
     if (!toolId) {
       const message = "No compatible name tag tool is currently available.";
       setStatusMessage(message);
-      props.onToast?.({
-        title: "No tool available",
-        description: message,
-        variant: "warning",
-      });
       return;
     }
     setPending(true);
@@ -63,20 +75,10 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
       () => {
         setStatusMessage("Custom name updated.");
         setRenameOpen(false);
-        props.onToast?.({
-          title: "Custom name applied",
-          description: `${item.name} now has a custom label.`,
-          variant: "success",
-        });
       },
       (error) => {
         const message = appErrorMessage(error, "Failed to apply custom name.");
         setStatusMessage(message);
-        props.onToast?.({
-          title: "Rename failed",
-          description: message,
-          variant: "danger",
-        });
       },
     );
     setPending(false);
@@ -88,11 +90,6 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     if (!connected()) {
       const message = "Connect to Steam before editing inventory.";
       setStatusMessage(message);
-      props.onToast?.({
-        title: "Account required",
-        description: message,
-        variant: "warning",
-      });
       return;
     }
     setPending(true);
@@ -103,20 +100,10 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     ).match(
       () => {
         setStatusMessage("Custom name removed.");
-        props.onToast?.({
-          title: "Custom name removed",
-          description: `${item.name} is back to its original label.`,
-          variant: "success",
-        });
       },
       (error) => {
         const message = appErrorMessage(error, "Failed to remove custom name.");
         setStatusMessage(message);
-        props.onToast?.({
-          title: "Remove-name failed",
-          description: message,
-          variant: "danger",
-        });
       },
     );
     setPending(false);
@@ -147,11 +134,6 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
           "Failed to load storage unit contents.",
         );
         setStatusMessage(message);
-        props.onToast?.({
-          title: "Storage load failed",
-          description: message,
-          variant: "danger",
-        });
         return false;
       },
     );
@@ -216,5 +198,46 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     setPending(false);
   };
 
-  return { handleRenameSubmit, handleRemoveName, handleLoadStorageContents, backFromStorage, retrieveFromStorage };
+  const moveIntoStorage = async () => {
+    const unit = movingIntoStorageUnit();
+    const itemIds = storageSelectedItemIds();
+    if (!unit || itemIds.length === 0) return;
+    setPending(true);
+    setStorageRetrieval({ completed: 0, total: itemIds.length });
+    let completed = 0;
+    for (const itemId of itemIds) {
+      await fromAppPromise(
+        props.onMoveIntoStorage({ casketId: unit.id, itemId }),
+        "Failed to move item into storage",
+      ).match(
+        (receipt) => {
+          if (
+            receipt.state === "completed" ||
+            receipt.state === "awaiting_gc_confirmation"
+          )
+            completed++;
+        },
+        () => undefined,
+      );
+      setStorageRetrieval({ completed, total: itemIds.length });
+    }
+    setStatusMessage(
+      `Moved ${completed} of ${itemIds.length} item${itemIds.length === 1 ? "" : "s"} into ${itemDisplayName(unit)}.`,
+    );
+    setStorageSelectedItemIds([]);
+    setStorageSelectionAnchorId(undefined);
+    setMovingIntoStorageUnit(undefined);
+    setStorageRetrieval(undefined);
+    setPending(false);
+    props.onRefresh();
+  };
+
+  return {
+    handleRenameSubmit,
+    handleRemoveName,
+    handleLoadStorageContents,
+    backFromStorage,
+    retrieveFromStorage,
+    moveIntoStorage,
+  };
 }

@@ -1,17 +1,41 @@
 import type {
-  ApplyStatTrakSwapRequest, ArmoryRedeemRequest, ArmorySnapshot,
-  ApplyStrangePartRequest, ApplyToolToBaseItemRequest, ApplyToolToItemRequest,
-  ConnectionStatus, DeleteItemRequest, GiftItemRequest, GameInventorySnapshot,
-  HealthStatus, InventoryItemDto, InventorySnapshot, OperationEvent,
-  OperationReceipt, OpenContainerRequest, PriceScanResult, ProtocolTraceEntry,
-  RemoveItemNameRequest, RelatedItemDto, SetItemNameRequest, SettingsData,
-  StoreSnapshot, PurchaseSession, InitializeStorePurchaseRequest,
-  SteamAccountProfile, SteamAccountTradesCollection, SteamTradesSnapshot,
-  SteamInventoryServiceGames, TF2FeatureSnapshot, CS2FeatureSnapshot,
-  UseItemRequest, UseMultipleItemsRequest,
+  ApplyStatTrakSwapRequest,
+  ArmoryRedeemRequest,
+  ArmorySnapshot,
+  ApplyStrangePartRequest,
+  ApplyToolToBaseItemRequest,
+  ApplyToolToItemRequest,
+  ConnectionStatus,
+  DeleteItemRequest,
+  GiftItemRequest,
+  GameInventorySnapshot,
+  HealthStatus,
+  InventoryItemDto,
+  InventorySnapshot,
+  OperationEvent,
+  OperationReceipt,
+  OpenContainerRequest,
+  PriceScanResult,
+  ProtocolTraceEntry,
+  RemoveItemNameRequest,
+  RelatedItemDto,
+  SetItemNameRequest,
+  SettingsData,
+  StoreSnapshot,
+  PurchaseSession,
+  InitializeStorePurchaseRequest,
+  SteamAccountProfile,
+  SteamAccountTradesCollection,
+  SteamTradesSnapshot,
+  SteamInventoryServiceGames,
+  TF2FeatureSnapshot,
+  CS2FeatureSnapshot,
+  UseItemRequest,
+  UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
 import type { ToastItem } from "./components/ui/ToastViewport.js";
 import type { AppScreen } from "./view.js";
+import type { UIActionOutcome } from "./lib/ui-action-outcome.js";
 export interface AppViewProps {
   view: AppScreen;
   setView: (view: AppScreen) => void;
@@ -38,6 +62,7 @@ export interface AppViewProps {
   gameInventoryLoading: Record<"steam" | "tf2" | "dota2", boolean>;
   armory: ArmorySnapshot | undefined;
   store: StoreSnapshot | undefined;
+  tf2Store: StoreSnapshot | undefined;
   trades: SteamTradesSnapshot | undefined;
   tradeAccounts: SteamAccountTradesCollection | undefined;
   settings: SettingsData | undefined;
@@ -57,15 +82,24 @@ export interface AppViewProps {
   onDeleteAccount: (account: SteamAccountProfile) => void;
   onRefreshInventory: () => void;
   onDismissToast: (id: string) => void;
-  onConnect: (input: { username?: string; password?: string }) => Promise<void>;
-  onStartSteamQR: () => Promise<void>;
-  onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
-  onDisconnect: () => Promise<void>;
-  onToast: (toast: Omit<ToastItem, "id">) => void;
-  onInventoryRefresh: () => void;
-  onGameInventoryRefresh: (game: "steam" | "tf2" | "dota2") => void;
+  onConnect: (input: {
+    username?: string;
+    password?: string;
+  }) => Promise<UIActionOutcome>;
+  onStartSteamQR: () => Promise<UIActionOutcome>;
+  onSubmitSteamGuard: (input: { code: string }) => Promise<UIActionOutcome>;
+  onDisconnect: () => Promise<UIActionOutcome>;
+  onInventoryRefresh: (suppressToast?: boolean) => Promise<boolean>;
+  onGameInventoryRefresh: (
+    game: "steam" | "tf2" | "dota2",
+    suppressToast?: boolean,
+  ) => void;
   onSteamServiceRefresh: (appId: number) => void;
-  onGameOperation: (type: string, input: unknown) => Promise<OperationReceipt>;
+  onGameOperation: (
+    type: string,
+    input: unknown,
+    suppressToast?: boolean,
+  ) => Promise<OperationReceipt>;
   onArmoryRefresh: () => Promise<unknown>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
   onScanPrices: (
@@ -74,7 +108,11 @@ export interface AppViewProps {
   ) => Promise<PriceScanResult | undefined>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
   onStoreRefresh: () => Promise<unknown>;
+  onTF2StoreRefresh: () => Promise<unknown>;
   onStorePurchase: (
+    input: InitializeStorePurchaseRequest,
+  ) => Promise<PurchaseSession>;
+  onTF2StorePurchase: (
     input: InitializeStorePurchaseRequest,
   ) => Promise<PurchaseSession>;
   onStoreReconcile: (id: string) => Promise<PurchaseSession>;
@@ -112,6 +150,5 @@ export interface AppViewProps {
     input: UseMultipleItemsRequest,
   ) => Promise<OperationReceipt>;
   onItemGift: (input: GiftItemRequest) => Promise<OperationReceipt>;
-  onSaveSettings: (next: SettingsData) => Promise<void>;
+  onSaveSettings: (next: SettingsData) => Promise<UIActionOutcome>;
 }
-

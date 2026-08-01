@@ -1,15 +1,13 @@
 import { createResource, createSignal, onCleanup } from "solid-js";
 import { errAsync } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
-import {
-  type ProtocolTraceEntry,
-} from "@cs-inv-edit/contracts";
+import { type ProtocolTraceEntry } from "@cs-inv-edit/contracts";
 import type { AppError } from "./lib/result-http.js";
 
 import type { AppProps } from "./app-controller.js";
 
 export function createAppResources(props: AppProps) {
-  const resourceValue = <T,>(result: ResultAsync<T, AppError>) =>
+  const resourceValue = <T>(result: ResultAsync<T, AppError>) =>
     result.match(
       (value) => value,
       (error) => {
@@ -46,6 +44,19 @@ export function createAppResources(props: AppProps) {
           ) {
             setTF2ProtocolEntries((current) => [...current, entry].slice(-200));
           }
+
+          // ClientFromGC/ClientToGC are transport wrappers. Their `payload`
+          // field is the same message recorded immediately afterwards by the
+          // game-coordinator trace, where it can be decoded with the correct
+          // app-specific GameTracking descriptor. Logging both only produces
+          // a duplicate base64 payload and outer-envelope hex dump.
+          if (
+            entry.layer === "steam-cm" &&
+            (entry.name === "EMsg_ClientFromGC" ||
+              entry.name === "EMsg_ClientToGC")
+          ) {
+            continue;
+          }
           const notParsedWarning =
             entry.decoded === undefined ? " [WARNING - NOT PARSED]" : "";
           const protocolLabel = entry.protobuf ? "protobuf" : "steam protocol";
@@ -57,9 +68,16 @@ export function createAppResources(props: AppProps) {
           } else if (entry.decodeError) {
             console.warn("protobuf decode unavailable", entry.decodeError);
           }
-          console.debug("trace entry", entry);
-          if (entry.bodyHex) {
-            console.debug(`body (${entry.bodyBytes} bytes): ${entry.bodyHex}`);
+          if (entry.decoded !== undefined) {
+            const { bodyHex: _bodyHex, ...structuredEntry } = entry;
+            console.debug("trace entry", structuredEntry);
+          } else {
+            console.debug("trace entry", entry);
+          }
+          if (entry.decoded === undefined && entry.bodyHex) {
+            console.debug(
+              `raw body fallback (${entry.bodyBytes} bytes): ${entry.bodyHex}`,
+            );
           }
           console.groupEnd();
         }
@@ -117,6 +135,11 @@ export function createAppResources(props: AppProps) {
   const [store, { refetch: refetchStore, mutate: setStore }] = createResource(
     () => resourceValue(props.backend.store()),
   );
+  const [tf2Store, { refetch: refetchTF2Store, mutate: setTF2Store }] =
+    createResource(
+      () => (settings()?.featureFlags.enableTf2Store !== false ? true : false),
+      () => resourceValue(props.backend.tf2Store()),
+    );
   const [trades, { mutate: setTrades }] = createResource(() =>
     resourceValue(props.backend.trades()),
   );
@@ -137,5 +160,42 @@ export function createAppResources(props: AppProps) {
       ),
     );
 
-  return { health, settings, refetchSettings, tf2ProtocolEntries, inventory, refetchInventory, steamInventory, refetchSteamInventory, tf2Inventory, refetchTF2Inventory, tf2Features, refetchTF2Features, cs2Features, refetchCS2Features, dota2Inventory, refetchDota2Inventory, armory, refetchArmory, setArmory, store, refetchStore, setStore, trades, setTrades, tradeAccounts, setTradeAccounts, receipts, refetchOperations, events, refetchEvents, connection, refetchConnection, setConnection };
+  return {
+    health,
+    settings,
+    refetchSettings,
+    tf2ProtocolEntries,
+    inventory,
+    refetchInventory,
+    steamInventory,
+    refetchSteamInventory,
+    tf2Inventory,
+    refetchTF2Inventory,
+    tf2Features,
+    refetchTF2Features,
+    cs2Features,
+    refetchCS2Features,
+    dota2Inventory,
+    refetchDota2Inventory,
+    armory,
+    refetchArmory,
+    setArmory,
+    store,
+    refetchStore,
+    setStore,
+    tf2Store,
+    refetchTF2Store,
+    setTF2Store,
+    trades,
+    setTrades,
+    tradeAccounts,
+    setTradeAccounts,
+    receipts,
+    refetchOperations,
+    events,
+    refetchEvents,
+    connection,
+    refetchConnection,
+    setConnection,
+  };
 }

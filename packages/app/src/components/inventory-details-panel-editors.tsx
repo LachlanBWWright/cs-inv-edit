@@ -51,7 +51,7 @@ function NameTagToolSelect(props: {
 export function RenameEditor(props: RenameEditorProps) {
   return (
     <Show when={props.renameOpen}>
-      <div class="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 text-sm text-slate-300">
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-900 p-4 text-sm text-slate-300">
         <label class="block font-medium text-slate-100">Custom name</label>
         <Input
           class="mt-2"

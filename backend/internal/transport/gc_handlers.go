@@ -87,7 +87,7 @@ func (h *GCHandler) handleClientMicroTxnAuthRequest(packet *steammsg.Packet) ([]
 		log.Printf("[store-purchase] Steam emsg=5504 packet decode failed error=%v", err)
 		return nil, err
 	}
-	log.Printf("[store-purchase] received Steam emsg=5504 body_bytes=%d body_hex=%x", len(body.data), body.data)
+	log.Printf("[store-purchase] received Steam emsg=5504 body_bytes=%d; BinaryKV structured decode follows", len(body.data))
 	if h.microTxnAuth != nil {
 		h.microTxnAuth(body.data)
 	}
@@ -132,7 +132,7 @@ func (h *GCHandler) handleClientLoggedOff(packet *steammsg.Packet) ([]steamcm.Ev
 		h.events <- GCEvent{Type: "steam.logged_off", Payload: body}
 	}
 	if h.sessionEnded != nil {
-		h.sessionEnded("steam.logged_off")
+		h.sessionEnded(fmt.Sprintf("steam.logged_off:%d", body.GetEresult()))
 	}
 	return []steamcm.Event{steamcm.MakeEvent(steamcm.EventType_Incoming, steamcm.EventPacketReceived{Packet: packet})}, nil
 }

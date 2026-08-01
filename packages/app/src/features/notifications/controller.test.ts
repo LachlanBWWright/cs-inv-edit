@@ -25,4 +25,21 @@ describe("createToastController", () => {
 
     expect(controller.toasts()).toHaveLength(0);
   });
+
+  it("deduplicates repeated messages and limits the visible stack", () => {
+    const controller = createToastController();
+
+    controller.pushToast({ title: "Repeated", description: "Same message" });
+    controller.pushToast({ title: "Repeated", description: "Same message" });
+    controller.pushToast({ title: "Second" });
+    controller.pushToast({ title: "Third" });
+    controller.pushToast({ title: "Fourth" });
+
+    expect(controller.toasts()).toHaveLength(3);
+    expect(controller.toasts().map((toast) => toast.title)).toEqual([
+      "Second",
+      "Third",
+      "Fourth",
+    ]);
+  });
 });

@@ -27,7 +27,7 @@ func (s *SteamGCClient) RequestSteamInventoryService(ctx context.Context, appID 
 		return SteamInventoryServiceResponse{}, ErrNotConnected
 	}
 	handler := newNonAuthedUnifiedHandler()
-	response, err := handler.SendAuthedMessage(ctx, conn, "Inventory.GetInventory#1", &steampb.CInventory_GetInventory_Request{
+	response, err := handler.SendAuthedMessageForApp(ctx, conn, appID, "Inventory.GetInventory#1", &steampb.CInventory_GetInventory_Request{
 		Appid:   proto.Uint32(appID),
 		Steamid: proto.Uint64(steamID),
 	})

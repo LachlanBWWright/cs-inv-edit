@@ -52,7 +52,10 @@ export interface InventoryViewContentProps {
     marketNames: string[],
     appId?: number,
   ) => Promise<PriceScanResult | undefined>;
-  onSelectItem: (item: InventoryItemDto, options?: { range: boolean }) => void;
+  onSelectItem: (
+    item: InventoryItemDto,
+    options?: { range: boolean; selected?: boolean },
+  ) => void;
   onOpenRenameEditor: (item: InventoryItemDto) => void;
   onRenameSubmit: () => Promise<void> | void;
   onRemoveName: () => Promise<void> | void;
@@ -64,6 +67,8 @@ export interface InventoryViewContentProps {
     input: InitializeStorePurchaseRequest,
   ) => Promise<PurchaseSession>;
   onLoadStorageContents: (casketId: string) => Promise<boolean>;
+  onBeginMoveIntoStorage: (item: InventoryItemDto) => void;
+  movingIntoStorageUnit: InventoryItemDto | undefined;
   browsingStorageUnit: InventoryItemDto | undefined;
   removeFromStorageMode: boolean;
   storageSelectedItemIds: string[];
@@ -72,29 +77,13 @@ export interface InventoryViewContentProps {
   onToggleRemoveFromStorageMode: () => void;
   onRetrieveFromStorage: () => Promise<void> | void;
   onRetrieveAllFromStorage: () => Promise<void> | void;
+  onCancelMoveIntoStorage: () => void;
+  onConfirmMoveIntoStorage: () => Promise<void> | void;
   onCloseRename: () => void;
   onDraftNameChange: (value: string) => void;
   onSelectedToolChange: (value: string) => void;
   onSelectedContainerKeyChange: (value: string) => void;
   onRefresh: () => void;
-}
-
-function SelectionAlert(
-  props: Pick<InventoryViewContentProps, "selectionMode" | "selectedItemIds">,
-): JSX.Element | null {
-  if (props.selectionMode === "inventory") {
-    return null;
-  }
-
-  return (
-    <Alert variant="warning">
-      {props.selectionMode === "inventory-storage"
-        ? "Storage selection is a stub."
-        : "Trade-up selection is a stub."}{" "}
-      Select multiple inventory items below; no operation will be performed.
-      Selected: {props.selectedItemIds.length}.
-    </Alert>
-  );
 }
 
 function ConnectionAlert(
@@ -125,7 +114,11 @@ function ErrorAlert(
   return (
     <Alert variant="danger">
       <div class="space-y-2">
-        <p>Inventory sync is unavailable.</p>
+        <p>
+          {props.inventoryError.includes("active elsewhere")
+            ? "Steam reports that this account is active in another Steam or CS2 session. Close it there, then use Retry to reconnect."
+            : "Inventory sync is unavailable."}
+        </p>
         <Show when={props.inventoryError}>
           <details class="text-xs text-rose-100/80">
             <summary class="cursor-pointer">Diagnostics</summary>
@@ -183,17 +176,11 @@ function InventoryAlerts(
     | "inventoryDiagnostics"
     | "inventoryError"
     | "statusMessage"
-    | "selectionMode"
-    | "selectedItemIds"
     | "connected"
   >,
 ): JSX.Element {
   return (
     <>
-      <SelectionAlert
-        selectionMode={props.selectionMode}
-        selectedItemIds={props.selectedItemIds}
-      />
       <ConnectionAlert
         inventory={props.inventory}
         connected={props.connected}
@@ -243,6 +230,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
       onOpenContainer={props.onOpenContainer}
       onTerminalPurchase={props.onTerminalPurchase}
       onLoadStorageContents={props.onLoadStorageContents}
+      onBeginMoveIntoStorage={props.onBeginMoveIntoStorage}
       onMarketPreview={props.onMarketPreview}
       onScanPrices={props.onScanPrices}
       onCloseRename={props.onCloseRename}
@@ -253,13 +241,11 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
   );
 
   return (
-    <div class="flex h-full min-h-0 flex-col gap-4">
+    <div class="flex min-h-0 flex-1 flex-col gap-4">
       <InventoryAlerts
         inventory={props.inventory}
         inventoryDiagnostics={props.inventoryDiagnostics}
         inventoryError={props.inventoryError}
-        selectionMode={props.selectionMode}
-        selectedItemIds={props.selectedItemIds}
         statusMessage={props.statusMessage}
         connected={props.connected}
       />
@@ -277,6 +263,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         onRefresh={props.onRefresh}
         detailsPanel={detailsPanel}
         browsingStorageUnit={props.browsingStorageUnit}
+        movingIntoStorageUnit={props.movingIntoStorageUnit}
         removeFromStorageMode={props.removeFromStorageMode}
         storageSelectedItemIds={props.storageSelectedItemIds}
         storageRetrieval={props.storageRetrieval}
@@ -284,30 +271,9 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode}
         onRetrieveFromStorage={props.onRetrieveFromStorage}
         onRetrieveAllFromStorage={props.onRetrieveAllFromStorage}
+        onCancelMoveIntoStorage={props.onCancelMoveIntoStorage}
+        onConfirmMoveIntoStorage={props.onConfirmMoveIntoStorage}
       />
-      <Show
-        when={
-          props.selectionMode !== "inventory" &&
-          props.selectedItemIds.length > 0
-        }
-      >
-        <div class="fixed inset-x-3 bottom-3 z-40 flex items-center justify-between gap-3 rounded-2xl border border-amber-400/30 bg-slate-950/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur lg:hidden">
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-slate-100">
-              {props.selectedItemIds.length} item
-              {props.selectedItemIds.length === 1 ? "" : "s"} selected
-            </p>
-            <p class="truncate text-xs text-slate-500">
-              {props.selectionMode === "inventory-storage"
-                ? "Storage selection"
-                : "Trade-up contract selection"}
-            </p>
-          </div>
-          <span class="shrink-0 text-xs font-semibold text-amber-200">
-            Review selection
-          </span>
-        </div>
-      </Show>
     </div>
   );
 }

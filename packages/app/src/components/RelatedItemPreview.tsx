@@ -8,6 +8,7 @@ import {
   steamMarketURL,
 } from "./related-item-preview-utils.js";
 import { WearRangeBar } from "./ui/WearRangeBar.js";
+import { Button } from "./ui/Button.js";
 
 export type RelatedItemPreviewContext = "collection" | "container" | "trade-up";
 
@@ -45,7 +46,7 @@ export function RelatedItemPreview(props: {
 
   return (
     <details
-      class={`group rounded-xl border-2 bg-slate-900/80 ${rarityBorderClass(item().rarity)}`}
+      class={`group rounded-xl border-2 bg-slate-900 ${rarityBorderClass(item().rarity)}`}
       onToggle={(event) => {
         if (event.currentTarget.open) void requestMarketPreview();
       }}
@@ -165,13 +166,13 @@ export function RelatedItemPreview(props: {
           </p>
         </Show>
         <Show when={item().kind === "item_collection"}>
-          <button
-            class="mt-3 rounded-lg bg-cyan-400/10 px-3 py-2 font-medium text-cyan-200 hover:bg-cyan-400/20"
+          <Button
+            class="mt-3"
             onClick={() => props.onOpenCollection?.(item())}
           >
             View collection
             {item().items?.length ? ` (${item().items!.length})` : ""}
-          </button>
+          </Button>
         </Show>
       </div>
     </details>

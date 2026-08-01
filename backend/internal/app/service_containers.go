@@ -52,22 +52,7 @@ type containerOpenResult struct {
 }
 
 func (s *Service) isTerminalContainer(item domain.InventoryItem) bool {
-	if isTerminalInventoryItem(item) {
-		return true
-	}
-	s.mu.Lock()
-	econProvider := s.econProvider
-	s.mu.Unlock()
-	if econProvider != nil {
-		if schema, err := econProvider.Load(context.Background()); err == nil && schema != nil {
-			if volatileAttrIndex, ok := schema.AttributeDefIndexByName("is volatile container"); ok {
-				if item.Defindex != nil && *item.Defindex == volatileAttrIndex {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	return isTerminalInventoryItem(item)
 }
 
 func (s *Service) openContainer(input map[string]any) (bool, string, *containerOpenResult) {
@@ -206,7 +191,7 @@ func (s *Service) openOrdinaryContainer(accountCtx context.Context, container do
 
 func (s *Service) openTerminal(accountCtx context.Context, terminal domain.InventoryItem, input map[string]any, beforeInventory domain.InventorySnapshot, result *containerOpenResult) (bool, string, *containerOpenResult) {
 	terminalID, _ := strconv.ParseUint(terminal.ID, 10, 64)
-	activeTerminal := strings.Contains(strings.ToLower(terminal.Name+" "+terminal.MarketName), "active")
+	activeTerminal := terminal.IsActiveTerminal
 
 	pointsRemaining, err := optionalUint32PointerInput(input, "pointsRemaining")
 	if err != nil {
@@ -265,6 +250,8 @@ func (s *Service) openTerminal(accountCtx context.Context, terminal domain.Inven
 		terminal.ID = strconv.FormatUint(terminalID, 10)
 		terminal.Name = activeTerminalName(terminal.Name)
 		terminal.MarketName = activeTerminalName(terminal.MarketName)
+		terminal.IsTerminal = true
+		terminal.IsActiveTerminal = true
 		result.TerminalItemID = terminal.ID
 		// Panorama generates the first offer with UseToolWithIntArg(active,
 		// active, 0), not with the current-offer/casket resume route.
@@ -460,7 +447,7 @@ func (s *Service) resumeTerminalOffer(accountCtx context.Context, terminalIDText
 	// legitimately have no offer yet when it was unsealed by another client or
 	// the first-offer request was interrupted. Panorama starts that state with
 	// UseToolWithIntArg(active, active, 0), encoded as CMsgOpenCrate.
-	if terminalItem != nil && len(terminalItem.TerminalOffers) == 0 {
+	if shouldRequestFirstTerminalOffer(terminalItem) {
 		firstOfferCounter := uint32(0)
 		result := &containerOpenResult{
 			Kind:            "terminal_offer",
@@ -481,6 +468,10 @@ func (s *Service) resumeTerminalOffer(accountCtx context.Context, terminalIDText
 		return false, "failed", message, opened
 	}
 	return s.resumeTerminalOfferVia(accountCtx, terminalIDText, protocol.EMsgVolatileItemLoadContents)
+}
+
+func shouldRequestFirstTerminalOffer(terminal *domain.InventoryItem) bool {
+	return terminal != nil && terminal.IsActiveTerminal && terminal.TerminalPointsRemaining == nil
 }
 
 func (s *Service) resumeTerminalOfferVia(accountCtx context.Context, terminalIDText string, requestEMsg uint32) (bool, operations.State, string, *containerOpenResult) {
@@ -775,12 +766,15 @@ func openedInventoryItemName(item *domain.InventoryItem) string {
 }
 
 func isContainerLikeInventoryItem(item domain.InventoryItem) bool {
+	if item.IsTerminal {
+		return true
+	}
 	haystack := strings.ToLower(item.Kind + " " + item.Name + " " + item.MarketName)
 	return item.Kind == "container" || len(item.ContainerItems) > 0 || strings.Contains(haystack, "capsule") || strings.Contains(haystack, "case") || strings.Contains(haystack, "container") || strings.Contains(haystack, "graffiti box")
 }
 
 func isTerminalInventoryItem(item domain.InventoryItem) bool {
-	return strings.Contains(strings.ToLower(item.Name+" "+item.MarketName), "terminal")
+	return item.IsTerminal
 }
 
 func optionalUint64Input(input map[string]any, key string) (uint64, error) {

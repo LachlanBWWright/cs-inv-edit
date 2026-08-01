@@ -46,17 +46,23 @@ export function InventoryEmptyState(props: {
   inventory: InventorySnapshot | undefined;
   inventoryLoading: boolean;
 }) {
+  const initialLoad = () =>
+    props.inventoryLoading && (props.inventory?.items.length ?? 0) === 0;
   return (
     <Show
-      when={props.inventoryLoading}
+      when={initialLoad()}
       fallback={
         <Alert class="flex h-full min-h-48 items-center justify-center">
-          <p>No inventory items are loaded.</p>
+          <p>
+            {(props.inventory?.items.length ?? 0) > 0
+              ? "No items match the current filters."
+              : "No inventory items are loaded."}
+          </p>
         </Alert>
       }
     >
       <InventoryLoadingState
-        active={props.inventoryLoading}
+        active={initialLoad()}
         title="Loading CS2 inventory"
         stages={inventoryLoadingStages}
         currentStage={props.inventory?.message}

@@ -8,10 +8,15 @@ import (
 	"log"
 	"math"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"cs-inv-edit/backend/internal/proto/gametracking"
+	"cs-inv-edit/backend/internal/protocol"
+	"github.com/Lucino772/envelop/pkg/steam/steamlang"
+	"github.com/Lucino772/envelop/pkg/steam/steammsg"
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
 	"google.golang.org/protobuf/proto"
 )
@@ -21,8 +26,14 @@ const emsgStoreGetUserData uint32 = 2500
 const emsgStoreGetUserDataResponse uint32 = 2501
 const emsgStorePurchaseInit uint32 = 2510
 const emsgStorePurchaseInitResponse uint32 = 2511
+const emsgStorePurchaseFinalize uint32 = 2504
+const emsgStorePurchaseFinalizeResponse uint32 = 2505
 
 func (s *SteamGCClient) RequestStore(ctx context.Context, version uint32, currency int32) (GCStoreData, error) {
+	return s.RequestGameStore(ctx, cs2AppID, version, currency)
+}
+
+func (s *SteamGCClient) RequestGameStore(ctx context.Context, appID uint32, version uint32, currency int32) (GCStoreData, error) {
 	s.requestMu.Lock()
 	defer s.requestMu.Unlock()
 	s.steamTraceActive.Store(true)
@@ -48,7 +59,7 @@ func (s *SteamGCClient) RequestStore(ctx context.Context, version uint32, curren
 	if err != nil {
 		return GCStoreData{}, err
 	}
-	if err = s.SendProtoToGC(ctx, cs2AppID, emsgStoreGetUserData, body); err != nil {
+	if err = s.SendProtoToGC(ctx, appID, emsgStoreGetUserData, body); err != nil {
 		return GCStoreData{}, err
 	}
 	for {
@@ -57,7 +68,7 @@ func (s *SteamGCClient) RequestStore(ctx context.Context, version uint32, curren
 			return GCStoreData{}, fmt.Errorf("store catalogue response: %w", ctx.Err())
 		case event := <-s.events:
 			message, ok := event.Payload.(GCMessage)
-			if event.Type != "gc.message" || !ok || message.AppID != cs2AppID || message.EMsg != emsgStoreGetUserDataResponse {
+			if event.Type != "gc.message" || !ok || message.AppID != appID || message.EMsg != emsgStoreGetUserDataResponse {
 				continue
 			}
 			response, err := gametracking.UnmarshalStoreGetUserDataResponse(message.Body)
@@ -91,6 +102,10 @@ func steamWalletCurrencyToEconomyCurrency(walletCurrency int32) (int32, error) {
 }
 
 func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request StorePurchaseRequest) (result StorePurchaseTransportResult, resultErr error) {
+	appID := request.AppID
+	if appID == 0 {
+		appID = cs2AppID
+	}
 	// IMPORTANT: Do not replace this native CS2 cash-store flow with
 	// https://store.steampowered.com/buyitem/{appid}/{itemdefid}/{quantity}.
 	// BuyItem is a separate Steam Inventory Service web-store entry point. It
@@ -112,12 +127,37 @@ func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request Sto
 	s.steamTraceActive.Store(true)
 	defer s.steamTraceActive.Store(false)
 	trace := newDiagnosticTrace("Purchase trace started")
-	trace.Add(fmt.Sprintf("SESSION routing identity platform=SteamClient os=Linux client_os_type=20 active_game=Counter-Strike 2 appid=730 client_version=%d", cs2ClientVersion))
+	trace.Add(fmt.Sprintf("SESSION routing identity platform=SteamClient runtime_os=%s client_os_type=%d active_appid=%d", runtime.GOOS, steamClientOSType(), appID))
 	defer func() {
 		if resultErr != nil {
 			resultErr = trace.Error(resultErr)
 		}
 	}()
+	// Steam routes the out-of-GC microtransaction authorization to the client
+	// session playing the purchasing app. Working headless CS2 clients advertise
+	// app 730 exclusively and allow Steam presence to settle before checkout;
+	// advertising TF2/Dota alongside it can prevent emsg=5504 from being routed.
+	s.mu.Lock()
+	previousGames := append([]uint32(nil), s.gamesPlayed...)
+	s.mu.Unlock()
+	trace.Add(fmt.Sprintf("PRESENCE before purchase appids=%v", previousGames))
+	if appID == cs2AppID && (len(previousGames) != 1 || previousGames[0] != cs2AppID) {
+		if err := s.sendGamesPlayed([]uint32{cs2AppID}); err != nil {
+			return StorePurchaseTransportResult{}, fmt.Errorf("isolate CS2 Steam presence for purchase: %w", err)
+		}
+		trace.Add("PRESENCE isolated appids=[730]; waiting 5s for Steam purchase routing")
+		settle := time.NewTimer(5 * time.Second)
+		defer settle.Stop()
+		select {
+		case <-ctx.Done():
+			return StorePurchaseTransportResult{}, ctx.Err()
+		case <-settle.C:
+		}
+		trace.Add("GC SESSION re-establishing CS2 after exclusive app presence")
+		if err := s.reestablishCS2PurchaseSession(ctx, trace); err != nil {
+			return StorePurchaseTransportResult{}, err
+		}
+	}
 	body, err := gametracking.MarshalStorePurchaseInit(gametracking.StorePurchaseRequest{
 		Country: request.Country, Language: request.Language, Currency: request.Currency,
 		CountryPresent: request.CountryPresent, LanguagePresent: request.LanguagePresent, OmitCurrency: request.OmitCurrency,
@@ -131,16 +171,30 @@ func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request Sto
 	if err != nil {
 		return StorePurchaseTransportResult{}, err
 	}
-	innerEnvelope, envelopeErr := encodeGCProtoPayload(emsgStorePurchaseInit, body)
+	s.mu.Lock()
+	conn := s.conn
+	s.mu.Unlock()
+	if conn == nil {
+		return StorePurchaseTransportResult{}, ErrNotConnected
+	}
+	sourceJobID := uint64(conn.GetNextJobId())
+	innerEnvelope, envelopeErr := encodeGCProtoPayloadWithSourceJob(emsgStorePurchaseInit, body, sourceJobID)
 	if envelopeErr != nil {
 		return StorePurchaseTransportResult{}, fmt.Errorf("encode purchase trace envelope: %w", envelopeErr)
 	}
-	log.Printf("[store-purchase] sending GC request appid=%d emsg=%d proto=true country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%d supplemental_data=%d body_bytes=%d body_hex=%x inner_envelope_bytes=%d inner_envelope_hex=%x",
-		cs2AppID, emsgStorePurchaseInit, request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, request.PurchaseType, request.SupplementalData, len(body), body, len(innerEnvelope), innerEnvelope)
+	purchaseTypeField := "<absent>"
+	if request.PurchaseTypePresent {
+		purchaseTypeField = fmt.Sprintf("%d", request.PurchaseType)
+	}
+	supplementalField := "<absent>"
+	if !request.OmitSupplementalData {
+		supplementalField = fmt.Sprintf("%d", request.SupplementalData)
+	}
+	log.Printf("[store-purchase] sending decoded GC request appid=%d emsg=%d message=CMsgGCStorePurchaseInit country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%s supplemental_data=%s body_bytes=%d",
+		cs2AppID, emsgStorePurchaseInit, request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, purchaseTypeField, supplementalField, len(body))
 	trace.Add(fmt.Sprintf("SEND GC appid=%d emsg=%d (CMsgGCStorePurchaseInit)", cs2AppID, emsgStorePurchaseInit))
-	trace.Add(fmt.Sprintf("SEND fields country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%d supplemental_data=%d", request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, request.PurchaseType, request.SupplementalData))
-	trace.Add(fmt.Sprintf("SEND protobuf body (%d bytes): %x", len(body), body))
-	trace.Add(fmt.Sprintf("SEND GC inner envelope (%d bytes): %x", len(innerEnvelope), innerEnvelope))
+	trace.Add(fmt.Sprintf("SEND decoded fields country=%q language=%d currency=%d item_def_id=%d quantity=%d cost=%d purchase_type=%s supplemental_data=%s", request.Country, request.Language, request.Currency, request.ItemDefID, request.Quantity, request.Cost, purchaseTypeField, supplementalField))
+	trace.Add(fmt.Sprintf("SEND encoded protobuf body_bytes=%d inner_envelope_bytes=%d source_job_id=%d", len(body), len(innerEnvelope), sourceJobID))
 	// The generic GC event stream is intentionally not used for 5504. It has
 	// multiple consumers (inventory, containers, authentication, store), so a
 	// concurrent waiter can otherwise steal the one authorization packet for
@@ -154,7 +208,7 @@ func (s *SteamGCClient) InitializeStorePurchase(ctx context.Context, request Sto
 		}
 	}
 MicroTxnQueueDrained:
-	if err = s.SendProtoToGC(ctx, cs2AppID, emsgStorePurchaseInit, body); err != nil {
+	if err = s.sendStoreProtoWithEnvelope(ctx, conn, appID, emsgStorePurchaseInit, body, innerEnvelope); err != nil {
 		log.Printf("[store-purchase] GC request send failed appid=%d emsg=%d error=%v", cs2AppID, emsgStorePurchaseInit, err)
 		return StorePurchaseTransportResult{}, err
 	}
@@ -175,6 +229,9 @@ MicroTxnQueueDrained:
 			gcDetail := "gc_response=missing"
 			if gc != nil {
 				gcDetail = fmt.Sprintf("gc_result=%d txn_id=%d gc_catalog_url_present=%t item_ids=%d", gc.Result, gc.TransactionID, gc.URL != "", len(gc.ItemIDs))
+				if auth == nil && gc.Result == 1 && gc.URL == "" && len(gc.ItemIDs) == 0 {
+					trace.Add("DIAGNOSIS GC allocated an order ID but supplied no checkout URL/item IDs and Steam supplied no emsg=5504; the purchase was not promoted to an authorization transaction")
+				}
 			}
 			log.Printf("[store-purchase] wait ended error=%v missing=%q %s observed=%s", ctx.Err(), missing, gcDetail, formatObservedEvents(observed))
 			return StorePurchaseTransportResult{}, fmt.Errorf("purchase initialization timed out waiting for %s; do not retry automatically: %w (%s; request item_def_id=%d quantity=%d cost=%d currency=%d purchase_type=%d supplemental_data=%d; observed %s)", missing, ctx.Err(), gcDetail, request.ItemDefID, request.Quantity, request.Cost, request.Currency, request.PurchaseType, request.SupplementalData, formatObservedEvents(observed))
@@ -183,7 +240,7 @@ MicroTxnQueueDrained:
 			logStorePurchaseEvent(event)
 			trace.Add(formatStorePurchaseEvent(event))
 			if event.Type == "gc.message" {
-				if message, ok := event.Payload.(GCMessage); ok && message.AppID == cs2AppID && message.EMsg == emsgStorePurchaseInitResponse {
+				if message, ok := event.Payload.(GCMessage); ok && message.AppID == appID && message.EMsg == emsgStorePurchaseInitResponse {
 					response, err := gametracking.UnmarshalStorePurchaseInitResponse(message.Body)
 					if err != nil {
 						log.Printf("[store-purchase] GC response decode failed emsg=%d body_hex=%x error=%v", message.EMsg, message.Body, err)
@@ -214,7 +271,7 @@ MicroTxnQueueDrained:
 				}
 			}
 			if event.Type == "gc.failed" {
-				return StorePurchaseTransportResult{}, fmt.Errorf("Steam reported that the CS2 store purchase message failed")
+				return StorePurchaseTransportResult{}, fmt.Errorf("Steam reported that the game store purchase message failed")
 			}
 		case raw := <-s.microTxnAuth:
 			parsed, parseErr := parseMicroTxnAuthorization(raw)
@@ -228,39 +285,154 @@ MicroTxnQueueDrained:
 				continue
 			}
 			auth = parsed
-			log.Printf("[store-purchase] decoded dedicated Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"])
-			trace.Add(fmt.Sprintf("DECODE dedicated Steam emsg=5504 orderid=%v transid=%v appid=%v gameitemid=%v quantity=%v amount=%v", auth["orderid"], auth["transid"], auth["appid"], auth["gameitemid"], auth["quantity"], auth["amount"]))
+			lineItem, _ := authorizationLineItem(auth)
+			log.Printf("[store-purchase] decoded dedicated Steam emsg=5504 orderid=%v transid=%v appid=%v lineitem=%v", auth["orderid"], auth["transid"], auth["appid"], lineItem)
+			trace.Add(fmt.Sprintf("DECODE dedicated Steam emsg=5504 orderid=%v transid=%v appid=%v lineitem=%v", auth["orderid"], auth["transid"], auth["appid"], lineItem))
 		}
 	}
 	orderID, ok := kvUint64(auth, "orderid")
 	if !ok || orderID != gc.TransactionID {
 		return StorePurchaseTransportResult{}, fmt.Errorf("Steam order did not match GC transaction")
 	}
-	if appID, ok := kvUint64(auth, "appid"); ok && appID != uint64(cs2AppID) {
-		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization app did not match CS2")
+	if authorizationAppID, ok := kvUint64(auth, "appid"); ok && authorizationAppID != uint64(appID) {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization app did not match purchasing AppID %d", appID)
 	}
-	if itemDefID, ok := kvUint64(auth, "gameitemid"); !ok || itemDefID != uint64(request.ItemDefID) {
+	lineItem, ok := authorizationLineItem(auth)
+	if !ok {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization did not include a line item")
+	}
+	if itemDefID, ok := kvUint64(lineItem, "gameitemid"); !ok || itemDefID != uint64(request.ItemDefID) {
 		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization item did not match store offer")
 	}
-	if quantity, ok := kvUint64(auth, "quantity"); !ok || quantity != uint64(request.Quantity) {
+	if quantity, ok := kvUint64(lineItem, "quantity"); !ok || quantity != uint64(request.Quantity) {
 		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization quantity did not match store request")
 	}
-	if amount, ok := kvUint64(auth, "amount"); !ok || amount != request.Cost {
+	if amount, ok := kvUint64(lineItem, "amount"); !ok || amount != request.Cost {
 		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization amount did not match store offer")
 	}
-	checkoutURL := gc.URL
-	if ValidateSteamCheckoutURL(checkoutURL) != nil {
-		transID, ok := kvUint64(auth, "transid")
-		if !ok || transID == 0 {
-			return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization did not include a checkout transaction ID")
-		}
-		checkoutURL = steamCheckoutURL(transID, orderID)
+	transID, ok := kvUint64(auth, "transid")
+	if !ok || transID == 0 {
+		return StorePurchaseTransportResult{}, fmt.Errorf("Steam authorization did not include a checkout transaction ID")
 	}
+	// The GC response txn_id and URL describe the GC order. Steam's separate
+	// authorization transid is the identifier accepted by approvetxn. Always
+	// construct the native-client handoff from that value so a GC catalogue URL
+	// or order ID can never be mistaken for the approval transaction.
+	checkoutURL := steamCheckoutURL(transID, orderID)
 	if err := ValidateSteamCheckoutURL(checkoutURL); err != nil {
 		return StorePurchaseTransportResult{}, err
 	}
 	trace.Add(fmt.Sprintf("READY checkout_url=%q", checkoutURL))
-	return StorePurchaseTransportResult{TransactionID: gc.TransactionID, OrderID: orderID, CheckoutURL: checkoutURL, ItemIDs: append([]uint64(nil), gc.ItemIDs...), Authorization: auth, Diagnostics: trace.Lines()}, nil
+	return StorePurchaseTransportResult{TransactionID: transID, OrderID: orderID, CheckoutURL: checkoutURL, ItemIDs: append([]uint64(nil), gc.ItemIDs...), Authorization: auth, Diagnostics: trace.Lines()}, nil
+}
+
+func (s *SteamGCClient) reestablishCS2PurchaseSession(ctx context.Context, trace *diagnosticTrace) error {
+	body, err := cs2ClientHello()
+	if err != nil {
+		return fmt.Errorf("encode purchase-session CS2 ClientHello: %w", err)
+	}
+	if err := s.SendProtoToGC(ctx, cs2AppID, uint32(protocol.EMsgGCClientHello), body); err != nil {
+		return fmt.Errorf("send purchase-session CS2 ClientHello: %w", err)
+	}
+	trace.Add(fmt.Sprintf("GC SESSION sent CMsgClientHello emsg=%d after exclusive presence", protocol.EMsgGCClientHello))
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for purchase-session CS2 ClientWelcome: %w", ctx.Err())
+		case event := <-s.events:
+			trace.Add(formatStorePurchaseEvent(event))
+			message, ok := event.Payload.(GCMessage)
+			if event.Type != "gc.message" || !ok || message.AppID != cs2AppID {
+				continue
+			}
+			if message.EMsg == protocol.EMsgGCCStrike15V2ClientLogonFatalError {
+				return decodeCS2ClientLogonFatalError(message.Body)
+			}
+			if message.EMsg != protocol.EMsgGCClientWelcome {
+				continue
+			}
+			s.mu.Lock()
+			s.lastWelcome = append([]byte(nil), message.Body...)
+			s.mu.Unlock()
+			trace.Add("GC SESSION received CMsgClientWelcome under exclusive app 730 presence")
+			return nil
+		}
+	}
+}
+
+func (s *SteamGCClient) sendStoreProtoWithEnvelope(ctx context.Context, conn interface{ SendPacket(*steammsg.Packet) error }, appID uint32, emsg uint32, body, envelope []byte) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientToGC)
+	header.Proto.RoutingAppid = proto.Uint32(appID)
+	packet, err := steammsg.EncodePacket(header, &steampb.CMsgGCClient{Appid: proto.Uint32(appID), Msgtype: proto.Uint32(emsg | protoMask), Payload: envelope}, nil)
+	if err != nil {
+		return err
+	}
+	if err := conn.SendPacket(packet); err != nil {
+		return err
+	}
+	s.recordGCProtocol("sent", appID, emsg, body)
+	return nil
+}
+
+func (s *SteamGCClient) FinalizeStorePurchase(ctx context.Context, orderID uint64) ([]uint64, error) {
+	return s.FinalizeGameStorePurchase(ctx, cs2AppID, orderID)
+}
+
+func (s *SteamGCClient) FinalizeGameStorePurchase(ctx context.Context, appID uint32, orderID uint64) ([]uint64, error) {
+	if orderID == 0 {
+		return nil, fmt.Errorf("store purchase order ID is required")
+	}
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	s.mu.Lock()
+	conn := s.conn
+	s.mu.Unlock()
+	if conn == nil {
+		return nil, ErrNotConnected
+	}
+	body, err := gametracking.MarshalStorePurchaseFinalize(orderID)
+	if err != nil {
+		return nil, err
+	}
+	finalizeEMsg, responseEMsg := storeFinalizeMessageIDs(appID)
+	envelope, err := encodeGCProtoPayloadWithSourceJob(finalizeEMsg, body, uint64(conn.GetNextJobId()))
+	if err != nil {
+		return nil, err
+	}
+	if err := s.sendStoreProtoWithEnvelope(ctx, conn, appID, finalizeEMsg, body, envelope); err != nil {
+		return nil, err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("store purchase finalization response: %w", ctx.Err())
+		case event := <-s.events:
+			message, ok := event.Payload.(GCMessage)
+			if event.Type != "gc.message" || !ok || message.AppID != appID || message.EMsg != responseEMsg {
+				continue
+			}
+			response, err := gametracking.UnmarshalStorePurchaseFinalizeResponse(message.Body)
+			if err != nil {
+				return nil, err
+			}
+			if response.Result != 1 {
+				return nil, fmt.Errorf("CS2 rejected store purchase finalization with result %d", response.Result)
+			}
+			return response.ItemIDs, nil
+		}
+	}
+}
+
+func storeFinalizeMessageIDs(appID uint32) (uint32, uint32) {
+	if appID == 440 {
+		return 2512, 2513
+	}
+	return emsgStorePurchaseFinalize, emsgStorePurchaseFinalizeResponse
 }
 
 func formatStorePurchaseEvent(event GCEvent) string {
@@ -273,13 +445,17 @@ func formatStorePurchaseEvent(event GCEvent) string {
 			name = "CMsgGCStorePurchaseInit"
 		case emsgStorePurchaseInitResponse:
 			name = "CMsgGCStorePurchaseInitResponse"
+		case emsgStorePurchaseFinalize:
+			name = "CMsgGCStorePurchaseFinalize"
+		case emsgStorePurchaseFinalizeResponse:
+			name = "CMsgGCStorePurchaseFinalizeResponse"
 		}
 		if event.Type == "gc.message" {
-			return fmt.Sprintf("RECV event=%s appid=%d emsg=%d (%s) decoded_protobuf_body=true body_bytes=%d body_hex=%x", event.Type, payload.AppID, emsg, name, len(payload.Body), payload.Body)
+			return fmt.Sprintf("RECV event=%s appid=%d emsg=%d (%s) protobuf=true body_bytes=%d", event.Type, payload.AppID, emsg, name, len(payload.Body))
 		}
-		return fmt.Sprintf("RECV event=%s appid=%d emsg=%d (%s) protobuf_envelope=%t body_bytes=%d body_hex=%x", event.Type, payload.AppID, emsg, name, payload.EMsg&protoMask != 0, len(payload.Body), payload.Body)
+		return fmt.Sprintf("RECV event=%s appid=%d emsg=%d (%s) protobuf_envelope=%t body_bytes=%d", event.Type, payload.AppID, emsg, name, payload.EMsg&protoMask != 0, len(payload.Body))
 	case []byte:
-		return fmt.Sprintf("RECV event=%s body_bytes=%d body_hex=%x", event.Type, len(payload), payload)
+		return fmt.Sprintf("RECV event=%s binary_payload_bytes=%d (decoded in the following protocol entry)", event.Type, len(payload))
 	default:
 		return fmt.Sprintf("RECV event=%s payload_type=%T payload=%v", event.Type, event.Payload, event.Payload)
 	}
@@ -288,16 +464,17 @@ func formatStorePurchaseEvent(event GCEvent) string {
 func logStorePurchaseEvent(event GCEvent) {
 	switch payload := event.Payload.(type) {
 	case GCMessage:
-		log.Printf("[store-purchase] received event=%s appid=%d emsg=%d steamid=%d gcname=%q body_bytes=%d body_hex=%x", event.Type, payload.AppID, payload.EMsg, payload.SteamID, payload.GCName, len(payload.Body), payload.Body)
+		log.Printf("[store-purchase] received event=%s appid=%d emsg=%d steamid=%d gcname=%q body_bytes=%d", event.Type, payload.AppID, payload.EMsg, payload.SteamID, payload.GCName, len(payload.Body))
 	case []byte:
-		log.Printf("[store-purchase] received event=%s body_bytes=%d body_hex=%x", event.Type, len(payload), payload)
+		log.Printf("[store-purchase] received event=%s binary_payload_bytes=%d; structured decode follows", event.Type, len(payload))
 	default:
 		log.Printf("[store-purchase] received event=%s payload_type=%T payload=%v", event.Type, event.Payload, event.Payload)
 	}
 }
 
-func steamCheckoutURL(transID uint64, orderID uint64) string {
-	return fmt.Sprintf("https://checkout.steampowered.com/checkout/approvetxn/%d/?returnurl=https%%3A%%2F%%2Fstore.steampowered.com%%2Fbuyitem%%2F730%%2Ffinalize%%2F%d%%3Fcanceledurl%%3Dhttps%%253A%%252F%%252Fstore.steampowered.com%%252F%%26returnhost%%3Dstore.steampowered.com&canceledurl=https%%3A%%2F%%2Fstore.steampowered.com%%2F", transID, orderID)
+func steamCheckoutURL(transID, orderID uint64) string {
+	finalizeURL := fmt.Sprintf("https://store.steampowered.com/buyitem/730/finalize/%d?canceledurl=https%%3A%%2F%%2Fstore.steampowered.com%%2F&returnhost=store.steampowered.com", orderID)
+	return fmt.Sprintf("https://checkout.steampowered.com/checkout/approvetxn/%d/?returnurl=%s&canceledurl=https%%3A%%2F%%2Fstore.steampowered.com%%2F", transID, url.QueryEscape(finalizeURL))
 }
 
 func ValidateSteamCheckoutURL(raw string) error {
@@ -350,9 +527,11 @@ func parseBinaryKV(r *bytes.Reader, out map[string]any) error {
 		normalized := strings.ToLower(key)
 		switch kind {
 		case 0:
-			if err := parseBinaryKV(r, out); err != nil {
+			child := make(map[string]any)
+			if err := parseBinaryKV(r, child); err != nil {
 				return err
 			}
+			out[normalized] = child
 		case 1:
 			value, err := readCString(r)
 			if err != nil {
@@ -381,6 +560,15 @@ func parseBinaryKV(r *bytes.Reader, out map[string]any) error {
 			return fmt.Errorf("unsupported binary KeyValues type %d", kind)
 		}
 	}
+}
+
+func authorizationLineItem(values map[string]any) (map[string]any, bool) {
+	lineItems, ok := values["lineitems"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	lineItem, ok := lineItems["0"].(map[string]any)
+	return lineItem, ok
 }
 func readCString(r *bytes.Reader) (string, error) {
 	var b []byte

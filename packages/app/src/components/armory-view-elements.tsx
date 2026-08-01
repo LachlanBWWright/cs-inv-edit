@@ -103,7 +103,7 @@ export function ArmoryOfferPreview(props: {
       fallback={
         <button
           type="button"
-          class="mt-4 flex h-40 w-full items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-950/50 text-sm text-slate-500 hover:border-slate-600 hover:text-slate-400"
+          class="mt-4 flex h-40 w-full items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-950 text-sm text-slate-500 hover:border-slate-600 hover:text-slate-400"
           onClick={props.onOpen}
         >
           Item preview unavailable
@@ -112,7 +112,7 @@ export function ArmoryOfferPreview(props: {
     >
       {(item) => (
         <div
-          class={`relative mt-4 overflow-hidden rounded-xl border-2 bg-slate-950/80 ${rarityBorderClass(item().rarity)}`}
+          class={`relative mt-4 overflow-hidden rounded-xl border-2 bg-slate-950 ${rarityBorderClass(item().rarity)}`}
         >
           <button
             type="button"
@@ -135,7 +135,7 @@ export function ArmoryOfferPreview(props: {
                 loading="lazy"
               />
             </Show>
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent px-4 pb-3 pt-10">
+            <div class="absolute inset-x-0 bottom-0 border-t border-slate-800 bg-slate-950 px-4 py-3">
               <p class="truncate text-sm font-semibold text-slate-100">
                 {item().marketName || item().name}
               </p>
@@ -147,7 +147,7 @@ export function ArmoryOfferPreview(props: {
           <Show when={items().length > 1}>
             <button
               type="button"
-              class="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950/85 text-lg text-slate-200 hover:bg-slate-800"
+              class="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950 text-lg text-slate-200 hover:bg-slate-800"
               aria-label="Previous possible item"
               onClick={() => move(-1)}
             >
@@ -155,17 +155,17 @@ export function ArmoryOfferPreview(props: {
             </button>
             <button
               type="button"
-              class="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950/85 text-lg text-slate-200 hover:bg-slate-800"
+              class="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950 text-lg text-slate-200 hover:bg-slate-800"
               aria-label="Next possible item"
               onClick={() => move(1)}
             >
               ›
             </button>
-            <div class="absolute right-3 top-3 rounded-full bg-slate-950/80 px-2 py-1 text-xs font-medium text-slate-300">
+            <div class="absolute right-3 top-3 rounded-full bg-slate-950 px-2 py-1 text-xs font-medium text-slate-300">
               {activeIndex() + 1} / {items().length}
             </div>
           </Show>
-          <div class="h-1 w-full bg-[rgb(var(--rarity-color)/0.9)]" />
+          <div class="h-1 w-full bg-[rgb(var(--rarity-color))]" />
         </div>
       )}
     </Show>
@@ -388,7 +388,7 @@ export function OfferCard(props: {
       </Show>
       <Show when={props.confirming}>
         <div
-          class={`mt-4 rounded-xl border p-4 ${props.quantity > 1 ? "border-red-400/40 bg-red-400/10" : "border-amber-400/30 bg-amber-400/5"}`}
+          class={`mt-4 rounded-xl border p-4 ${props.quantity > 1 ? "border-red-400/40 bg-red-950" : "border-amber-400/30 bg-amber-950"}`}
         >
           <Show when={props.quantity > 1}>
             <p class="mb-2 font-semibold text-red-200">Bulk purchase warning</p>
@@ -410,4 +410,3 @@ export function OfferCard(props: {
     </Card>
   );
 }
-

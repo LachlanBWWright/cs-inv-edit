@@ -29,6 +29,7 @@ func TestCS2StoreCurrencyUsesEconomyEnum(t *testing.T) {
 
 func TestStorePurchaseSendsAuthoritativeFieldsForMaximumCS2Quantity(t *testing.T) {
 	service := NewService()
+	service.settings.FeatureFlags.EnableFullCS2Store = true
 	client := transport.NewTestGCClient()
 	client.StorePurchaseResult = transport.StorePurchaseTransportResult{TransactionID: 1, OrderID: 1, CheckoutURL: "https://checkout.steampowered.com/checkout/approvetxn/1/"}
 	service.gcClient = client
@@ -47,7 +48,7 @@ func TestStorePurchaseSendsAuthoritativeFieldsForMaximumCS2Quantity(t *testing.T
 		t.Fatalf("purchase calls = %d", len(client.StorePurchaseCalls))
 	}
 	request := client.StorePurchaseCalls[0]
-	if request.Country != "DE" || !request.CountryPresent || !request.LanguagePresent || request.ItemDefID != 1200 || request.Quantity != 20 || request.Cost != 3500 || request.Currency != 2 || request.PurchaseType != 3 || !request.PurchaseTypePresent || !request.OmitSupplementalData {
+	if request.Country != "" || !request.CountryPresent || !request.LanguagePresent || request.ItemDefID != 1200 || request.Quantity != 20 || request.Cost != 3500 || request.Currency != 2 || request.PurchaseType != 0 || request.PurchaseTypePresent || request.OmitSupplementalData || request.SupplementalData != 0 {
 		t.Fatalf("purchase request = %#v", request)
 	}
 }
@@ -71,6 +72,7 @@ func TestStorePurchaseRejectsQuantityAboveCS2DropdownLimit(t *testing.T) {
 
 func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testing.T) {
 	service := NewService()
+	service.settings.FeatureFlags.EnableFullCS2Store = true
 	client := transport.NewTestGCClient()
 	client.StorePurchaseResult = transport.StorePurchaseTransportResult{TransactionID: 1, OrderID: 2, CheckoutURL: "https://checkout.steampowered.com/checkout/approvetxn/1/"}
 	service.gcClient = client
@@ -80,7 +82,7 @@ func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testi
 	service.store = domain.StoreSnapshot{Status: "ready", Currency: "EUR"}
 	defIndex := uint32(5176)
 	service.inventory = domain.InventorySnapshot{Status: "ready", Items: []domain.InventoryItem{{
-		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex,
+		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex, IsTerminal: true, IsActiveTerminal: true,
 		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "700", PurchasePrice: 1299, Item: domain.RelatedItem{Defindex: 24, PaintKit: 1351, MarketName: "UMP-45 | Continuum"}}},
 	}}}
 	terminalItemID := uint64(52994080407)
@@ -116,8 +118,46 @@ func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testi
 		t.Fatalf("terminal purchase session = %#v calls=%#v", session, client.StorePurchaseCalls)
 	}
 	request := client.StorePurchaseCalls[0]
-	if request.Country != "DE" || request.ItemDefID != 5176 || request.Cost != 1299 || request.SupplementalData != 52994080407 || request.OmitSupplementalData || request.PurchaseTypePresent {
+	if request.Country != "" || request.ItemDefID != 5176 || request.Cost != 1299 || request.SupplementalData != 52994080407 || request.OmitSupplementalData || request.PurchaseTypePresent {
 		t.Fatalf("terminal purchase request = %#v", request)
+	}
+}
+
+func TestCouponOnlyStoreUsesBuyItemWithoutGC(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.storeCurrencyID = 2
+	service.storeCountry = "DE"
+	service.store = domain.StoreSnapshot{Status: "ready", PriceSheetVersion: 7, Currency: "EUR", Offers: []domain.StoreOffer{
+		{ID: "coupon", DefIndex: 20170, Name: "Music Kit Box", Currency: "EUR", AmountMinor: 100, Coupon: true, Purchasable: true},
+		{ID: "key", DefIndex: 1308, Name: "Case Key", Currency: "EUR", AmountMinor: 200, Purchasable: true},
+	}}
+
+	visible := service.Store()
+	if len(visible.Offers) != 1 || visible.Offers[0].ID != "coupon" {
+		t.Fatalf("coupon-only offers = %#v", visible.Offers)
+	}
+	session := service.InitializeStorePurchase(map[string]any{"offerId": "coupon", "quantity": uint64(3), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(100)})
+	if session.Status != "awaiting_user" || session.CheckoutURL != "https://store.steampowered.com/buyitem/730/20170/3" {
+		t.Fatalf("coupon purchase session = %#v", session)
+	}
+	if len(client.StorePurchaseCalls) != 0 {
+		t.Fatal("coupon fallback unexpectedly reached the GC purchase transport")
+	}
+	hidden := service.InitializeStorePurchase(map[string]any{"offerId": "key", "quantity": uint64(1), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(200)})
+	if hidden.Status != "failed" || !strings.Contains(hidden.Message, "Full CS2 Store") {
+		t.Fatalf("hidden full-store purchase = %#v", hidden)
+	}
+	service.settings.FeatureFlags.EnableFullCS2Store = true
+	client.StorePurchaseResult = transport.StorePurchaseTransportResult{TransactionID: 10, OrderID: 20, CheckoutURL: "https://checkout.steampowered.com/checkout/approvetxn/10/"}
+	if full := service.Store(); len(full.Offers) != 2 {
+		t.Fatalf("full-store offers = %#v", full.Offers)
+	}
+	fullCoupon := service.InitializeStorePurchase(map[string]any{"offerId": "coupon", "quantity": uint64(1), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(100)})
+	if fullCoupon.CheckoutURL != client.StorePurchaseResult.CheckoutURL || len(client.StorePurchaseCalls) != 1 {
+		t.Fatalf("full-store coupon did not use GC route: session=%#v calls=%#v", fullCoupon, client.StorePurchaseCalls)
 	}
 }
 
@@ -131,7 +171,7 @@ func TestTerminalPurchaseRejectsStaleDisplayedOffer(t *testing.T) {
 	service.store = domain.StoreSnapshot{Status: "ready", Currency: "EUR"}
 	defIndex := uint32(5176)
 	service.inventory = domain.InventorySnapshot{Status: "ready", Items: []domain.InventoryItem{{
-		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex,
+		ID: "52994080407", Name: "Active Genesis Terminal", Defindex: &defIndex, IsTerminal: true, IsActiveTerminal: true,
 		TerminalOffers: []domain.TerminalOffer{{FauxItemID: "701", PurchasePrice: 1299, Item: domain.RelatedItem{Defindex: 24, MarketName: "UMP-45 | Continuum"}}},
 	}}}
 
@@ -207,6 +247,11 @@ func TestStorageMoveOutSendsAuthoritativeCasketExtractMessage(t *testing.T) {
 	service.gcClient = client
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
 	service.settings.FeatureFlags.EnableStorageMutations = true
+	containedIn := "17224167524"
+	service.inventory.Items = []domain.InventoryItem{
+		{ID: "17224167524", Kind: "storage_unit"},
+		{ID: "123456789", Kind: "weapon_skin", CasketID: &containedIn},
+	}
 
 	receipt := service.SubmitOperation("storage.move-out", map[string]any{"casketId": "17224167524", "itemId": "123456789"})
 	if receipt.State != operations.StateAwaitingGCConfirmation || len(client.SentProtoMessages) != 1 {
@@ -222,6 +267,62 @@ func TestStorageMoveOutSendsAuthoritativeCasketExtractMessage(t *testing.T) {
 	}
 	if tracking.Uint(message, "casket_item_id") != 17224167524 || tracking.Uint(message, "item_item_id") != 123456789 {
 		t.Fatalf("message=%#v", message)
+	}
+}
+
+func TestStorageMoveInSendsAuthoritativeCasketAddMessage(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.settings.FeatureFlags.EnableStorageMutations = true
+	eligible := true
+	service.inventory.Items = []domain.InventoryItem{
+		{ID: "17224167524", Kind: "storage_unit"},
+		{ID: "123456789", Kind: "weapon_skin", StorageEligible: &eligible},
+	}
+	receipt := service.SubmitOperation("storage.move-in", map[string]any{"casketId": "17224167524", "itemId": "123456789"})
+	if receipt.State != operations.StateAwaitingGCConfirmation || len(client.SentProtoMessages) != 1 {
+		t.Fatalf("receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
+	}
+	if client.SentProtoMessages[0].EMsg != protocol.EMsgCasketItemAdd {
+		t.Fatalf("emsg=%d want=%d", client.SentProtoMessages[0].EMsg, protocol.EMsgCasketItemAdd)
+	}
+}
+
+func TestStorageMoveInRejectsIneligibleAndFullUnit(t *testing.T) {
+	tests := []struct {
+		name  string
+		unit  domain.InventoryItem
+		item  domain.InventoryItem
+		match string
+	}{
+		{
+			name:  "trade protected",
+			unit:  domain.InventoryItem{ID: "10", Kind: "storage_unit"},
+			item:  domain.InventoryItem{ID: "20", Kind: "weapon_skin", StorageEligible: boolPointer(false), StorageIneligibleReason: "This item is trade-protected and cannot be transferred yet."},
+			match: "trade-protected",
+		},
+		{
+			name:  "full",
+			unit:  domain.InventoryItem{ID: "10", Kind: "storage_unit", StorageCount: func() *uint32 { value := uint32(1000); return &value }()},
+			item:  domain.InventoryItem{ID: "20", Kind: "weapon_skin", StorageEligible: boolPointer(true)},
+			match: "full",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewService()
+			client := transport.NewTestGCClient()
+			service.gcClient = client
+			service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+			service.settings.FeatureFlags.EnableStorageMutations = true
+			service.inventory.Items = []domain.InventoryItem{test.unit, test.item}
+			receipt := service.SubmitOperation("storage.move-in", map[string]any{"casketId": "10", "itemId": "20"})
+			if receipt.State != operations.StateFailed || !strings.Contains(receipt.Message, test.match) || len(client.SentProtoMessages) != 0 {
+				t.Fatalf("receipt=%#v messages=%d", receipt, len(client.SentProtoMessages))
+			}
+		})
 	}
 }
 
@@ -290,6 +391,61 @@ func TestArmoryPurchaseIsNotSentWhenGCSessionPreflightFails(t *testing.T) {
 	}
 	if len(client.SentProtoMessages) != 0 {
 		t.Fatalf("sent %d redemption messages after failed preflight", len(client.SentProtoMessages))
+	}
+}
+
+func TestArmoryPurchaseReturnsIncrementalGCReward(t *testing.T) {
+	service := NewService()
+	client := transport.NewTestGCClient()
+	waits := 0
+	client.WaitForNewCS2ItemFunc = func(_ context.Context, known map[uint64]struct{}) (transport.GCInventoryItem, error) {
+		if _, exists := known[1]; !exists {
+			t.Fatal("cached inventory ID was not included in incremental baseline")
+		}
+		waits++
+		if waits == 1 {
+			return transport.GCInventoryItem{ID: 99, DefIndex: 1}, nil
+		}
+		if _, exists := known[99]; !exists {
+			t.Fatal("unrelated incremental item was not added to the baseline")
+		}
+		wear := 0.123
+		return transport.GCInventoryItem{ID: 2, DefIndex: 7, PaintKit: 44, PaintWear: &wear, Quality: 9}, nil
+	}
+	service.gcClient = client
+	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "7656119"}
+	service.settings.FeatureFlags.EnableArmoryRedemption = true
+	service.inventory = domain.InventorySnapshot{Status: "ready", Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}}}
+	service.armory = domain.ArmorySnapshot{
+		Status: "ready", Balance: 10, GenerationTime: 7,
+		Offers: []domain.ArmoryOffer{{
+			CampaignID: 11, RedeemID: 2, ExpectedCost: 4,
+			Items: []domain.RelatedItem{{
+				Defindex: 7, PaintKit: 44, Name: "AK-47 | Reward",
+				MarketName: "StatTrak™ AK-47 | Reward", Kind: "weapon_skin",
+				Rarity: "Covert", ImageURL: "reward.png",
+			}},
+		}},
+	}
+
+	receipt := service.RedeemArmory(map[string]any{"campaignId": float64(11), "redeemId": float64(2), "redeemableBalance": float64(10), "expectedCost": float64(4), "generationTime": float64(7), "quantity": float64(1)})
+
+	if receipt.State != operations.StateCompleted {
+		t.Fatalf("receipt=%#v", receipt)
+	}
+	result, ok := receipt.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result=%#v", receipt.Result)
+	}
+	opened, ok := result["openedItem"].(domain.InventoryItem)
+	if !ok || opened.ID != "2" || opened.MarketName != "StatTrak™ AK-47 | Reward" || !opened.IsStatTrak {
+		t.Fatalf("openedItem=%#v", result["openedItem"])
+	}
+	if service.armory.Balance != 6 {
+		t.Fatalf("balance=%d want=6", service.armory.Balance)
+	}
+	if waits != 2 {
+		t.Fatalf("incremental waits=%d want=2", waits)
 	}
 }
 
@@ -521,17 +677,12 @@ func TestXRayScannerLoadedCaseDetection(t *testing.T) {
 }
 
 func TestTerminalMetadataRemainsVisibleAtHiddenInventoryPosition(t *testing.T) {
-	if !isTerminalMetadata(econ.Metadata{Name: "Active Genesis Terminal", Kind: "container"}) {
-		t.Fatal("active terminal metadata was not recognized")
-	}
-	if isTerminalMetadata(econ.Metadata{Name: "Kilowatt Case", Kind: "container"}) {
-		t.Fatal("ordinary container was incorrectly recognized as a terminal")
-	}
 	activeTerminal := transport.GCInventoryItem{DefIndex: 5001, Inventory: xRayScannerLoadedCaseInventoryPosition, Quantity: 0}
-	if !isActiveTerminalGCItem(activeTerminal, econ.Metadata{Name: "Sealed Genesis Terminal", Kind: "container"}) {
+	terminalMetadata := econ.Metadata{Name: "任務裝置", Kind: "container", IsVolatileContainer: true}
+	if !isActiveTerminalGCItem(activeTerminal, terminalMetadata) {
 		t.Fatal("terminal in the active GC slot was not classified as active")
 	}
-	if isXRayScannerLoadedCase(activeTerminal, econ.Metadata{Name: "Active Genesis Terminal", Kind: "container"}) {
+	if isXRayScannerLoadedCase(activeTerminal, terminalMetadata) {
 		t.Fatal("active terminal was incorrectly hidden as an X-Ray Scanner case")
 	}
 	if got := activeTerminalName("Sealed Genesis Terminal"); got != "Active Genesis Terminal" {
@@ -547,11 +698,11 @@ func TestSealedTerminalIsNotClassifiedAsActiveFromSchemaOrVolatileCatalogue(t *t
 		Quantity:  0,
 		Quality:   4,
 		Attributes: map[uint32]uint32{
-			75: 1785668400,
+			75: 1785668400, volatileContainerAttributeDefIndex: 1,
 		},
 		VolatileOffers: []transport.GCVolatileOffer{{FauxItemID: 17293822569190457352}},
 	}
-	if isActiveTerminalGCItem(sealed, econ.Metadata{Name: "Sealed Genesis Terminal", MarketName: "Sealed Genesis Terminal", Kind: "container"}) {
+	if isActiveTerminalGCItem(sealed, econ.Metadata{Kind: "container", IsVolatileContainer: true}) {
 		t.Fatal("sealed terminal was classified as active")
 	}
 }
@@ -630,6 +781,9 @@ func TestTF2InventoryDefaultsOnAndDota2DefaultsOffWithoutChangingCS2Snapshot(t *
 	settings := service.Settings()
 	if !settings.FeatureFlags.EnableTF2Inventory || settings.FeatureFlags.EnableDota2Inventory {
 		t.Fatalf("TF2 must default on and Dota 2 must default off: %#v", settings.FeatureFlags)
+	}
+	if !settings.FeatureFlags.EnableTF2Store {
+		t.Fatalf("TF2 store must default on: %#v", settings.FeatureFlags)
 	}
 	if snapshot, supported, enabled := service.GameInventory("tf2"); !supported || !enabled || snapshot.Diagnostics == nil {
 		t.Fatalf("TF2 inventory supported=%t enabled=%t diagnostics=%#v, want true/true/non-nil", supported, enabled, snapshot.Diagnostics)
@@ -793,14 +947,23 @@ func TestSteamInventoryServiceGamesUsesOwnedGamesAndExcludesDedicatedImplementat
 			{AppID: 10, Name: "Counter-Strike", HasMarket: true},
 		}, nil
 	}
+	client.SteamInventoryServiceFunc = func(_ context.Context, appID uint32, _ uint64) (transport.SteamInventoryServiceResponse, error) {
+		if appID != 10 {
+			return transport.SteamInventoryServiceResponse{}, errors.New("inventory service unavailable")
+		}
+		return transport.SteamInventoryServiceResponse{
+			ItemJSON:    `[{"itemid":"1","itemdefid":"2","quantity":"1"}]`,
+			ItemDefJSON: `{"itemdefs":[{"itemdefid":"2","name":"Owned item"}]}`,
+		}, nil
+	}
 	service.gcClient = client
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "76561198000000000"}
 
 	result := service.SteamInventoryServiceGames(context.Background())
-	if result.Status != "ready" || len(result.Games) != 2 {
+	if result.Status != "ready" || len(result.Games) != 1 {
 		t.Fatalf("games = %#v", result)
 	}
-	if result.Games[0].AppID != 10 || result.Games[1].AppID != 480 {
+	if result.Games[0].AppID != 10 {
 		t.Fatalf("filtered/sorted games = %#v", result.Games)
 	}
 }

@@ -8,6 +8,7 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { formatState } from "../lib/format.js";
 import { appErrorMessage, fromAppPromise } from "../lib/result.js";
+import { Button, type ButtonProps } from "./ui/Button.js";
 
 export interface ItemManagementViewProps {
   onDeleteItem: (input: DeleteItemRequest) => Promise<OperationReceipt>;
@@ -63,7 +64,7 @@ export function ItemManagementView(props: ItemManagementViewProps) {
       </header>
 
       <Show when={status()}>
-        <div class="rounded-lg border border-slate-700 bg-slate-900/80 p-3 text-sm text-slate-200">
+        <div class="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200">
           {status()}
         </div>
       </Show>
@@ -72,12 +73,12 @@ export function ItemManagementView(props: ItemManagementViewProps) {
         <OperationFormCard
           title="Delete item"
           actionLabel="Delete item"
-          actionClass="border-rose-500/40 bg-rose-600/80"
+          actionVariant="danger"
           pending={pending()}
           onExecute={() => run(() => props.onDeleteItem(deleteInput()))}
         >
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Item ID"
             value={deleteInput().itemId}
             onInput={(event) =>
@@ -89,12 +90,11 @@ export function ItemManagementView(props: ItemManagementViewProps) {
         <OperationFormCard
           title="Use item"
           actionLabel="Use item"
-          actionClass="border-cyan-500/40 bg-cyan-600/80"
           pending={pending()}
           onExecute={() => run(() => props.onUseItem(useItemInput()))}
         >
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Item ID"
             value={useItemInput().itemId}
             onInput={(event) =>
@@ -105,7 +105,7 @@ export function ItemManagementView(props: ItemManagementViewProps) {
             }
           />
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Target Steam ID (optional)"
             value={useItemInput().targetSteamId ?? ""}
             onInput={(event) =>
@@ -120,14 +120,13 @@ export function ItemManagementView(props: ItemManagementViewProps) {
         <OperationFormCard
           title="Use multiple items"
           actionLabel="Use multiple"
-          actionClass="border-cyan-500/40 bg-cyan-600/80"
           pending={pending()}
           onExecute={() =>
             run(() => props.onUseMultipleItems({ itemIds: parseMultipleIDs() }))
           }
         >
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Comma-separated item IDs"
             value={multiUseRaw()}
             onInput={(event) => setMultiUseRaw(event.currentTarget.value)}
@@ -137,12 +136,11 @@ export function ItemManagementView(props: ItemManagementViewProps) {
         <OperationFormCard
           title="Gift item"
           actionLabel="Send gift"
-          actionClass="border-cyan-500/40 bg-cyan-600/80"
           pending={pending()}
           onExecute={() => run(() => props.onGiftItem(giftInput()))}
         >
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Item ID"
             value={giftInput().itemId}
             onInput={(event) =>
@@ -153,7 +151,7 @@ export function ItemManagementView(props: ItemManagementViewProps) {
             }
           />
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Receiver account ID"
             type="number"
             value={giftInput().receiverAccountId}
@@ -165,7 +163,7 @@ export function ItemManagementView(props: ItemManagementViewProps) {
             }
           />
           <input
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
+            class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Gift message (optional)"
             value={giftInput().giftMessage ?? ""}
             onInput={(event) =>
@@ -184,23 +182,23 @@ export function ItemManagementView(props: ItemManagementViewProps) {
 function OperationFormCard(props: {
   title: string;
   actionLabel: string;
-  actionClass: string;
+  actionVariant?: ButtonProps["variant"];
   pending: boolean;
   onExecute: () => void;
   children: JSX.Element | string | number | null | undefined;
 }) {
   return (
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm">
+    <section class="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm">
       <h3 class="text-lg font-semibold text-slate-100">{props.title}</h3>
       <div class="mt-4 space-y-3 text-sm">
         {props.children}
-        <button
-          class={`rounded-md border px-3 py-2 text-white disabled:opacity-60 ${props.actionClass}`}
+        <Button
+          variant={props.actionVariant}
           disabled={props.pending}
           onClick={() => props.onExecute()}
         >
           {props.actionLabel}
-        </button>
+        </Button>
       </div>
     </section>
   );

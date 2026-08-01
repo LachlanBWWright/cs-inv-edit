@@ -28,7 +28,7 @@ export function StoreContentsDialog(props: {
         <div class="grid gap-3 sm:grid-cols-2">
           <For each={props.offer?.items ?? []}>
             {(item) => (
-              <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+              <div class="rounded-xl border border-slate-800 bg-slate-900 p-3">
                 <Show when={item.imageUrl}>
                   <img
                     class="mx-auto h-28 object-contain"

@@ -11,7 +11,7 @@ export function ReturnEstimateCard(props: {
 }) {
   return (
     <section
-      class="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-3"
+      class="rounded-xl border border-emerald-500/25 bg-emerald-950 p-3"
       aria-label="Return on investment estimate"
       aria-busy={props.loading}
     >

@@ -1,5 +1,8 @@
-import { createEffect, onCleanup, Show, type JSX } from "solid-js";
+import { Show, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
+import { IconButton } from "./IconButton.js";
+import { ModalBackdrop } from "./ModalBackdrop.js";
+import { useEscapeDismiss } from "./modal-dismiss.js";
 
 export interface MobileSheetProps {
   open: boolean;
@@ -10,23 +13,15 @@ export interface MobileSheetProps {
 }
 
 export function MobileSheet(props: MobileSheetProps) {
-  createEffect(() => {
-    if (!props.open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    onCleanup(() => document.removeEventListener("keydown", onKeyDown));
-  });
+  useEscapeDismiss(() => props.open, props.onClose);
 
   return (
     <Show when={props.open}>
       <Portal>
         <div class="fixed inset-0 z-50 sm:hidden">
-          <button
-            type="button"
-            class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
-            aria-label="Close"
+          <ModalBackdrop
+            class="absolute inset-0"
+            label="Close"
             onClick={props.onClose}
           />
           <section
@@ -45,14 +40,13 @@ export function MobileSheet(props: MobileSheetProps) {
                   </p>
                 </Show>
               </div>
-              <button
-                type="button"
-                class="flex h-9 w-9 items-center justify-center rounded-lg text-xl text-slate-400 hover:bg-slate-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                aria-label="Close"
+              <IconButton
+                label="Close"
+                class="border-transparent text-xl text-slate-400"
                 onClick={props.onClose}
               >
                 ×
-              </button>
+              </IconButton>
             </header>
             <div class="min-h-0 flex-1 overflow-y-auto p-4">
               {props.children}

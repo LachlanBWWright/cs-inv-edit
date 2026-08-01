@@ -183,7 +183,7 @@ func decodeSteamCMPacketBody(packet *steammsg.Packet) (proto.Message, bool) {
 		return new(steampb.CMsgClientClanState), true
 	case steamlang.EMsg_ClientLoggedOff:
 		return new(steampb.CMsgClientLoggedOff), true
-	case steamlang.EMsg_ClientGamesPlayed:
+	case steamlang.EMsg_ClientGamesPlayed, steamlang.EMsg_ClientGamesPlayedWithDataBlob:
 		return new(steampb.CMsgClientGamesPlayed), true
 	case steamlang.EMsg_ClientHeartBeat:
 		return new(steampb.CMsgClientHeartBeat), true
@@ -219,6 +219,16 @@ func (s *SteamGCClient) recordGCProtocol(direction string, appID, emsg uint32, b
 	s.recordCS2State(direction, appID, emsg, body)
 	name := protocolMessageName(appID, emsg)
 	entry := ProtocolTraceEntry{Direction: direction, Layer: "game-coordinator", AppID: appID, EMsg: emsg, Name: name, Protobuf: true, BodyBytes: len(body), BodyHex: hex.EncodeToString(body)}
+	if appID == 730 && emsg == 1008 {
+		// k_EMsgGCUnlockCrateResponse is a legacy binary response, not an SO
+		// protobuf. Keep the raw bytes visible without reporting a misleading
+		// CMsgSOSingleObject parse warning.
+		entry.Name = "GCUnlockCrateResponse"
+		entry.Protobuf = false
+		entry.Decoded = map[string]any{"raw_body_hex": entry.BodyHex}
+		s.appendProtocol(entry)
+		return
+	}
 
 	if appID == 440 && name != "GC protobuf message" {
 		if decodedJSON, err := tf2tracking.DecodeMessageJSON(name, body); err == nil {
@@ -266,7 +276,7 @@ func (s *SteamGCClient) recordGCProtocol(direction string, appID, emsg uint32, b
 	}
 
 	// Universal binary wire-format parser fallback
-	if rawDecoded, ok := decodeRawProtoWireFormat(body); ok && rawDecoded != nil && len(rawDecoded) > 0 {
+	if rawDecoded, ok := decodeRawProtoWireFormat(body); ok && rawDecoded != nil {
 		entry.Decoded = rawDecoded
 		entry.DecodeError = ""
 		s.appendProtocol(entry)
@@ -375,6 +385,8 @@ func protocolMessageName(appID, emsg uint32) string {
 	}
 	if appID == 730 {
 		switch emsg {
+		case 1008:
+			return "GCUnlockCrateResponse"
 		case emsgStorePurchaseInit:
 			return "CMsgGCStorePurchaseInit"
 		case emsgStorePurchaseInitResponse:

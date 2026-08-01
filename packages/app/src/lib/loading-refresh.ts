@@ -26,7 +26,7 @@ export function createInventoryRefresher(input: {
   pushToast: (toast: Toast) => void;
 }) {
   let inFlight: Promise<boolean> | undefined;
-  return (): Promise<boolean> => {
+  return (options?: { suppressToast?: boolean }): Promise<boolean> => {
     if (inFlight) return inFlight;
     input.setActive(true);
     const progressPoll = pollLoadingSnapshot(input.refetch, "Inventory");
@@ -42,11 +42,12 @@ export function createInventoryRefresher(input: {
         () => false,
         (error) => {
           console.error("[app] inventory refresh failed", error);
-          input.pushToast({
-            title: "Inventory refresh failed",
-            description: appErrorMessage(error, "Unable to refresh inventory"),
-            variant: "danger",
-          });
+          if (!options?.suppressToast)
+            input.pushToast({
+              title: "Inventory refresh failed",
+              description: appErrorMessage(error, "Unable to refresh inventory"),
+              variant: "danger",
+            });
           return true;
         },
       )

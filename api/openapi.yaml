@@ -1,0 +1,1907 @@
+openapi: 3.0.3
+info:
+  title: CS Inventory Edit Local Agent API
+  version: 0.1.0
+  description: >-
+    Contract for communication between the application shells and the local
+    agent. Endpoints are added here as they migrate from the legacy handwritten
+    contract.
+servers:
+  - url: http://127.0.0.1:7331
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Read local-agent health
+      responses:
+        "200":
+          description: The local agent is available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /inventory:
+    get:
+      operationId: getInventory
+      summary: Read the current authoritative CS2 inventory snapshot
+      responses:
+        "200":
+          description: Current inventory state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySnapshot"
+  /inventory/refresh:
+    post:
+      operationId: refreshInventory
+      summary: Refresh the authoritative CS2 inventory from the Game Coordinator
+      responses:
+        "200":
+          description: Receipt for the refresh operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationReceipt"
+  /armory:
+    get:
+      operationId: getArmory
+      summary: Read the current CS2 Armory snapshot
+      responses:
+        "200":
+          description: Current Armory state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArmorySnapshot"
+  /armory/refresh:
+    post:
+      operationId: refreshArmory
+      summary: Refresh CS2 Armory state from the Game Coordinator
+      responses:
+        "200":
+          description: Receipt for the refresh operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationReceipt"
+  /games/{game}/inventory:
+    parameters:
+      - $ref: "#/components/parameters/Game"
+    get:
+      operationId: getGameInventory
+      responses:
+        "200": { $ref: "#/components/responses/GameInventoryResponse" }
+        "403": { $ref: "#/components/responses/ErrorResponse" }
+        "404": { $ref: "#/components/responses/ErrorResponse" }
+  /games/{game}/inventory/refresh:
+    parameters:
+      - $ref: "#/components/parameters/Game"
+    post:
+      operationId: refreshGameInventory
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+        "403": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /games/tf2/features:
+    get:
+      operationId: getTf2Features
+      responses:
+        "200":
+          description: TF2 Game Coordinator feature snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TF2FeatureSnapshot" }
+  /games/cs2/features:
+    get:
+      operationId: getCs2Features
+      responses:
+        "200":
+          description: CS2 Game Coordinator feature snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CS2FeatureSnapshot" }
+  /steam-inventory-service/games:
+    get:
+      operationId: listSteamInventoryServiceGames
+      responses:
+        "200":
+          description: Supported Steam Inventory Service games.
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SteamInventoryServiceGames" }
+  /steam-inventory-service/{appID}:
+    parameters:
+      - $ref: "#/components/parameters/AppID"
+    get:
+      operationId: getSteamInventoryService
+      responses:
+        "200": { $ref: "#/components/responses/GameInventoryResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+        "403": { $ref: "#/components/responses/ErrorResponse" }
+  /steam-inventory-service/{appID}/refresh:
+    parameters:
+      - $ref: "#/components/parameters/AppID"
+    post:
+      operationId: refreshSteamInventoryService
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+        "403": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /armory/redeem:
+    post:
+      operationId: redeemArmory
+      requestBody: { $ref: "#/components/requestBodies/ArmoryRedeem" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /store:
+    get:
+      operationId: getStore
+      responses:
+        "200": { $ref: "#/components/responses/StoreSnapshotResponse" }
+  /store/refresh:
+    post:
+      operationId: refreshStore
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /games/tf2/store:
+    get:
+      operationId: getTf2Store
+      responses:
+        "200": { $ref: "#/components/responses/StoreSnapshotResponse" }
+  /games/tf2/store/refresh:
+    post:
+      operationId: refreshTf2Store
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /games/tf2/store/purchases:
+    post:
+      operationId: initializeTf2StorePurchase
+      requestBody:
+        { $ref: "#/components/requestBodies/InitializeStorePurchase" }
+      responses:
+        "200": { $ref: "#/components/responses/PurchaseSessionResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /store/purchases:
+    post:
+      operationId: initializeStorePurchase
+      requestBody:
+        { $ref: "#/components/requestBodies/InitializeStorePurchase" }
+      responses:
+        "200": { $ref: "#/components/responses/PurchaseSessionResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /store/purchases/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      operationId: getStorePurchase
+      responses:
+        "200": { $ref: "#/components/responses/PurchaseSessionResponse" }
+        "404": { $ref: "#/components/responses/ErrorResponse" }
+  /store/purchases/{id}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      operationId: reconcileStorePurchase
+      responses:
+        "200": { $ref: "#/components/responses/PurchaseSessionResponse" }
+  /trades:
+    get:
+      operationId: getTrades
+      responses:
+        "200": { $ref: "#/components/responses/TradesResponse" }
+  /trades/refresh:
+    post:
+      operationId: refreshTrades
+      responses:
+        "200": { $ref: "#/components/responses/TradesResponse" }
+  /trade-accounts:
+    get:
+      operationId: getTradeAccounts
+      responses:
+        "200": { $ref: "#/components/responses/TradeAccountsResponse" }
+    post:
+      operationId: refreshTradeAccounts
+      parameters:
+        - in: query
+          name: steamId
+          schema: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/TradeAccountsResponse" }
+  /trades/offers:
+    post:
+      operationId: createTradeOffer
+      requestBody: { $ref: "#/components/requestBodies/CreateTradeOffer" }
+      responses:
+        "200": { $ref: "#/components/responses/TradeMutationResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /trades/offers/{id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      operationId: acceptTradeOffer
+      responses:
+        "200": { $ref: "#/components/responses/TradeMutationResponse" }
+  /trades/offers/{id}/counter:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      operationId: counterTradeOffer
+      requestBody: { $ref: "#/components/requestBodies/CreateTradeOffer" }
+      responses:
+        "200": { $ref: "#/components/responses/TradeMutationResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /market/preview:
+    get:
+      operationId: getMarketPreview
+      parameters:
+        - in: query
+          name: marketName
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Related market item metadata.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RelatedItem" }
+        "502": { $ref: "#/components/responses/ErrorResponse" }
+  /operations:
+    get:
+      operationId: listOperations
+      responses:
+        "200":
+          description: Recorded operation receipts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OperationReceipt" }
+  /operations/:
+    post:
+      operationId: rejectMissingOperationType
+      deprecated: true
+      responses:
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /operations/{type}:
+    parameters:
+      - in: path
+        name: type
+        required: true
+        schema: { type: string }
+    post:
+      operationId: submitOperation
+      requestBody: { $ref: "#/components/requestBodies/JsonObject" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /events:
+    get:
+      operationId: listEvents
+      responses:
+        "200":
+          description: Repeating operation-event snapshots when requested through Accept.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OperationEvent" }
+            text/event-stream:
+              schema: { type: string }
+  /protocol-trace:
+    get:
+      operationId: getProtocolTrace
+      parameters:
+        - in: query
+          name: after
+          schema: { type: integer, format: uint64, minimum: 0 }
+      responses:
+        "200":
+          description: Protocol trace entries after the requested cursor.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProtocolTraceEntry" }
+  /settings:
+    get:
+      operationId: getSettings
+      responses:
+        "200":
+          description: Application settings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsData" }
+  /steam/status:
+    get:
+      operationId: getSteamStatus
+      responses:
+        "200": { $ref: "#/components/responses/ConnectionStatusResponse" }
+  /steam/status/ws:
+    get:
+      operationId: watchSteamStatus
+      summary: Stream Steam connection status changes over WebSocket
+      x-websocket-message:
+        $ref: "#/components/schemas/ConnectionStatus"
+      responses:
+        "101":
+          description: WebSocket upgrade; each message is a ConnectionStatus JSON value.
+  /steam/connect:
+    post:
+      operationId: connectSteam
+      requestBody: { $ref: "#/components/requestBodies/SteamCredentials" }
+      responses:
+        "200": { $ref: "#/components/responses/ConnectionStatusResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /steam/qr:
+    post:
+      operationId: startSteamQr
+      responses:
+        "200": { $ref: "#/components/responses/ConnectionStatusResponse" }
+  /steam/guard:
+    post:
+      operationId: submitSteamGuard
+      requestBody: { $ref: "#/components/requestBodies/SteamGuard" }
+      responses:
+        "200": { $ref: "#/components/responses/ConnectionStatusResponse" }
+        "400": { $ref: "#/components/responses/ErrorResponse" }
+  /steam/disconnect:
+    post:
+      operationId: disconnectSteam
+      responses:
+        "200": { $ref: "#/components/responses/ConnectionStatusResponse" }
+  /storage/load:
+    post:
+      operationId: loadStorage
+      requestBody: { $ref: "#/components/requestBodies/StorageLoad" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /storage/move-in:
+    post:
+      operationId: moveIntoStorage
+      requestBody: { $ref: "#/components/requestBodies/StorageMove" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /storage/move-out:
+    post:
+      operationId: moveOutOfStorage
+      requestBody: { $ref: "#/components/requestBodies/StorageMove" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /containers/open:
+    post:
+      operationId: openContainer
+      requestBody: { $ref: "#/components/requestBodies/OpenContainer" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /tradeups/preview:
+    post:
+      operationId: previewTradeUp
+      requestBody: { $ref: "#/components/requestBodies/JsonObject" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /tradeups/execute:
+    post:
+      operationId: executeTradeUp
+      requestBody: { $ref: "#/components/requestBodies/JsonObject" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /stickers/extract:
+    post:
+      operationId: extractSticker
+      requestBody: { $ref: "#/components/requestBodies/JsonObject" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /nametags/apply:
+    post:
+      operationId: applyNameTag
+      requestBody: { $ref: "#/components/requestBodies/SetItemName" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /nametags/remove:
+    post:
+      operationId: removeNameTag
+      requestBody: { $ref: "#/components/requestBodies/RemoveItemName" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /items/delete:
+    post:
+      operationId: deleteItem
+      requestBody: { $ref: "#/components/requestBodies/DeleteItem" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /stattrak/swap:
+    post:
+      operationId: applyStatTrakSwap
+      requestBody: { $ref: "#/components/requestBodies/ApplyStatTrakSwap" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /strange-parts/apply:
+    post:
+      operationId: applyStrangePart
+      requestBody: { $ref: "#/components/requestBodies/ApplyStrangePart" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /items/use:
+    post:
+      operationId: useItem
+      requestBody: { $ref: "#/components/requestBodies/UseItem" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /items/use-multiple:
+    post:
+      operationId: useMultipleItems
+      requestBody: { $ref: "#/components/requestBodies/UseMultipleItems" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /tools/apply:
+    post:
+      operationId: applyToolToItem
+      requestBody: { $ref: "#/components/requestBodies/ApplyToolToItem" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /tools/apply-base:
+    post:
+      operationId: applyToolToBaseItem
+      requestBody: { $ref: "#/components/requestBodies/ApplyToolToBaseItem" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+  /gifts/send:
+    post:
+      operationId: sendGift
+      requestBody: { $ref: "#/components/requestBodies/GiftItem" }
+      responses:
+        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
+components:
+  parameters:
+    Game:
+      in: path
+      name: game
+      required: true
+      schema: { type: string }
+    AppID:
+      in: path
+      name: appID
+      required: true
+      schema: { type: integer, format: uint32, minimum: 1 }
+    ID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+  requestBodies:
+    JsonObject:
+      required: false
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/JsonObject" }
+    InitializeStorePurchase:
+      required: true
+      content:
+        application/json:
+          schema:
+            { $ref: "#/components/schemas/InitializeStorePurchaseRequest" }
+    CreateTradeOffer:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CreateSteamTradeOfferRequest" }
+    ArmoryRedeem:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ArmoryRedeemRequest" }
+    OpenContainer:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OpenContainerRequest" }
+    SetItemName:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SetItemNameRequest" }
+    RemoveItemName:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ItemIDRequest" }
+    DeleteItem:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ItemIDRequest" }
+    ApplyStatTrakSwap:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApplyStatTrakSwapRequest" }
+    ApplyStrangePart:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApplyStrangePartRequest" }
+    UseItem:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/UseItemRequest" }
+    UseMultipleItems:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/UseMultipleItemsRequest" }
+    ApplyToolToItem:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApplyToolToItemRequest" }
+    ApplyToolToBaseItem:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApplyToolToBaseItemRequest" }
+    GiftItem:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GiftItemRequest" }
+    SteamCredentials:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SteamCredentialsRequest" }
+    SteamGuard:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SteamGuardRequest" }
+    StorageLoad:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StorageLoadRequest" }
+    StorageMove:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StorageMoveRequest" }
+  responses:
+    JsonResponse:
+      description: Successful JSON response.
+      content:
+        application/json:
+          schema: {}
+    OperationReceiptResponse:
+      description: Operation receipt.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OperationReceipt" }
+    StoreSnapshotResponse:
+      description: Store snapshot.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StoreSnapshot" }
+    PurchaseSessionResponse:
+      description: Store purchase session.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PurchaseSession" }
+    TradesResponse:
+      description: Steam trade snapshot.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SteamTradesSnapshot" }
+    TradeAccountsResponse:
+      description: Account-scoped Steam trade snapshots.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SteamAccountTradesCollection" }
+    TradeMutationResponse:
+      description: Steam trade mutation result.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SteamTradeMutationResult" }
+    ConnectionStatusResponse:
+      description: Steam connection state.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ConnectionStatus" }
+    GameInventoryResponse:
+      description: Economy inventory snapshot.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GameInventorySnapshot" }
+    ErrorResponse:
+      description: Request failed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+  schemas:
+    JsonObject:
+      type: object
+      additionalProperties: true
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string }
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service
+        - version
+        - time
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - error
+        service:
+          type: string
+        version:
+          type: string
+        time:
+          type: string
+          format: date-time
+    OperationState:
+      type: string
+      enum:
+        - queued
+        - validating
+        - encoded
+        - sent
+        - awaiting_gc_confirmation
+        - reconciling_inventory
+        - completed
+        - failed
+        - blocked_by_feature_flag
+        - requires_validation
+        - requires_connection
+    OperationReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - type
+        - state
+        - createdAt
+      properties:
+        operationId:
+          type: string
+        type:
+          type: string
+        state:
+          $ref: "#/components/schemas/OperationState"
+        createdAt:
+          type: string
+          format: date-time
+        message:
+          type: string
+        result:
+          $ref: "#/components/schemas/OperationResult"
+    OperationResult:
+      type: object
+      additionalProperties: true
+      properties:
+        kind:
+          type: string
+          enum: [inventory_award, terminal_unsealed, terminal_offer]
+        openedItem: { $ref: "#/components/schemas/InventoryItem" }
+        terminalItemId: { type: string }
+        terminalDefIndex: { type: integer, format: uint32, minimum: 0 }
+        offerItemId: { type: string }
+        offer: { $ref: "#/components/schemas/RelatedItem" }
+        pointsRemaining: { type: integer, format: uint32, minimum: 0 }
+        terminalOffer: { $ref: "#/components/schemas/TerminalOffer" }
+        consumedItemId: { type: string }
+        requestEMsg: { type: integer, format: uint32, minimum: 0 }
+        requestMethod: { type: string }
+        requestBodyHex: { type: string }
+        confirmation: { type: string }
+        responseEMsg: { type: integer, format: uint32, minimum: 0 }
+        responseBodyHex: { type: string }
+        beforeItemCount: { type: integer, minimum: 0 }
+        afterItemCount: { type: integer, minimum: 0 }
+        diagnostics:
+          type: array
+          items: { type: string }
+    OperationEvent:
+      type: object
+      additionalProperties: false
+      required: [operationId, type, state, createdAt]
+      properties:
+        operationId: { type: string }
+        type: { type: string }
+        state: { $ref: "#/components/schemas/OperationState" }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
+    ProtocolTraceEntry:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          timestamp,
+          direction,
+          layer,
+          emsg,
+          name,
+          protobuf,
+          bodyBytes,
+          bodyHex,
+        ]
+      properties:
+        id: { type: integer, minimum: 0 }
+        timestamp: { type: string, format: date-time }
+        direction: { type: string, enum: [sent, received] }
+        layer: { type: string }
+        appId: { type: integer, format: uint32, minimum: 0 }
+        emsg: { type: integer, format: uint32, minimum: 0 }
+        name: { type: string }
+        protobuf: { type: boolean }
+        bodyBytes: { type: integer, minimum: 0 }
+        bodyHex: { type: string }
+        decoded: {}
+        decodeError: { type: string }
+    Sticker:
+      type: object
+      additionalProperties: false
+      properties:
+        slot:
+          type: integer
+          format: uint32
+          minimum: 0
+        stickerId:
+          type: integer
+          format: uint32
+          minimum: 0
+        wear:
+          type: number
+          format: double
+    AppliedItem:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - name
+      properties:
+        kind:
+          type: string
+          enum: [sticker, charm, patch]
+        slot:
+          type: integer
+          format: uint32
+          minimum: 0
+        id:
+          type: integer
+          format: uint32
+          minimum: 0
+        name:
+          type: string
+        imageUrl:
+          type: string
+        wear:
+          type: number
+          format: double
+    RelatedItem:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        defindex:
+          type: integer
+          format: uint32
+          minimum: 0
+        paintKit:
+          type: integer
+          format: uint32
+          minimum: 0
+        name:
+          type: string
+        marketName:
+          type: string
+        listingName:
+          type: string
+        kind:
+          type: string
+        rarity:
+          type: string
+        imageUrl:
+          type: string
+        inspectUrl:
+          type: string
+        price:
+          type: string
+        paintWear:
+          type: number
+          format: double
+        wearMin:
+          type: number
+          format: double
+        wearMax:
+          type: number
+          format: double
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelatedItem"
+    TerminalOffer:
+      type: object
+      additionalProperties: false
+      required:
+        - fauxItemId
+        - item
+      properties:
+        fauxItemId:
+          type: string
+        generationTime:
+          type: integer
+          format: uint32
+          minimum: 0
+        purchasePrice:
+          type: integer
+          format: uint32
+          minimum: 0
+        item:
+          $ref: "#/components/schemas/RelatedItem"
+    ItemDebug:
+      type: object
+      additionalProperties: false
+      required:
+        - descriptionMatched
+        - marketDescriptionUsed
+      properties:
+        gcId:
+          type: string
+        gcOriginalId:
+          type: string
+        gcDefIndex:
+          type: integer
+          format: uint32
+          minimum: 0
+        gcInventory:
+          type: integer
+          format: uint32
+          minimum: 0
+        gcQuantity:
+          type: integer
+          format: uint32
+          minimum: 0
+        gcQuality:
+          type: integer
+          format: uint32
+          minimum: 0
+        gcRarity:
+          type: integer
+          format: uint32
+          minimum: 0
+        gcPaintKit:
+          type: integer
+          format: uint32
+          minimum: 0
+        descriptionMatched:
+          type: boolean
+        marketDescriptionUsed:
+          type: boolean
+        attributes:
+          type: object
+          additionalProperties:
+            type: number
+    InventoryItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - kind
+      properties:
+        id: { type: string }
+        name: { type: string }
+        marketName: { type: string }
+        marketPrice: { type: string }
+        marketSalePrice: { type: string }
+        marketSellListings: { type: integer, minimum: 0 }
+        customName: { type: string }
+        imageUrl: { type: string }
+        inspectUrl:
+          type: string
+          pattern: '^steam://rungame/730/[^/]*/\\+csgo_econ_action_preview%20'
+        kind:
+          type: string
+          enum:
+            - weapon_skin
+            - sticker_item
+            - container
+            - storage_unit
+            - tool_item
+            - cs2_econ_item
+            - unknown
+        defindex: { type: integer, format: uint32, minimum: 0 }
+        paintWear: { type: number, format: double }
+        paintWearMin: { type: number, format: double }
+        paintWearMax: { type: number, format: double }
+        storageCount: { type: integer, format: uint32, minimum: 0 }
+        graffitiCharges: { type: integer, format: uint32, minimum: 0 }
+        casketId: { type: string }
+        collection: { type: string }
+        collectionItems:
+          type: array
+          items: { $ref: "#/components/schemas/RelatedItem" }
+        tradeUpItems:
+          type: array
+          items: { $ref: "#/components/schemas/RelatedItem" }
+        containerItems:
+          type: array
+          items: { $ref: "#/components/schemas/RelatedItem" }
+        terminalOffers:
+          type: array
+          items: { $ref: "#/components/schemas/TerminalOffer" }
+        terminalPointsRemaining: { type: integer, format: uint32, minimum: 0 }
+        isTerminal: { type: boolean }
+        isActiveTerminal: { type: boolean }
+        exterior: { type: string }
+        rarity: { type: string }
+        storageLocation: { type: string }
+        toolType: { type: string }
+        requiredKeyDefIndexes:
+          type: array
+          items: { type: integer, format: uint32, minimum: 0 }
+        stickers:
+          type: array
+          items: { $ref: "#/components/schemas/Sticker" }
+        appliedItems:
+          type: array
+          items: { $ref: "#/components/schemas/AppliedItem" }
+        isStatTrak: { type: boolean }
+        isSouvenir: { type: boolean }
+        tradable: { type: boolean }
+        marketable: { type: boolean }
+        tradableAfter: { type: string }
+        storageEligible: { type: boolean }
+        storageIneligibleReason: { type: string }
+        unsupportedFields:
+          type: array
+          items: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+        hasCustomName: { type: boolean }
+        isNameTagTool: { type: boolean }
+        debug:
+          $ref: "#/components/schemas/ItemDebug"
+    InventoryCollection:
+      type: object
+      additionalProperties: false
+      required: [name, items]
+      properties:
+        name: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RelatedItem" }
+    InventorySnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - refreshedAt
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryItem" }
+        collections:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryCollection" }
+        refreshedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ready, requires_connection, loading, error]
+        message: { type: string }
+        error: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+    ArmoryOffer:
+      type: object
+      additionalProperties: false
+      required:
+        - campaignId
+        - redeemId
+        - expectedCost
+        - generationTime
+      properties:
+        campaignId: { type: integer, format: uint32, minimum: 0 }
+        redeemId: { type: integer, format: uint32, minimum: 0 }
+        expectedCost: { type: integer, format: uint32, minimum: 0 }
+        generationTime: { type: integer, format: uint32, minimum: 0 }
+        itemName: { type: string }
+        name: { type: string }
+        category: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RelatedItem" }
+    ArmorySnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - balance
+        - generationTime
+        - itemIds
+        - offers
+        - refreshedAt
+        - status
+      properties:
+        balance: { type: integer, format: uint32, minimum: 0 }
+        generationTime: { type: integer, format: uint32, minimum: 0 }
+        itemIds:
+          type: array
+          items: { type: string }
+        offers:
+          type: array
+          items: { $ref: "#/components/schemas/ArmoryOffer" }
+        refreshedAt: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [ready, requires_connection, loading, error]
+        message: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+    StoreOffer:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - itemLink
+        - defIndex
+        - name
+        - currency
+        - amountMinor
+        - formattedPrice
+        - requiresSupplementalData
+        - coupon
+        - purchasable
+      properties:
+        id: { type: string }
+        itemLink: { type: string }
+        defIndex: { type: integer, format: uint32, minimum: 0 }
+        name: { type: string }
+        description: { type: string }
+        imageUrl: { type: string }
+        category: { type: string }
+        rarity: { type: string }
+        currency: { type: string }
+        amountMinor: { type: integer, minimum: 0 }
+        formattedPrice: { type: string }
+        saleAmountMinor: { type: integer, minimum: 0 }
+        formattedSalePrice: { type: string }
+        requiresSupplementalData: { type: boolean }
+        supplementalDataKind: { type: string }
+        coupon: { type: boolean, default: false }
+        purchasable: { type: boolean }
+        unsupportedReason: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RelatedItem" }
+    StoreSnapshot:
+      type: object
+      additionalProperties: false
+      required: [status, offers, refreshedAt]
+      properties:
+        status:
+          type: string
+          enum: [ready, requires_connection, loading, error]
+        priceSheetVersion: { type: integer, format: uint32, minimum: 0 }
+        currency: { type: string }
+        offers:
+          type: array
+          items: { $ref: "#/components/schemas/StoreOffer" }
+        refreshedAt: { type: string, format: date-time }
+        message: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+    InitializeStorePurchaseRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [offerId, quantity, expectedPriceSheetVersion, expectedAmountMinor]
+      properties:
+        offerId: { type: string, minLength: 1 }
+        quantity: { type: integer, minimum: 1, maximum: 100 }
+        expectedPriceSheetVersion: { type: integer, minimum: 0 }
+        expectedAmountMinor: { type: integer, minimum: 0 }
+        supplementalData: { type: string }
+        expectedTerminalOfferItemId: { type: string, pattern: '^\\d+$' }
+    PurchaseSession:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          status,
+          offerId,
+          defIndex,
+          name,
+          quantity,
+          currency,
+          amountMinor,
+          formattedAmount,
+          createdAt,
+        ]
+      properties:
+        id: { type: string }
+        status:
+          type: string
+          enum:
+            [
+              initializing,
+              awaiting_steam_authorization,
+              awaiting_user,
+              finalizing,
+              completed,
+              cancelled,
+              failed,
+              expired,
+            ]
+        offerId: { type: string }
+        defIndex: { type: integer, format: uint32, minimum: 0 }
+        name: { type: string }
+        quantity: { type: integer, format: uint32, minimum: 1 }
+        currency: { type: string }
+        amountMinor: { type: integer, minimum: 0 }
+        formattedAmount: { type: string }
+        transactionId: { type: string }
+        orderId: { type: string }
+        checkoutUrl: { type: string }
+        purchasedItemIds:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        message: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+        errorCode: { type: string }
+        errorResult: { type: integer, format: int32 }
+    SteamTradeAssetRequest:
+      type: object
+      additionalProperties: false
+      required: [appId, contextId, assetId, amount]
+      properties:
+        appId: { type: integer, minimum: 1 }
+        contextId: { type: string, minLength: 1 }
+        assetId: { type: string, pattern: '^\\d+$' }
+        amount: { type: integer, minimum: 1 }
+    CreateSteamTradeOfferRequest:
+      type: object
+      additionalProperties: false
+      required: [partnerSteamId, itemsToGive, itemsToReceive]
+      properties:
+        partnerSteamId: { type: string, pattern: '^7656119\\d{10}$' }
+        message: { type: string, maxLength: 128 }
+        itemsToGive:
+          type: array
+          maxItems: 256
+          items: { $ref: "#/components/schemas/SteamTradeAssetRequest" }
+        itemsToReceive:
+          type: array
+          maxItems: 256
+          items: { $ref: "#/components/schemas/SteamTradeAssetRequest" }
+        tradeToken: { type: string, maxLength: 64 }
+    SteamTradeItem:
+      type: object
+      additionalProperties: false
+      required: [appId, contextId, assetId, amount, name, tradable, marketable]
+      properties:
+        appId: { type: integer, format: uint32, minimum: 0 }
+        contextId: { type: string }
+        assetId: { type: string }
+        amount: { type: integer, minimum: 0 }
+        name: { type: string }
+        marketName: { type: string }
+        type: { type: string }
+        imageUrl: { type: string }
+        tradable: { type: boolean }
+        marketable: { type: boolean }
+    SteamTrade:
+      type: object
+      additionalProperties: false
+      required:
+        [id, direction, partnerSteamId, state, itemsToGive, itemsToReceive]
+      properties:
+        id: { type: string }
+        direction: { type: string, enum: [received, sent, history] }
+        partnerSteamId: { type: string }
+        partnerName: { type: string }
+        partnerAvatarUrl: { type: string }
+        partnerProfileUrl: { type: string }
+        message: { type: string }
+        state: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        expiresAt: { type: string }
+        itemsToGive:
+          type: array
+          items: { $ref: "#/components/schemas/SteamTradeItem" }
+        itemsToReceive:
+          type: array
+          items: { $ref: "#/components/schemas/SteamTradeItem" }
+    SteamTradesSnapshot:
+      type: object
+      additionalProperties: false
+      required: [status, received, sent, history, refreshedAt]
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              ready,
+              requires_connection,
+              requires_reauthentication,
+              loading,
+              error,
+            ]
+        received:
+          type: array
+          items: { $ref: "#/components/schemas/SteamTrade" }
+        sent:
+          type: array
+          items: { $ref: "#/components/schemas/SteamTrade" }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/SteamTrade" }
+        refreshedAt: { type: string, format: date-time }
+        message: { type: string }
+    SteamAccountTradesSnapshot:
+      type: object
+      additionalProperties: false
+      required: [steamId, accountName, snapshot]
+      properties:
+        steamId: { type: string }
+        accountName: { type: string }
+        avatarUrl: { type: string }
+        snapshot: { $ref: "#/components/schemas/SteamTradesSnapshot" }
+    SteamAccountTradesCollection:
+      type: object
+      additionalProperties: false
+      required: [accounts, refreshedAt]
+      properties:
+        accounts:
+          type: array
+          items: { $ref: "#/components/schemas/SteamAccountTradesSnapshot" }
+        refreshedAt: { type: string, format: date-time }
+    SteamTradeMutationResult:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              submitted,
+              accepted,
+              blocked_by_feature_flag,
+              requires_connection,
+              requires_refresh,
+              error,
+            ]
+        tradeOfferId: { type: string }
+        needsMobileConfirmation: { type: boolean }
+        message: { type: string }
+    ConnectionStatus:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum:
+            [
+              disconnected,
+              connecting,
+              awaiting_guard,
+              needs_steam_guard,
+              awaiting_qr,
+              connected,
+              session_conflict,
+              error,
+            ]
+        detail: { type: string }
+        steamId: { type: string }
+        accountName: { type: string }
+        avatarUrl: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+        qrChallengeUrl: { type: string }
+    ArmoryRedeemRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [campaignId, redeemId, expectedCost, redeemableBalance, generationTime]
+      properties:
+        campaignId: { type: integer, format: uint32, minimum: 0 }
+        redeemId: { type: integer, format: uint32, minimum: 0 }
+        expectedCost: { type: integer, format: uint32, minimum: 0 }
+        redeemableBalance: { type: integer, format: uint32, minimum: 0 }
+        generationTime: { type: integer, format: uint32, minimum: 0 }
+        quantity: { type: integer, format: uint32, minimum: 1 }
+    ItemIDRequest:
+      type: object
+      additionalProperties: false
+      required: [itemId]
+      properties:
+        itemId: { type: string, pattern: '^\\d+$' }
+    SetItemNameRequest:
+      type: object
+      additionalProperties: false
+      required: [subjectItemId, toolItemId, name]
+      properties:
+        subjectItemId: { type: string, pattern: '^\\d+$' }
+        toolItemId: { type: string, pattern: '^\\d+$' }
+        name: { type: string }
+    OpenContainerRequest:
+      type: object
+      additionalProperties: false
+      required: [itemId]
+      properties:
+        itemId: { type: string, pattern: '^\\d+$' }
+        keyItemId: { type: string, pattern: '^\\d+$' }
+        pointsRemaining: { type: integer, format: uint32, minimum: 0 }
+        volatileLimit: { type: integer, format: uint32, minimum: 0 }
+    ApplyStatTrakSwapRequest:
+      type: object
+      additionalProperties: false
+      required: [toolItemId, item1ItemId, item2ItemId]
+      properties:
+        toolItemId: { type: string, pattern: '^\\d+$' }
+        item1ItemId: { type: string, pattern: '^\\d+$' }
+        item2ItemId: { type: string, pattern: '^\\d+$' }
+    ApplyStrangePartRequest:
+      type: object
+      additionalProperties: false
+      required: [strangePartItemId, itemItemId]
+      properties:
+        strangePartItemId: { type: string, pattern: '^\\d+$' }
+        itemItemId: { type: string, pattern: '^\\d+$' }
+    UseItemRequest:
+      type: object
+      additionalProperties: false
+      required: [itemId]
+      properties:
+        itemId: { type: string, pattern: '^\\d+$' }
+        targetSteamId: { type: string }
+        giftPotentialTargets:
+          type: array
+          items: { type: integer, format: uint32, minimum: 0 }
+        duelClassLock: { type: integer, format: uint32, minimum: 0 }
+        initiatorSteamId: { type: string }
+    UseMultipleItemsRequest:
+      type: object
+      additionalProperties: false
+      required: [itemIds]
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          items: { type: string, pattern: '^\\d+$' }
+    ApplyToolToItemRequest:
+      type: object
+      additionalProperties: false
+      required: [toolItemId, subjectItemId]
+      properties:
+        toolItemId: { type: string, pattern: '^\\d+$' }
+        subjectItemId: { type: string, pattern: '^\\d+$' }
+    ApplyToolToBaseItemRequest:
+      type: object
+      additionalProperties: false
+      required: [toolItemId, baseitemDefIndex]
+      properties:
+        toolItemId: { type: string, pattern: '^\\d+$' }
+        baseitemDefIndex: { type: integer, format: uint32, minimum: 0 }
+    GiftItemRequest:
+      type: object
+      additionalProperties: false
+      required: [itemId, receiverAccountId]
+      properties:
+        itemId: { type: string, pattern: '^\\d+$' }
+        receiverAccountId: { type: integer, format: uint32, minimum: 0 }
+        giftMessage: { type: string }
+    RevealAnimationMode:
+      type: string
+      enum: [none, countdown, slot-machine]
+    TradeUpAnimationMode:
+      type: string
+      enum:
+        [
+          none,
+          countdown,
+          slot-machine,
+          contract-none,
+          contract-countdown,
+          contract-slot-machine,
+        ]
+    AnimationSettings:
+      type: object
+      additionalProperties: false
+      required: [container, tradeUp, armory, terminal]
+      properties:
+        container: { $ref: "#/components/schemas/RevealAnimationMode" }
+        tradeUp: { $ref: "#/components/schemas/TradeUpAnimationMode" }
+        armory: { $ref: "#/components/schemas/RevealAnimationMode" }
+        terminal:
+          allOf:
+            - $ref: "#/components/schemas/RevealAnimationMode"
+          default: slot-machine
+    FeatureFlags:
+      type: object
+      additionalProperties: false
+      required:
+        - enableStorageMutations
+        - enableContainerOpening
+        - enableInventoryDebug
+        - showStorageUnitItems
+        - enableTradeups
+        - enableStickerExtract
+        - enableNameTags
+        - enableItemDeletion
+        - enableStatTrakSwap
+        - enableStrangeParts
+        - enableItemUse
+        - enableToolApplication
+        - enableGifting
+        - enableTf2Inventory
+        - enableTf2Store
+        - enableTf2Loadouts
+        - enableTf2ItemUse
+        - enableTf2Tools
+        - enableTf2Crafting
+        - enableTf2Unboxing
+        - enableTf2Customization
+        - enableDota2Inventory
+        - enableSteamInventory
+      properties:
+        enableStorageMutations: { type: boolean }
+        enableContainerOpening: { type: boolean }
+        enableInventoryDebug: { type: boolean }
+        showStorageUnitItems: { type: boolean, default: false }
+        enableProtocolConsole: { type: boolean, default: true }
+        enableTradeups: { type: boolean }
+        enableStickerExtract: { type: boolean }
+        enableNameTags: { type: boolean }
+        enableItemDeletion: { type: boolean }
+        enableStatTrakSwap: { type: boolean }
+        enableStrangeParts: { type: boolean }
+        enableItemUse: { type: boolean }
+        enableToolApplication: { type: boolean }
+        enableGifting: { type: boolean }
+        enableArmoryRead: { type: boolean }
+        enableArmoryRedemption: { type: boolean }
+        enableStoreRead: { type: boolean }
+        enableStorePurchases: { type: boolean }
+        enableFullCs2Store: { type: boolean, default: false }
+        enableCs2Loadouts: { type: boolean, default: false }
+        enableTf2Inventory: { type: boolean, default: true }
+        enableTf2Store: { type: boolean, default: true }
+        enableTf2Loadouts: { type: boolean, default: false }
+        enableTf2ItemUse: { type: boolean, default: false }
+        enableTf2Tools: { type: boolean, default: false }
+        enableTf2Crafting: { type: boolean, default: false }
+        enableTf2Unboxing: { type: boolean, default: false }
+        enableTf2Customization: { type: boolean, default: false }
+        enableDota2Inventory: { type: boolean, default: false }
+        enableSteamInventory: { type: boolean, default: true }
+        enableSteamTradeMutations: { type: boolean, default: false }
+    SettingsData:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          backendUrl,
+          validationMode,
+          sacrificialAccountMode,
+          featureFlags,
+          animations,
+          armoryPurchasePacingSeconds,
+        ]
+      properties:
+        backendUrl: { type: string }
+        validationMode: { type: boolean }
+        sacrificialAccountMode: { type: boolean }
+        featureFlags: { $ref: "#/components/schemas/FeatureFlags" }
+        animations: { $ref: "#/components/schemas/AnimationSettings" }
+        armoryPurchasePacingSeconds: { type: integer, minimum: 1, maximum: 60 }
+    EconomyTag:
+      type: object
+      additionalProperties: false
+      required: [category, internalName, name]
+      properties:
+        category: { type: string }
+        internalName: { type: string }
+        name: { type: string }
+    EquippedState:
+      type: object
+      additionalProperties: false
+      required: [class, slot]
+      properties:
+        class: { type: integer }
+        slot: { type: integer }
+    EconomyItemDetails:
+      type: object
+      additionalProperties: true
+      required:
+        [
+          game,
+          level,
+          qualityId,
+          inventoryPosition,
+          originId,
+          style,
+          flags,
+          attributes,
+        ]
+      properties:
+        game: { type: string, enum: [steam, steam-service, tf2, dota2] }
+        level: { type: integer }
+        qualityId: { type: integer }
+        inventoryPosition: { type: integer }
+        originId: { type: integer }
+        style: { type: integer }
+        flags: { type: integer }
+        customName: { type: string }
+        customDescription: { type: string }
+        attributes:
+          type: object
+          additionalProperties: { type: number }
+        attributeBytes:
+          type: object
+          additionalProperties: { type: string }
+        equippedStates:
+          type: array
+          items: { $ref: "#/components/schemas/EquippedState" }
+        interiorItemId: { type: string }
+        serviceItemId: { type: string }
+        serviceDefinitionId: { type: string }
+        acquiredAt: { type: string }
+        stateChangedAt: { type: string }
+        serviceState: { type: string }
+        serviceOrigin: { type: string }
+        dynamicProperties:
+          type: object
+          additionalProperties: { type: string }
+        schemaQuality: { type: string }
+        equipSlot: { type: string }
+        usableClasses:
+          type: array
+          items: { type: string }
+        capabilities:
+          type: object
+          additionalProperties: { type: string }
+        itemKind: { type: string }
+        itemClass: { type: string }
+        craftClass: { type: string }
+        craftMaterialType: { type: string }
+        toolType: { type: string }
+        description: { type: string }
+        collection: { type: string }
+        equipRegions:
+          type: array
+          items: { type: string }
+        schemaTags:
+          type: array
+          items: { type: string }
+        minLevel: { type: integer }
+        maxLevel: { type: integer }
+        properName: { type: boolean }
+        baseItem: { type: boolean }
+        hidden: { type: boolean }
+        rarity: { type: string }
+        hero: { type: string }
+        slot: { type: string }
+    EconomyInventoryItem:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          game,
+          appId,
+          assetId,
+          name,
+          quantity,
+          tradable,
+          marketable,
+          tags,
+          details,
+        ]
+      properties:
+        game: { type: string, enum: [steam, steam-service, tf2, dota2] }
+        appId: { type: integer, format: uint32, minimum: 1 }
+        contextId: { type: string }
+        assetId: { type: string }
+        classId: { type: string }
+        instanceId: { type: string }
+        definitionId: { type: integer, minimum: 0 }
+        name: { type: string }
+        marketName: { type: string }
+        imageUrl: { type: string }
+        inspectUrl: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        type: { type: string }
+        rarity: { type: string }
+        quality: { type: string }
+        tradable: { type: boolean }
+        marketable: { type: boolean }
+        tradableAfter: { type: string }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/EconomyTag" }
+        descriptions:
+          type: array
+          items: { type: string }
+        details: { $ref: "#/components/schemas/EconomyItemDetails" }
+    GameInventorySnapshot:
+      type: object
+      additionalProperties: false
+      required: [game, appId, items, refreshedAt, status, diagnostics]
+      properties:
+        game: { type: string, enum: [steam, steam-service, tf2, dota2] }
+        appId: { type: integer, format: uint32, minimum: 1 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EconomyInventoryItem" }
+        refreshedAt: { type: string, format: date-time }
+        status:
+          { type: string, enum: [ready, requires_connection, loading, error] }
+        message: { type: string }
+        error: { type: string }
+        schemaRevision: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+    SteamInventoryServiceGame:
+      type: object
+      additionalProperties: false
+      required: [appId, name, playtimeMinutes, lastPlayed, hasMarket]
+      properties:
+        appId: { type: integer, format: uint32, minimum: 1 }
+        name: { type: string, minLength: 1 }
+        playtimeMinutes: { type: integer, format: uint32, minimum: 0 }
+        lastPlayed: { type: integer, format: uint32, minimum: 0 }
+        hasMarket: { type: boolean }
+    SteamInventoryServiceGames:
+      type: object
+      additionalProperties: false
+      required: [games, refreshedAt, status, diagnostics]
+      properties:
+        games:
+          type: array
+          items: { $ref: "#/components/schemas/SteamInventoryServiceGame" }
+        refreshedAt: { type: string, format: date-time }
+        status: { type: string, enum: [ready, requires_connection, error] }
+        message: { type: string }
+        diagnostics:
+          type: array
+          items: { type: string }
+    SteamCredentialsRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 1 }
+        password: { type: string, minLength: 1 }
+    SteamGuardRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        code: { type: string }
+    StorageLoadRequest:
+      type: object
+      additionalProperties: false
+      required: [casketId]
+      properties:
+        casketId: { type: string, pattern: '^\\d+$' }
+    StorageMoveRequest:
+      type: object
+      additionalProperties: false
+      required: [casketId, itemId]
+      properties:
+        casketId: { type: string, pattern: '^\\d+$' }
+        itemId: { type: string, pattern: '^\\d+$' }
+    FeatureActivity:
+      type: object
+      additionalProperties: false
+      required: [kind, data]
+      properties:
+        kind: { type: string }
+        id: { type: string }
+        timestamp: { type: integer }
+        data:
+          type: object
+          additionalProperties: true
+    TF2InspectedItem:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          definitionId,
+          quantity,
+          level,
+          qualityId,
+          flags,
+          originId,
+          style,
+          attributes,
+          equippedStates,
+        ]
+      properties:
+        id: { type: string }
+        originalId: { type: string }
+        definitionId: { type: integer }
+        quantity: { type: integer }
+        level: { type: integer }
+        qualityId: { type: integer }
+        flags: { type: integer }
+        originId: { type: integer }
+        customName: { type: string }
+        customDescription: { type: string }
+        style: { type: integer }
+        attributes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [definitionId]
+            properties:
+              definitionId: { type: integer }
+              value: { type: string }
+              valueBytes: { type: string }
+        equippedStates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [classId, slotId]
+            properties:
+              classId: { type: integer }
+              slotId: { type: integer }
+        interiorItem: { $ref: "#/components/schemas/TF2InspectedItem" }
+    TF2FeatureSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          status,
+          presetItems,
+          classPresets,
+          matches,
+          ladder,
+          ratings,
+          quests,
+          questNodes,
+          questRewards,
+          activity,
+          market,
+          diagnostics,
+        ]
+      properties:
+        status:
+          {
+            type: string,
+            enum: [waiting, ready, disabled, requires_connection],
+          }
+        refreshedAt: { type: string, format: date-time }
+        presetItems:
+          type: array
+          items:
+            type: object
+            required: [classId, presetId, slotId, itemId]
+            properties:
+              classId: { type: integer }
+              presetId: { type: integer }
+              slotId: { type: integer }
+              itemId: { type: string }
+        classPresets:
+          type: array
+          items:
+            type: object
+            required: [classId, activePresetId]
+            properties:
+              classId: { type: integer }
+              activePresetId: { type: integer }
+        matches:
+          { type: array, items: { type: object, additionalProperties: true } }
+        ladder:
+          { type: array, items: { type: object, additionalProperties: true } }
+        ratings:
+          { type: array, items: { type: object, additionalProperties: true } }
+        quests:
+          { type: array, items: { type: object, additionalProperties: true } }
+        questNodes:
+          { type: array, items: { type: object, additionalProperties: true } }
+        questRewards:
+          { type: array, items: { type: object, additionalProperties: true } }
+        matchmaking: { type: object, additionalProperties: true }
+        dataCenterPing: { type: object, additionalProperties: true }
+        dailyStats: { type: object, additionalProperties: true }
+        activity:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/FeatureActivity" },
+          }
+        market:
+          type: array
+          items:
+            type: object
+            required: [definitionId, qualityId, sellListings, priceMinor]
+            properties:
+              definitionId: { type: integer }
+              qualityId: { type: integer }
+              sellListings: { type: integer }
+              priceMinor: { type: integer }
+        inspectedItem: { $ref: "#/components/schemas/TF2InspectedItem" }
+        inspectedAt: { type: string, format: date-time }
+        marketAt: { type: string, format: date-time }
+        currency: { type: string }
+        diagnostics: { type: array, items: { type: string } }
+    CS2FeatureSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          status,
+          equipSlots,
+          matches,
+          rentals,
+          quests,
+          recurringMissions,
+          seasonalOperations,
+          activity,
+          diagnostics,
+        ]
+      properties:
+        status: { type: string, enum: [waiting, ready, requires_connection] }
+        refreshedAt: { type: string, format: date-time }
+        equipSlots:
+          type: array
+          items:
+            type: object
+            required: [classId, slotId, itemId, definitionId]
+            properties:
+              classId: { type: integer }
+              slotId: { type: integer }
+              itemId: { type: string }
+              definitionId: { type: integer }
+        matches:
+          { type: array, items: { type: object, additionalProperties: true } }
+        profile: { type: object, additionalProperties: true }
+        premier: { type: object, additionalProperties: true }
+        deepStats: { type: object, additionalProperties: true }
+        searchStats: { type: object, additionalProperties: true }
+        inspectedItem: { type: object, additionalProperties: true }
+        inspectedAt: { type: string, format: date-time }
+        rentals:
+          { type: array, items: { type: object, additionalProperties: true } }
+        quests:
+          { type: array, items: { type: object, additionalProperties: true } }
+        recurringMissions:
+          { type: array, items: { type: object, additionalProperties: true } }
+        seasonalOperations:
+          { type: array, items: { type: object, additionalProperties: true } }
+        xpShop: { type: object, additionalProperties: true }
+        recurringSchema: { type: object, additionalProperties: true }
+        activity:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/FeatureActivity" },
+          }
+        diagnostics: { type: array, items: { type: string } }

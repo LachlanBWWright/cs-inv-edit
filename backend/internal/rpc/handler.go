@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
+	apiContract "cs-inv-edit/backend/internal/api"
 	"cs-inv-edit/backend/internal/app"
 	"cs-inv-edit/backend/internal/operations"
 	"cs-inv-edit/backend/internal/steamtrade"
@@ -21,94 +21,34 @@ type Handler struct {
 	mux     *http.ServeMux
 }
 
+var _ apiContract.ServerInterface = (*Handler)(nil)
+
 func NewHandler(service *app.Service) http.Handler {
 	h := &Handler{service: service, mux: http.NewServeMux()}
 
-	h.mux.HandleFunc("/health", h.health)
-	h.mux.HandleFunc("/inventory", h.inventory)
-	h.mux.HandleFunc("/inventory/refresh", h.inventoryRefresh)
-	h.mux.HandleFunc("/games/{game}/inventory", h.gameInventory)
-	h.mux.HandleFunc("/games/{game}/inventory/refresh", h.gameInventoryRefresh)
-	h.mux.HandleFunc("/games/tf2/features", h.tf2Features)
-	h.mux.HandleFunc("/games/cs2/features", h.cs2Features)
-	h.mux.HandleFunc("/steam-inventory-service/{appID}", h.steamInventoryService)
-	h.mux.HandleFunc("/steam-inventory-service/{appID}/refresh", h.steamInventoryServiceRefresh)
-	h.mux.HandleFunc("/steam-inventory-service/games", h.steamInventoryServiceGames)
-	h.mux.HandleFunc("/armory", h.armory)
-	h.mux.HandleFunc("/armory/refresh", h.armoryRefresh)
-	h.mux.HandleFunc("/armory/redeem", h.armoryRedeem)
-	h.mux.HandleFunc("/store", h.store)
-	h.mux.HandleFunc("/store/refresh", h.storeRefresh)
-	h.mux.HandleFunc("/store/purchases", h.storePurchases)
-	h.mux.HandleFunc("/store/purchases/{id}", h.storePurchase)
-	h.mux.HandleFunc("/store/purchases/{id}/reconcile", h.storePurchaseReconcile)
-	h.mux.HandleFunc("/trades", h.trades)
-	h.mux.HandleFunc("/trade-accounts", h.tradeAccounts)
-	h.mux.HandleFunc("/trades/refresh", h.tradesRefresh)
-	h.mux.HandleFunc("/trades/offers", h.tradeOfferCreate)
-	h.mux.HandleFunc("/trades/offers/{id}/accept", h.tradeOfferAccept)
-	h.mux.HandleFunc("/trades/offers/{id}/counter", h.tradeOfferCounter)
-	h.mux.HandleFunc("/market/preview", h.marketPreview)
-	h.mux.HandleFunc("/operations", h.operations)
-	h.mux.HandleFunc("/operations/", h.operationRoot)
-	h.mux.HandleFunc("/operations/{type}", h.operation)
-	h.mux.HandleFunc("/events", h.events)
-	h.mux.HandleFunc("/protocol-trace", h.protocolTrace)
-	h.mux.HandleFunc("/settings", h.settings)
-	h.mux.HandleFunc("/steam/status", h.steamStatus)
-	h.mux.HandleFunc("/steam/connect", h.steamConnect)
-	h.mux.HandleFunc("/steam/qr", h.steamQR)
-	h.mux.Handle("/steam/status/ws", websocket.Handler(h.steamStatusWebSocket))
-	h.mux.HandleFunc("/steam/guard", h.steamGuard)
-	h.mux.HandleFunc("/steam/disconnect", h.steamDisconnect)
-	h.mux.HandleFunc("/storage/load", h.storageLoad)
-	h.mux.HandleFunc("/storage/move-in", h.storageMoveIn)
-	h.mux.HandleFunc("/storage/move-out", h.storageMoveOut)
-	h.mux.HandleFunc("/containers/open", h.containerOpen)
-	h.mux.HandleFunc("/tradeups/preview", h.tradeupPreview)
-	h.mux.HandleFunc("/tradeups/execute", h.tradeupExecute)
-	h.mux.HandleFunc("/stickers/extract", h.stickerExtract)
-	h.mux.HandleFunc("/nametags/apply", h.nametagApply)
-	h.mux.HandleFunc("/nametags/remove", h.nametagRemove)
-	h.mux.HandleFunc("/items/delete", h.itemDelete)
-	h.mux.HandleFunc("/stattrak/swap", h.stattrakSwap)
-	h.mux.HandleFunc("/strange-parts/apply", h.strangePartApply)
-	h.mux.HandleFunc("/items/use", h.itemUse)
-	h.mux.HandleFunc("/items/use-multiple", h.itemUseMultiple)
-	h.mux.HandleFunc("/tools/apply", h.toolApply)
-	h.mux.HandleFunc("/tools/apply-base", h.toolApplyBase)
-	h.mux.HandleFunc("/gifts/send", h.giftSend)
-
+	apiContract.HandlerFromMux(h, h.mux)
 	return h.withCORS(h.mux)
 }
 
-func (h *Handler) tradeAccounts(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		writeJSON(w, h.service.AccountTrades())
-		return
-	}
-	if r.Method == http.MethodPost {
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		writeJSON(w, h.service.RefreshAccountTrades(ctx, r.URL.Query().Get("steamId")))
-		return
-	}
-	writeError(w, http.StatusMethodNotAllowed, "trade accounts route requires GET or POST")
+func (h *Handler) GetTradeAccounts(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, h.service.AccountTrades())
 }
 
-func (h *Handler) trades(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "trades route requires GET")
-		return
+func (h *Handler) RefreshTradeAccounts(w http.ResponseWriter, r *http.Request, params apiContract.RefreshTradeAccountsParams) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	steamID := ""
+	if params.SteamId != nil {
+		steamID = *params.SteamId
 	}
+	writeJSON(w, h.service.RefreshAccountTrades(ctx, steamID))
+}
+
+func (h *Handler) GetTrades(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.Trades())
 }
 
-func (h *Handler) tradesRefresh(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "trade refresh requires POST")
-		return
-	}
+func (h *Handler) RefreshTrades(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	writeJSON(w, h.service.RefreshTrades(ctx))
@@ -125,11 +65,7 @@ func decodeTradeCreate(w http.ResponseWriter, r *http.Request) (steamtrade.Creat
 	return input, true
 }
 
-func (h *Handler) tradeOfferCreate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "trade offer route requires POST")
-		return
-	}
+func (h *Handler) CreateTradeOffer(w http.ResponseWriter, r *http.Request) {
 	input, ok := decodeTradeCreate(w, r)
 	if !ok {
 		return
@@ -139,51 +75,40 @@ func (h *Handler) tradeOfferCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.service.CreateTradeOffer(ctx, input))
 }
 
-func (h *Handler) tradeOfferAccept(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "trade accept route requires POST")
-		return
-	}
+func (h *Handler) AcceptTradeOffer(w http.ResponseWriter, r *http.Request, id apiContract.ID) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	writeJSON(w, h.service.AcceptTradeOffer(ctx, r.PathValue("id")))
+	writeJSON(w, h.service.AcceptTradeOffer(ctx, id))
 }
 
-func (h *Handler) tradeOfferCounter(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "trade counter route requires POST")
-		return
-	}
+func (h *Handler) CounterTradeOffer(w http.ResponseWriter, r *http.Request, id apiContract.ID) {
 	input, ok := decodeTradeCreate(w, r)
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	writeJSON(w, h.service.CounterTradeOffer(ctx, r.PathValue("id"), input))
+	writeJSON(w, h.service.CounterTradeOffer(ctx, id, input))
 }
 
-func (h *Handler) health(w http.ResponseWriter, _ *http.Request) { writeJSON(w, h.service.Health()) }
-func (h *Handler) protocolTrace(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "protocol trace route requires GET")
-		return
+func (h *Handler) GetHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, h.service.Health())
+}
+func (h *Handler) GetProtocolTrace(w http.ResponseWriter, _ *http.Request, params apiContract.GetProtocolTraceParams) {
+	after := uint64(0)
+	if params.After != nil {
+		after = *params.After
 	}
-	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
 	writeJSON(w, h.service.ProtocolTrace(after))
 }
-func (h *Handler) inventory(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) GetInventory(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.Inventory())
 }
-func (h *Handler) inventoryRefresh(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) RefreshInventory(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.RefreshInventory())
 }
-func (h *Handler) gameInventory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "game inventory route requires GET")
-		return
-	}
-	snapshot, supported, enabled := h.service.GameInventory(r.PathValue("game"))
+func (h *Handler) GetGameInventory(w http.ResponseWriter, _ *http.Request, game apiContract.Game) {
+	snapshot, supported, enabled := h.service.GameInventory(string(game))
 	if !supported {
 		writeError(w, http.StatusNotFound, "unsupported economy game")
 		return
@@ -194,102 +119,98 @@ func (h *Handler) gameInventory(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, snapshot)
 }
-func (h *Handler) gameInventoryRefresh(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "game inventory refresh requires POST")
-		return
-	}
-	receipt := h.service.RefreshGameInventory(r.PathValue("game"))
+func (h *Handler) RefreshGameInventory(w http.ResponseWriter, _ *http.Request, game apiContract.Game) {
+	receipt := h.service.RefreshGameInventory(string(game))
 	if receipt.State == operations.StateBlockedByFeatureFlag {
 		w.WriteHeader(http.StatusForbidden)
 	}
 	writeJSON(w, receipt)
 }
-func (h *Handler) tf2Features(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "TF2 features route requires GET")
-		return
-	}
-	writeJSON(w, h.service.TF2Features())
+func (h *Handler) GetTf2Features(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, h.service.TF2FeaturesWithMetadata(r.Context()))
 }
 
-func (h *Handler) cs2Features(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func (h *Handler) GetCs2Features(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.CS2Features())
 }
-func (h *Handler) steamInventoryServiceGames(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "Steam Inventory Service games route requires GET")
-		return
-	}
+func (h *Handler) ListSteamInventoryServiceGames(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	writeJSON(w, h.service.SteamInventoryServiceGames(ctx))
 }
-func parseSteamInventoryServiceAppID(w http.ResponseWriter, r *http.Request) (uint32, bool) {
-	value, err := strconv.ParseUint(r.PathValue("appID"), 10, 32)
-	if err != nil || value == 0 {
+func (h *Handler) GetSteamInventoryService(w http.ResponseWriter, _ *http.Request, appID apiContract.AppID) {
+	if appID == 0 {
 		writeError(w, http.StatusBadRequest, "Steam Inventory Service AppID must be a positive 32-bit integer")
-		return 0, false
-	}
-	return uint32(value), true
-}
-func (h *Handler) steamInventoryService(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "Steam Inventory Service route requires GET")
 		return
 	}
-	appID, ok := parseSteamInventoryServiceAppID(w, r)
-	if !ok {
-		return
-	}
-	snapshot, enabled := h.service.SteamInventoryService(appID)
+	snapshot, enabled := h.service.SteamInventoryService(uint32(appID))
 	if !enabled {
 		writeError(w, http.StatusForbidden, "Steam inventory is disabled by feature flag")
 		return
 	}
 	writeJSON(w, snapshot)
 }
-func (h *Handler) steamInventoryServiceRefresh(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "Steam Inventory Service refresh requires POST")
+func (h *Handler) RefreshSteamInventoryService(w http.ResponseWriter, _ *http.Request, appID apiContract.AppID) {
+	if appID == 0 {
+		writeError(w, http.StatusBadRequest, "Steam Inventory Service AppID must be a positive 32-bit integer")
 		return
 	}
-	appID, ok := parseSteamInventoryServiceAppID(w, r)
-	if !ok {
-		return
-	}
-	receipt := h.service.RefreshSteamInventoryService(appID)
+	receipt := h.service.RefreshSteamInventoryService(uint32(appID))
 	if receipt.State == operations.StateBlockedByFeatureFlag {
 		w.WriteHeader(http.StatusForbidden)
 	}
 	writeJSON(w, receipt)
 }
-func (h *Handler) armory(w http.ResponseWriter, _ *http.Request) { writeJSON(w, h.service.Armory()) }
-func (h *Handler) armoryRefresh(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) GetArmory(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, h.service.Armory())
+}
+func (h *Handler) RefreshArmory(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.RefreshArmory())
 }
-func (h *Handler) armoryRedeem(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RedeemArmory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperationDirect(r, h.service.RedeemArmory))
 }
-func (h *Handler) store(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetStore(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "store route requires GET")
 		return
 	}
 	writeJSON(w, h.service.Store())
 }
-func (h *Handler) storeRefresh(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RefreshStore(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "store refresh requires POST")
 		return
 	}
 	writeJSON(w, h.service.RefreshStore())
 }
-func (h *Handler) storePurchases(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetTf2Store(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "TF2 store route requires GET")
+		return
+	}
+	writeJSON(w, h.service.TF2Store())
+}
+func (h *Handler) RefreshTf2Store(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "TF2 store refresh requires POST")
+		return
+	}
+	writeJSON(w, h.service.RefreshTF2Store())
+}
+func (h *Handler) InitializeTf2StorePurchase(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "TF2 store purchases require POST")
+		return
+	}
+	body, err := parseBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, h.service.InitializeTF2StorePurchase(body))
+}
+func (h *Handler) InitializeStorePurchase(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "store purchases require POST")
 		return
@@ -301,31 +222,31 @@ func (h *Handler) storePurchases(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, h.service.InitializeStorePurchase(body))
 }
-func (h *Handler) storePurchase(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetStorePurchase(w http.ResponseWriter, r *http.Request, id apiContract.ID) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "store purchase route requires GET")
 		return
 	}
-	session, ok := h.service.StorePurchase(r.PathValue("id"))
+	session, ok := h.service.StorePurchase(id)
 	if !ok {
 		writeError(w, http.StatusNotFound, "purchase session not found")
 		return
 	}
 	writeJSON(w, session)
 }
-func (h *Handler) storePurchaseReconcile(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ReconcileStorePurchase(w http.ResponseWriter, r *http.Request, id apiContract.ID) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "store purchase reconciliation requires POST")
 		return
 	}
-	writeJSON(w, h.service.ReconcileStorePurchase(r.PathValue("id")))
+	writeJSON(w, h.service.ReconcileStorePurchase(id))
 }
-func (h *Handler) marketPreview(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetMarketPreview(w http.ResponseWriter, r *http.Request, params apiContract.GetMarketPreviewParams) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "market preview requires GET")
 		return
 	}
-	preview, err := h.service.MarketPreview(r.URL.Query().Get("marketName"))
+	preview, err := h.service.MarketPreview(params.MarketName)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -340,21 +261,13 @@ func (h *Handler) handleBodyOperationDirect(r *http.Request, submit func(map[str
 	}
 	return submit(body)
 }
-func (h *Handler) operations(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) ListOperations(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.Operations())
 }
-func (h *Handler) settings(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) GetSettings(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.Settings())
 }
-func (h *Handler) settingsSave(w http.ResponseWriter, r *http.Request) {
-	body, err := parseBody(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, h.service.SubmitOperation("settings", body))
-}
-func (h *Handler) steamConnect(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ConnectSteam(w http.ResponseWriter, r *http.Request) {
 	body, err := parseBody(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -362,7 +275,7 @@ func (h *Handler) steamConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, h.service.ConnectSteam(body))
 }
-func (h *Handler) steamQR(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) StartSteamQr(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.StartSteamQR())
 }
 func (h *Handler) steamStatusWebSocket(conn *websocket.Conn) {
@@ -385,7 +298,7 @@ func (h *Handler) steamStatusWebSocket(conn *websocket.Conn) {
 		}
 	}
 }
-func (h *Handler) steamGuard(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) SubmitSteamGuard(w http.ResponseWriter, r *http.Request) {
 	body, err := parseBody(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -393,70 +306,73 @@ func (h *Handler) steamGuard(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, h.service.SubmitSteamGuard(body))
 }
-func (h *Handler) steamDisconnect(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) DisconnectSteam(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.DisconnectSteam())
 }
-func (h *Handler) steamStatus(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) GetSteamStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.ConnectionStatus())
 }
-func (h *Handler) storageLoad(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) WatchSteamStatus(w http.ResponseWriter, r *http.Request) {
+	websocket.Handler(h.steamStatusWebSocket).ServeHTTP(w, r)
+}
+func (h *Handler) LoadStorage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "storage.load"))
 }
-func (h *Handler) storageMoveIn(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) MoveIntoStorage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "storage.move-in"))
 }
-func (h *Handler) storageMoveOut(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) MoveOutOfStorage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "storage.move-out"))
 }
-func (h *Handler) containerOpen(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) OpenContainer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "containers.open"))
 }
-func (h *Handler) tradeupPreview(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) PreviewTradeUp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "tradeups.preview"))
 }
-func (h *Handler) tradeupExecute(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ExecuteTradeUp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "tradeups.execute"))
 }
-func (h *Handler) stickerExtract(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ExtractSticker(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "stickers.extract"))
 }
-func (h *Handler) nametagApply(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ApplyNameTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "nametags.apply"))
 }
-func (h *Handler) nametagRemove(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RemoveNameTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "nametags.remove"))
 }
-func (h *Handler) itemDelete(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "items.delete"))
 }
-func (h *Handler) stattrakSwap(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ApplyStatTrakSwap(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "stattrak.swap"))
 }
-func (h *Handler) strangePartApply(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ApplyStrangePart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "strange-parts.apply"))
 }
-func (h *Handler) itemUse(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UseItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "items.use"))
 }
-func (h *Handler) itemUseMultiple(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UseMultipleItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "items.use-multiple"))
 }
-func (h *Handler) toolApply(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ApplyToolToItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "tools.apply"))
 }
-func (h *Handler) toolApplyBase(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ApplyToolToBaseItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "tools.apply-base"))
 }
-func (h *Handler) giftSend(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) SendGift(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "gifts.send"))
 }
 
-func (h *Handler) operationRoot(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) RejectMissingOperationType(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusBadRequest, "missing operation type")
 }
 
-func (h *Handler) operation(w http.ResponseWriter, r *http.Request) {
-	opType := strings.TrimSpace(r.PathValue("type"))
+func (h *Handler) SubmitOperation(w http.ResponseWriter, r *http.Request, pType string) {
+	opType := strings.TrimSpace(pType)
 	if opType == "" {
 		writeError(w, http.StatusBadRequest, "missing operation type")
 		return
@@ -468,7 +384,7 @@ func (h *Handler) operation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.service.SubmitOperation(opType, body))
 }
 
-func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Accept") != "text/event-stream" {
 		writeJSON(w, h.service.Events())
 		return

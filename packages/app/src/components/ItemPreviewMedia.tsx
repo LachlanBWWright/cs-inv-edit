@@ -1,7 +1,7 @@
 import { Show, createSignal } from "solid-js";
 
 export type ItemPreviewMediaVariant =
-  "details" | "inventory-card" | "economy-card";
+  "details" | "inventory-card" | "economy-card" | "loadout-slot";
 
 const mediaClasses: Record<
   ItemPreviewMediaVariant,
@@ -13,6 +13,10 @@ const mediaClasses: Record<
     image: "h-36 w-full object-top",
   },
   "economy-card": { box: "h-20 w-full text-sm", image: "h-20 w-full" },
+  "loadout-slot": {
+    box: "grid h-full w-full place-items-center text-xs",
+    image: "h-full w-full",
+  },
 };
 
 export function ItemPreviewMedia(props: {

@@ -29,7 +29,7 @@ export function Input(props: InputProps) {
       max={props.max}
       autocomplete={props.autocomplete}
       class={cn(
-        "w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30",
+        "w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400",
         props.class,
       )}
       onInput={props.onInput}

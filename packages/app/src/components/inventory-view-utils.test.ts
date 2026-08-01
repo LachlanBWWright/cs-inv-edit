@@ -64,10 +64,10 @@ describe("rarityBorderClass", () => {
   });
 
   it("only treats the transformed item as active", () => {
-    expect(isActiveTerminal({ name: "Sealed Genesis Terminal" } as never)).toBe(
+    expect(isActiveTerminal({ isTerminal: true } as never)).toBe(
       false,
     );
-    expect(isActiveTerminal({ name: "Active Genesis Terminal" } as never)).toBe(
+    expect(isActiveTerminal({ isTerminal: true, isActiveTerminal: true } as never)).toBe(
       true,
     );
   });
@@ -110,12 +110,9 @@ describe("isOpenableContainer", () => {
 });
 
 describe("isTerminal", () => {
-  it("recognizes sealed and uplink terminals by their live display names", () => {
-    expect(isTerminal({ name: "Sealed Genesis Terminal" } as never)).toBe(true);
-    expect(isTerminal({ name: "Dead Hand Uplink Terminal" } as never)).toBe(
-      true,
-    );
-    expect(isTerminal({ name: "Kilowatt Case" } as never)).toBe(false);
+  it("uses the GC-derived terminal classification", () => {
+    expect(isTerminal({ name: "任務裝置", isTerminal: true } as never)).toBe(true);
+    expect(isTerminal({ name: "Terminal", isTerminal: false } as never)).toBe(false);
   });
 });
 

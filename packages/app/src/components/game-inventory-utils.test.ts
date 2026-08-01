@@ -7,6 +7,8 @@ import {
   calculateVirtualInventoryWindow,
   economyCategoryOptions,
   economyOutlineClass,
+  tf2ItemEffects,
+  sortEconomyInventoryItems,
   gameFilterCategories,
   snapshotForGame,
   virtualInventoryWindowChanged,
@@ -157,5 +159,65 @@ describe("game inventory isolation", () => {
     };
     expect(economyOutlineClass(tf2)).toBe("economy-outline--tf2-unusual");
     expect(economyOutlineClass(dota)).toBe("economy-outline--dota-immortal");
+  });
+
+  it("falls back to authoritative TF2 quality IDs and detects combined effects", () => {
+    const item: EconomyInventoryItemDto = {
+      game: "tf2",
+      appId: 440,
+      assetId: "2",
+      name: "Strange Hat",
+      quantity: 1,
+      tradable: true,
+      marketable: true,
+      tags: [],
+      descriptions: ["★ Unusual Effect: Burning Flames"],
+      details: {
+        game: "tf2",
+        level: 1,
+        qualityId: 11,
+        inventoryPosition: 0,
+        originId: 0,
+        style: 0,
+        flags: 0,
+        attributes: {},
+      },
+    };
+    expect(economyOutlineClass(item)).toBe("economy-outline--tf2-strange");
+    expect(tf2ItemEffects(item)).toEqual(["strange", "unusual"]);
+  });
+
+  it("sorts economy items by TF2 quality and quantity", () => {
+    const item = (assetId: string, qualityId: number, quantity: number) => ({
+      game: "tf2" as const,
+      appId: 440 as const,
+      assetId,
+      name: assetId,
+      quantity,
+      tradable: true,
+      marketable: true,
+      tags: [],
+      details: {
+        game: "tf2" as const,
+        level: 1,
+        qualityId,
+        inventoryPosition: 0,
+        originId: 0,
+        style: 0,
+        flags: 0,
+        attributes: {},
+      },
+    });
+    const items = [item("unique", 6, 2), item("unusual", 5, 1)];
+    expect(
+      sortEconomyInventoryItems(items, "quality-high", new Map()).map(
+        (entry) => entry.assetId,
+      ),
+    ).toEqual(["unusual", "unique"]);
+    expect(
+      sortEconomyInventoryItems(items, "quantity-high", new Map()).map(
+        (entry) => entry.assetId,
+      ),
+    ).toEqual(["unique", "unusual"]);
   });
 });

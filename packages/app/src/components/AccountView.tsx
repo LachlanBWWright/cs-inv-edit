@@ -4,19 +4,15 @@ import { appErrorMessage, fromAppPromise } from "../lib/result.js";
 import QRCode from "qrcode";
 import { ResultAsync } from "neverthrow";
 import { AccountViewLayout } from "./account-view-sections.js";
+import type { UIActionOutcome } from "../lib/ui-action-outcome.js";
 
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
   initialUsername?: string;
-  onConnect: (input: { username?: string; password?: string }) => Promise<void>;
-  onStartSteamQR: () => Promise<void>;
-  onSubmitSteamGuard: (input: { code: string }) => Promise<void>;
-  onDisconnect: () => Promise<void>;
-  onToast?: (toast: {
-    title: string;
-    description?: string;
-    variant?: "default" | "success" | "warning" | "danger";
-  }) => void;
+  onConnect: (input: { username?: string; password?: string }) => Promise<UIActionOutcome>;
+  onStartSteamQR: () => Promise<UIActionOutcome>;
+  onSubmitSteamGuard: (input: { code: string }) => Promise<UIActionOutcome>;
+  onDisconnect: () => Promise<UIActionOutcome>;
 }
 
 export function AccountView(props: AccountViewProps) {
@@ -27,20 +23,22 @@ export function AccountView(props: AccountViewProps) {
   const [status, setStatus] = createSignal("");
   const [loading, setLoading] = createSignal(false);
   const [qrImage, setQRImage] = createSignal("");
-  const [qrStartRequested, setQRStartRequested] = createSignal(false);
   const [qrRequestPending, setQRRequestPending] = createSignal(false);
   const [qrRequestSlow, setQRRequestSlow] = createSignal(false);
 
   const startQR = () => {
     if (qrRequestPending()) return;
     setStatus("");
-    setQRStartRequested(true);
+    setQRImage("");
     setQRRequestPending(true);
     void fromAppPromise(
       props.onStartSteamQR(),
       "Failed to start Steam QR sign-in",
     ).match(
-      () => setQRRequestPending(false),
+      (outcome) => {
+        setQRRequestPending(false);
+        if (!outcome.ok) setStatus(outcome.message);
+      },
       (error) => {
         setQRRequestPending(false);
         setStatus(appErrorMessage(error, "Failed to start Steam QR sign-in."));
@@ -79,11 +77,17 @@ export function AccountView(props: AccountViewProps) {
     const state = props.connection?.state;
     if (
       state === "connected" ||
+      state === "session_conflict" ||
       state === "needs_steam_guard" ||
       state === "awaiting_qr" ||
-      qrStartRequested()
+      state === "connecting"
     )
       return;
+    if (state === "error") {
+      const retryTimer = window.setTimeout(startQR, 1_500);
+      onCleanup(() => window.clearTimeout(retryTimer));
+      return;
+    }
     startQR();
   });
 
@@ -120,17 +124,10 @@ export function AccountView(props: AccountViewProps) {
       props.onConnect({ username: username(), password: password() }),
       "Failed to sign in",
     ).match(
-      () => {
-        setStatus("");
-      },
+      (outcome) => setStatus(outcome.ok ? "" : outcome.message),
       (error) => {
         const message = appErrorMessage(error, "Failed to sign in.");
         setStatus(message);
-        props.onToast?.({
-          title: "Sign in failed",
-          description: message,
-          variant: "danger",
-        });
       },
     );
     setLoading(false);
@@ -150,17 +147,10 @@ export function AccountView(props: AccountViewProps) {
       props.onSubmitSteamGuard({ code: guardCode() }),
       "Failed to verify Steam Guard",
     ).match(
-      () => {
-        setStatus("");
-      },
+      (outcome) => setStatus(outcome.ok ? "" : outcome.message),
       (error) => {
         const message = appErrorMessage(error, "Failed to verify Steam Guard.");
         setStatus(message);
-        props.onToast?.({
-          title: "Steam Guard failed",
-          description: message,
-          variant: "danger",
-        });
       },
     );
     setLoading(false);
@@ -170,17 +160,8 @@ export function AccountView(props: AccountViewProps) {
     setLoading(true);
     setStatus("Signing out...");
     await fromAppPromise(props.onDisconnect(), "Failed to sign out").match(
-      () => {
-        setStatus("Signed out.");
-      },
-      () => {
-        setStatus("Failed to sign out.");
-        props.onToast?.({
-          title: "Disconnect failed",
-          description: "The session could not be closed.",
-          variant: "danger",
-        });
-      },
+      (outcome) => setStatus(outcome.ok ? "Signed out." : outcome.message),
+      (error) => setStatus(appErrorMessage(error, "Failed to sign out.")),
     );
     setLoading(false);
   };
@@ -190,6 +171,7 @@ export function AccountView(props: AccountViewProps) {
       status={status()}
       loading={loading()}
       connectionState={props.connection?.state}
+      connectionDetail={props.connection?.detail}
       accountName={props.connection?.accountName}
       username={username()}
       password={password()}
@@ -197,13 +179,9 @@ export function AccountView(props: AccountViewProps) {
       guardCode={guardCode()}
       qrImage={qrImage()}
       qrLoadingText={qrLoadingText()}
-      qrRetryAvailable={
-        props.connection?.state === "error" && !qrRequestPending()
-      }
       onUsernameChange={setUsername}
       onPasswordChange={setPassword}
       onPasswordToggle={() => setPasswordVisible((visible) => !visible)}
-      onRetryQR={startQR}
       onGuardCodeChange={setGuardCode}
       onConnect={handleConnect}
       onSteamGuard={handleSteamGuard}

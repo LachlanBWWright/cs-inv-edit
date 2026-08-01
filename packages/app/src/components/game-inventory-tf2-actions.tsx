@@ -93,7 +93,7 @@ export function GameInventoryTF2Actions(input: { props: GameInventoryViewProps; 
                     >
                       <button
                         type="button"
-                        class="w-full rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100"
+                        class="w-full rounded-xl border border-amber-500/40 bg-amber-950 px-3 py-2 text-sm text-amber-100"
                         onClick={() => setConfirmUseItemId(item().assetId)}
                       >
                         Use TF2 item
@@ -105,7 +105,7 @@ export function GameInventoryTF2Actions(input: { props: GameInventoryViewProps; 
                         confirmUseItemId() === item().assetId
                       }
                     >
-                      <div class="rounded-xl border border-red-500/40 bg-red-950/30 p-3">
+                      <div class="rounded-xl border border-red-500/40 bg-red-950 p-3">
                         <p class="text-xs text-red-100">
                           This permanently consumes or changes {item().name}.
                           Confirm the exact item ID{" "}
@@ -203,7 +203,7 @@ export function GameInventoryTF2Actions(input: { props: GameInventoryViewProps; 
                     >
                       <button
                         type="button"
-                        class="w-full rounded-xl border border-violet-500/40 bg-violet-950/30 px-3 py-2 text-sm text-violet-100"
+                        class="w-full rounded-xl border border-violet-500/40 bg-violet-950 px-3 py-2 text-sm text-violet-100"
                         onClick={previewTF2Container}
                       >
                         Preview unboxing animation
@@ -220,4 +220,3 @@ export function GameInventoryTF2Actions(input: { props: GameInventoryViewProps; 
     </>
   );
 }
-
