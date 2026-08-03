@@ -11,6 +11,8 @@ const (
 	TF2EMsgUnlockCrateResponse       uint32 = 1008
 	TF2EMsgUseItem                   uint32 = 1025
 	TF2EMsgUseItemResponse           uint32 = 1026
+	TF2EMsgCustomizeItemTexture      uint32 = 1023
+	TF2EMsgCustomizeTextureResponse  uint32 = 1024
 	TF2EMsgSortItems                 uint32 = 1041
 	TF2EMsgAdjustItemEquippedState   uint32 = 1059
 	TF2EMsgSelectPresetForClass      uint32 = 1063
@@ -57,6 +59,7 @@ func TF2OperationMapping(operation string) (TF2OperationProtocol, bool) {
 		"tf2.matches.stats":             {EMsg: TF2EMsgMatchMakerStatsRequest, Protobuf: true, FeatureFlag: "enableTf2Inventory", Verified: true},
 		"tf2.inspect.resolve":           {EMsg: TF2EMsgEconPreviewRequest, Protobuf: true, FeatureFlag: "enableTf2Inventory", Verified: true},
 		"tf2.market.refresh":            {EMsg: TF2EMsgClientMarketDataRequest, Protobuf: true, FeatureFlag: "enableTf2Inventory", Verified: true},
+		"tf2.customization.decal-apply": {EMsg: TF2EMsgCustomizeItemTexture, Protobuf: false, FeatureFlag: "enableTf2Customization", Verified: true},
 		"tf2.crafting.craft":            {EMsg: TF2EMsgCraft, Protobuf: false, FeatureFlag: "enableTf2Crafting", Verified: false, Reason: "the current TF2 protobuf dump defines only the EMsg and response body; the permanent request layout requires a verified capture"},
 		"tf2.containers.open":           {EMsg: TF2EMsgUnlockCrate, Protobuf: false, FeatureFlag: "enableTf2Unboxing", Verified: false, Reason: "the current TF2 protobuf dump contains no UnlockCrate request body; a verified capture is required"},
 	}

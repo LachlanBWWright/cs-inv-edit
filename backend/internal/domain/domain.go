@@ -13,6 +13,57 @@ const (
 	ConnectionStateError           ConnectionState = "error"
 )
 
+type TF2PoolKind string
+
+const (
+	TF2PoolKindPrimary    TF2PoolKind = "primary"
+	TF2PoolKindUnresolved TF2PoolKind = "unresolved"
+)
+
+type ItemKind string
+
+const (
+	ItemKindUnknown        ItemKind = "unknown"
+	ItemKindCS2EconItem    ItemKind = "cs2_econ_item"
+	ItemKindContainer      ItemKind = "container"
+	ItemKindSticker        ItemKind = "sticker"
+	ItemKindStickerItem    ItemKind = "sticker_item"
+	ItemKindPatch          ItemKind = "patch"
+	ItemKindCharm          ItemKind = "charm"
+	ItemKindKeychain       ItemKind = "keychain"
+	ItemKindToolItem       ItemKind = "tool_item"
+	ItemKindWeaponSkin     ItemKind = "weapon_skin"
+	ItemKindStorageUnit    ItemKind = "storage_unit"
+	ItemKindItemCollection ItemKind = "item_collection"
+)
+
+type SnapshotStatus string
+
+const (
+	SnapshotStatusReady              SnapshotStatus = "ready"
+	SnapshotStatusLoading            SnapshotStatus = "loading"
+	SnapshotStatusError              SnapshotStatus = "error"
+	SnapshotStatusRequiresConnection SnapshotStatus = "requires_connection"
+)
+
+type StoreStatus string
+
+const (
+	StoreStatusReady              StoreStatus = "ready"
+	StoreStatusError              StoreStatus = "error"
+	StoreStatusRequiresConnection StoreStatus = "requires_connection"
+)
+
+type PurchaseStatus string
+
+const (
+	PurchaseStatusInitializing PurchaseStatus = "initializing"
+	PurchaseStatusAwaitingUser PurchaseStatus = "awaiting_user"
+	PurchaseStatusFinalizing   PurchaseStatus = "finalizing"
+	PurchaseStatusCompleted    PurchaseStatus = "completed"
+	PurchaseStatusFailed       PurchaseStatus = "failed"
+)
+
 type SteamInventoryServiceGame struct {
 	AppID           uint32 `json:"appId"`
 	Name            string `json:"name"`
@@ -24,7 +75,7 @@ type SteamInventoryServiceGame struct {
 type SteamInventoryServiceGames struct {
 	Games       []SteamInventoryServiceGame `json:"games"`
 	RefreshedAt string                      `json:"refreshedAt"`
-	Status      string                      `json:"status"`
+	Status      SnapshotStatus              `json:"status"`
 	Message     string                      `json:"message,omitempty"`
 	Diagnostics []string                    `json:"diagnostics"`
 }
@@ -46,7 +97,7 @@ type Sticker struct {
 }
 
 type AppliedItem struct {
-	Kind     string   `json:"kind"`
+	Kind     ItemKind `json:"kind"`
 	Slot     *uint32  `json:"slot,omitempty"`
 	ID       *uint32  `json:"id,omitempty"`
 	Name     string   `json:"name"`
@@ -64,7 +115,7 @@ type InventoryItem struct {
 	CustomName              string          `json:"customName,omitempty"`
 	ImageURL                string          `json:"imageUrl,omitempty"`
 	InspectURL              string          `json:"inspectUrl,omitempty"`
-	Kind                    string          `json:"kind"`
+	Kind                    ItemKind        `json:"kind"`
 	Defindex                *uint32         `json:"defindex,omitempty"`
 	PaintWear               *float64        `json:"paintWear,omitempty"`
 	PaintWearMin            *float64        `json:"paintWearMin,omitempty"`
@@ -114,7 +165,7 @@ type RelatedItem struct {
 	Name        string        `json:"name"`
 	MarketName  string        `json:"marketName,omitempty"`
 	ListingName string        `json:"listingName,omitempty"`
-	Kind        string        `json:"kind,omitempty"`
+	Kind        ItemKind      `json:"kind,omitempty"`
 	Rarity      string        `json:"rarity,omitempty"`
 	ImageURL    string        `json:"imageUrl,omitempty"`
 	Price       string        `json:"price,omitempty"`
@@ -128,7 +179,7 @@ type InventorySnapshot struct {
 	Items       []InventoryItem `json:"items"`
 	Collections []Collection    `json:"collections,omitempty"`
 	RefreshedAt string          `json:"refreshedAt"`
-	Status      string          `json:"status,omitempty"`
+	Status      SnapshotStatus  `json:"status,omitempty"`
 	Message     string          `json:"message,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	Diagnostics []string        `json:"diagnostics,omitempty"`
@@ -151,14 +202,14 @@ type ArmoryOffer struct {
 }
 
 type ArmorySnapshot struct {
-	Balance        uint32        `json:"balance"`
-	GenerationTime uint32        `json:"generationTime"`
-	ItemIDs        []string      `json:"itemIds"`
-	Offers         []ArmoryOffer `json:"offers"`
-	RefreshedAt    string        `json:"refreshedAt"`
-	Status         string        `json:"status"`
-	Message        string        `json:"message,omitempty"`
-	Diagnostics    []string      `json:"diagnostics,omitempty"`
+	Balance        uint32         `json:"balance"`
+	GenerationTime uint32         `json:"generationTime"`
+	ItemIDs        []string       `json:"itemIds"`
+	Offers         []ArmoryOffer  `json:"offers"`
+	RefreshedAt    string         `json:"refreshedAt"`
+	Status         SnapshotStatus `json:"status"`
+	Message        string         `json:"message,omitempty"`
+	Diagnostics    []string       `json:"diagnostics,omitempty"`
 }
 
 type StoreOffer struct {
@@ -185,7 +236,7 @@ type StoreOffer struct {
 }
 
 type StoreSnapshot struct {
-	Status            string       `json:"status"`
+	Status            StoreStatus  `json:"status"`
 	PriceSheetVersion uint32       `json:"priceSheetVersion,omitempty"`
 	Currency          string       `json:"currency,omitempty"`
 	Offers            []StoreOffer `json:"offers"`
@@ -194,25 +245,25 @@ type StoreSnapshot struct {
 	Diagnostics       []string     `json:"diagnostics,omitempty"`
 }
 type PurchaseSession struct {
-	ID               string   `json:"id"`
-	Status           string   `json:"status"`
-	OfferID          string   `json:"offerId"`
-	DefIndex         uint32   `json:"defIndex"`
-	Name             string   `json:"name"`
-	Quantity         uint32   `json:"quantity"`
-	Currency         string   `json:"currency"`
-	AmountMinor      uint64   `json:"amountMinor"`
-	FormattedAmount  string   `json:"formattedAmount"`
-	TransactionID    string   `json:"transactionId,omitempty"`
-	OrderID          string   `json:"orderId,omitempty"`
-	CheckoutURL      string   `json:"checkoutUrl,omitempty"`
-	PurchasedItemIDs []string `json:"purchasedItemIds,omitempty"`
-	CreatedAt        string   `json:"createdAt"`
-	ExpiresAt        string   `json:"expiresAt,omitempty"`
-	Message          string   `json:"message,omitempty"`
-	Diagnostics      []string `json:"diagnostics,omitempty"`
-	ErrorCode        string   `json:"errorCode,omitempty"`
-	ErrorResult      *int32   `json:"errorResult,omitempty"`
+	ID               string         `json:"id"`
+	Status           PurchaseStatus `json:"status"`
+	OfferID          string         `json:"offerId"`
+	DefIndex         uint32         `json:"defIndex"`
+	Name             string         `json:"name"`
+	Quantity         uint32         `json:"quantity"`
+	Currency         string         `json:"currency"`
+	AmountMinor      uint64         `json:"amountMinor"`
+	FormattedAmount  string         `json:"formattedAmount"`
+	TransactionID    string         `json:"transactionId,omitempty"`
+	OrderID          string         `json:"orderId,omitempty"`
+	CheckoutURL      string         `json:"checkoutUrl,omitempty"`
+	PurchasedItemIDs []string       `json:"purchasedItemIds,omitempty"`
+	CreatedAt        string         `json:"createdAt"`
+	ExpiresAt        string         `json:"expiresAt,omitempty"`
+	Message          string         `json:"message,omitempty"`
+	Diagnostics      []string       `json:"diagnostics,omitempty"`
+	ErrorCode        string         `json:"errorCode,omitempty"`
+	ErrorResult      *int32         `json:"errorResult,omitempty"`
 }
 
 type FeatureFlags struct {
@@ -306,11 +357,11 @@ type EconomyItemDetails struct {
 }
 
 type TF2RelatedItem struct {
-	DefIndex uint32 `json:"defIndex,omitempty"`
-	Name     string `json:"name"`
-	Rarity   string `json:"rarity,omitempty"`
-	PoolKind string `json:"poolKind"`
-	ImageURL string `json:"imageUrl,omitempty"`
+	DefIndex uint32      `json:"defIndex,omitempty"`
+	Name     string      `json:"name"`
+	Rarity   string      `json:"rarity,omitempty"`
+	PoolKind TF2PoolKind `json:"poolKind"`
+	ImageURL string      `json:"imageUrl,omitempty"`
 }
 
 type TF2Attribute struct {
@@ -356,7 +407,7 @@ type GameInventorySnapshot struct {
 	AppID          uint32                 `json:"appId"`
 	Items          []EconomyInventoryItem `json:"items"`
 	RefreshedAt    string                 `json:"refreshedAt"`
-	Status         string                 `json:"status"`
+	Status         SnapshotStatus         `json:"status"`
 	Message        string                 `json:"message,omitempty"`
 	Error          string                 `json:"error,omitempty"`
 	SchemaRevision string                 `json:"schemaRevision,omitempty"`

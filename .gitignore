@@ -4,6 +4,7 @@ bin/
 .cache/
 coverage/
 .nyc_output/
+*.tsbuildinfo
 
 # Local environment and secrets
 .env
@@ -23,6 +24,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Local Steam research captures (may contain account/session data)
+research/steam-purchase/logs/
 
 # Electron/package artifacts
 out/

@@ -6,9 +6,9 @@ import {
 } from "solid-js";
 import { errAsync } from "neverthrow";
 import type { ConnectionStatus, SettingsData } from "@cs-inv-edit/contracts";
-import type { AppScreen } from "../../view.js";
-import type { LocalAgentClient } from "../../lib/backend.js";
-import { appErrorMessage, fromAppPromise } from "../../lib/result.js";
+import type { AppScreen } from "../shell/view.js";
+import type { LocalAgentClient } from "../../shared/lib/backend.js";
+import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 
 interface SteamInventoryServiceControllerOptions {
   backend: LocalAgentClient;

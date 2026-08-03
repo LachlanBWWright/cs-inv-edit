@@ -456,7 +456,7 @@ func (p *Provider) loadTF2ContainerImages(ctx context.Context, owned []OwnedItem
 	var names []string
 	for _, item := range owned {
 		for _, related := range definitions[item.DefIndex].ContainerItems {
-			if related.PoolKind == "unresolved" || related.Name == "" || seen[related.Name] {
+			if related.PoolKind == domain.TF2PoolKindUnresolved || related.Name == "" || seen[related.Name] {
 				continue
 			}
 			seen[related.Name] = true

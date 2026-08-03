@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import type { Accessor, Setter } from "solid-js";
-import type { ToastItem } from "../../components/ui/ToastViewport.js";
+import type { ToastItem } from "../../shared/ui/ToastViewport.js";
 
 export interface ToastController {
   toasts: Accessor<ToastItem[]>;

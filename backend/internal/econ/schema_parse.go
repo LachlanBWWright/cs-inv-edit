@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
 func (s *Schema) parseItems(root kvObject) {
@@ -383,7 +385,14 @@ func (s *Schema) relatedSpecialItem(variantName string, itemName string) (Relate
 				prefix = "Sealed Graffiti | "
 			}
 			imageURL := s.imageURL("econ/stickers/" + strings.TrimPrefix(sticker.Material, "econ/stickers/"))
-			return RelatedItem{Name: name, MarketName: prefix + name, Kind: itemName, Rarity: sticker.Rarity, ImageURL: imageURL}, true
+			kind := domain.ItemKindSticker
+			switch itemName {
+			case "spray":
+				kind = domain.ItemKindToolItem
+			case "patch":
+				kind = domain.ItemKindPatch
+			}
+			return RelatedItem{Name: name, MarketName: prefix + name, Kind: kind, Rarity: sticker.Rarity, ImageURL: imageURL}, true
 		}
 	}
 	if itemName == "keychain" {

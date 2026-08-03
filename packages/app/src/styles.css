@@ -5,6 +5,11 @@
   color-scheme: dark;
 }
 
+.rarity-outline {
+  --rarity-color: 51 65 85;
+  border-color: rgb(var(--rarity-color));
+}
+
 /* TF2 backend Quality labels from Steam description tags. */
 .economy-outline--tf2-normal {
   --rarity-color: 178 178 178;
@@ -123,21 +128,24 @@ button:disabled,
   background: rgb(2 6 23);
 }
 
-.rarity-outline {
-  --rarity-color: 51 65 85;
-  border-color: rgb(var(--rarity-color));
-}
-
 .inventory-item-card {
   /* Keep badges and other positioned card decorations in the card's layer.
      Without isolation, their z-index competes with sticky navigation overlays. */
   isolation: isolate;
-  transition-property: background-color, border-color;
+  transition-property: background-color, border-color, box-shadow;
 }
 
 .inventory-item-card:hover,
+.inventory-item-card:focus-visible,
 .inventory-item-card.is-selected {
-  background-color: rgb(30 41 59);
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--rarity-color)) 28%,
+    rgb(2 6 23)
+  );
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, rgb(var(--rarity-color)) 65%, rgb(2 6 23));
+  outline: none;
 }
 
 .tf2-effect-badges {

@@ -88,6 +88,10 @@ func mergeGamesPlayed(current, required []uint32) []uint32 {
 func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
 	s.requestMu.Lock()
 	defer s.requestMu.Unlock()
+	return s.requestGameInventoryLocked(ctx, appID)
+}
+
+func (s *SteamGCClient) requestGameInventoryLocked(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
 	if appID != 440 && appID != 570 {
 		return nil, fmt.Errorf("unsupported multi-game inventory AppID %d", appID)
 	}
@@ -593,6 +597,8 @@ type cs2IncrementalInventoryUpdate struct {
 }
 
 func (s *SteamGCClient) WaitForNewCS2InventoryItem(ctx context.Context, knownIDs map[uint64]struct{}) (GCInventoryItem, error) {
+	candidates := make(map[uint64]GCInventoryItem)
+	confirmedIDs := make(map[uint64]struct{})
 	for {
 		select {
 		case <-ctx.Done():
@@ -600,6 +606,22 @@ func (s *SteamGCClient) WaitForNewCS2InventoryItem(ctx context.Context, knownIDs
 		case event := <-s.events:
 			message, ok := event.Payload.(GCMessage)
 			if !ok || event.Type != "gc.message" || message.AppID != protocol.AppIDCS2 {
+				continue
+			}
+			if message.EMsg == protocol.EMsgItemCustomizationNotification {
+				notification, err := cs2pb.DecodeItemCustomizationNotification(message.Body)
+				if err != nil {
+					return GCInventoryItem{}, fmt.Errorf("decode Armory item confirmation: %w", err)
+				}
+				if notification.Request != protocol.CustomizationClientRedeemMissionReward {
+					continue
+				}
+				for _, itemID := range notification.ItemIDs {
+					if item, found := candidates[itemID]; found {
+						return item, nil
+					}
+					confirmedIDs[itemID] = struct{}{}
+				}
 				continue
 			}
 			update, found, err := decodeCS2IncrementalInventory(message)
@@ -614,7 +636,10 @@ func (s *SteamGCClient) WaitForNewCS2InventoryItem(ctx context.Context, knownIDs
 					continue
 				}
 				if _, known := knownIDs[item.ID]; !known {
-					return item, nil
+					if _, confirmed := confirmedIDs[item.ID]; confirmed {
+						return item, nil
+					}
+					candidates[item.ID] = item
 				}
 			}
 		}

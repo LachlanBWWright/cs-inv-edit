@@ -11,7 +11,7 @@ import (
 const storageCapacity = 1000
 
 func storageEligibility(item transport.GCInventoryItem, formatted domain.InventoryItem) (bool, string) {
-	if formatted.Kind == "storage_unit" {
+	if formatted.Kind == domain.ItemKindStorageUnit {
 		return false, "Storage units cannot be nested."
 	}
 	if gcItemCasketID(item) != 0 {
@@ -37,7 +37,7 @@ func (s *Service) validateStorageChangeLocked(opType, casketID, itemID string) s
 			item = candidate
 		}
 	}
-	if unit == nil || unit.Kind != "storage_unit" {
+	if unit == nil || unit.Kind != domain.ItemKindStorageUnit {
 		return "storage unit is not present in the current GC inventory"
 	}
 	if item == nil {

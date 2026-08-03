@@ -30,7 +30,7 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	s.armory.Status = "loading"
+	s.armory.Status = domain.SnapshotStatusLoading
 	s.armory.Message = "Waiting for CS2 Game Coordinator Armory state"
 	s.mu.Unlock()
 	gcCtx, cancelGC := context.WithTimeout(context.Background(), 10*time.Second)
@@ -41,10 +41,12 @@ func (s *Service) RefreshArmory() operations.Receipt {
 	}
 	cancelGC()
 	var catalog []econ.ArmoryOffer
+	var metadata *econ.Schema
 	if err == nil {
 		s.setArmoryLoadingStage("Armory balance received; loading the current CS2 item schema")
 		metadataCtx, cancelMetadata := context.WithTimeout(context.Background(), 20*time.Second)
-		metadata, metadataErr := s.econProvider.Load(metadataCtx)
+		var metadataErr error
+		metadata, metadataErr = s.econProvider.Load(metadataCtx)
 		cancelMetadata()
 		if metadataErr != nil {
 			err = fmt.Errorf("load live CS2 Armory catalogue: %w", metadataErr)
@@ -69,6 +71,7 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		return receipt
 	}
 	s.armory = armoryFromGC(state, catalog)
+	s.armorySchema = metadata
 	s.mu.Unlock()
 	receipt.State, receipt.Message = "completed", "Armory star balance refreshed"
 	s.addEvent(receipt, receipt.State, receipt.Message)
@@ -77,7 +80,7 @@ func (s *Service) RefreshArmory() operations.Receipt {
 
 func (s *Service) setArmoryLoadingStage(message string) {
 	s.mu.Lock()
-	if s.armory.Status == "loading" {
+	if s.armory.Status == domain.SnapshotStatusLoading {
 		s.armory.Message = message
 	}
 	s.mu.Unlock()
@@ -108,7 +111,7 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != domain.ConnectionStateConnected || s.armory.Status != "ready" || s.armory.GenerationTime != generation || s.armory.Balance != balance {
+	if s.connection.State != domain.ConnectionStateConnected || s.armory.Status != domain.SnapshotStatusReady || s.armory.GenerationTime != generation || s.armory.Balance != balance {
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "failed", "Armory snapshot is stale; refresh before purchasing"
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -138,6 +141,7 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 			knownIDs[id] = struct{}{}
 		}
 	}
+	beforeInventory := cloneInventory(s.inventory)
 	_, accountCtx, _ := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 	s.mu.Unlock()
 	// A cached Armory snapshot can outlive the GC session that produced it. Prove
@@ -172,19 +176,12 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 	} else if quantity == 1 {
 		resultCtx, cancelResult := context.WithTimeout(accountCtx, 5*time.Second)
 		var reward transport.GCInventoryItem
-		var rewardErr error
-		for {
-			reward, rewardErr = s.gcClient.WaitForNewCS2InventoryItem(resultCtx, knownIDs)
-			if rewardErr != nil || armoryRewardMatchesOffer(reward, *matchedOffer) {
-				break
-			}
-			knownIDs[reward.ID] = struct{}{}
-		}
+		reward, rewardErr := s.gcClient.WaitForNewCS2InventoryItem(resultCtx, knownIDs)
 		cancelResult()
 		if rewardErr == nil {
-			openedItem := armoryRewardFromIncremental(reward, *matchedOffer)
+			openedItem := s.armoryRewardFromIncremental(reward, *matchedOffer)
 			receipt.State, receipt.Message = "completed", "Armory reward confirmed by CS2"
-			receipt.Result = map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "quantity": quantity, "preBalance": balance, "generationTime": generation, "pacingSeconds": pacing, "openedItem": openedItem}
+			receipt.Result = armoryRedemptionResult(campaignID, redeemID, cost, quantity, balance, generation, pacing, &openedItem)
 			s.mu.Lock()
 			s.inventory.Items = append(s.inventory.Items, openedItem)
 			s.applyConfirmedArmoryRedemptionLocked(cost)
@@ -192,9 +189,21 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 			s.addEvent(receipt, receipt.State, receipt.Message)
 			return receipt
 		}
-		receipt.State, receipt.Message = "awaiting_gc_confirmation", "Armory purchase sent; incremental reward was not observed before fallback reconciliation"
-		result := map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "quantity": quantity, "preBalance": balance, "generationTime": generation, "pacingSeconds": pacing}
-		receipt.Result = result
+		reconcileCtx, cancelReconcile := context.WithTimeout(accountCtx, 20*time.Second)
+		snapshot, openedItem, reconcileErr := s.reconcileArmoryReward(reconcileCtx, beforeInventory, *matchedOffer)
+		cancelReconcile()
+		if reconcileErr == nil && openedItem != nil {
+			receipt.State, receipt.Message = "completed", "Armory reward confirmed by full CS2 inventory reconciliation"
+			receipt.Result = armoryRedemptionResult(campaignID, redeemID, cost, quantity, balance, generation, pacing, openedItem)
+			s.mu.Lock()
+			s.inventory = snapshot
+			s.applyConfirmedArmoryRedemptionLocked(cost)
+			s.mu.Unlock()
+			s.addEvent(receipt, receipt.State, receipt.Message)
+			return receipt
+		}
+		receipt.State, receipt.Message = "awaiting_gc_confirmation", fmt.Sprintf("Armory purchase sent, but CS2 did not expose the reward through incremental or full inventory reconciliation: %v", reconcileErr)
+		receipt.Result = armoryRedemptionResult(campaignID, redeemID, cost, quantity, balance, generation, pacing, nil)
 	} else {
 		receipt.State, receipt.Message = "awaiting_gc_confirmation", fmt.Sprintf("%d Armory purchase message(s) sent; refresh to reconcile stars and inventory", quantity)
 		result := map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "quantity": quantity, "preBalance": balance, "generationTime": generation, "pacingSeconds": pacing}
@@ -204,24 +213,50 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 	return receipt
 }
 
-func armoryRewardMatchesOffer(item transport.GCInventoryItem, offer domain.ArmoryOffer) bool {
-	for _, candidate := range offer.Items {
-		if candidate.Defindex == item.DefIndex && candidate.PaintKit == item.PaintKit {
-			return true
-		}
+func armoryRedemptionResult(campaignID, redeemID, cost, quantity, balance, generation, pacing uint32, openedItem *domain.InventoryItem) map[string]any {
+	result := map[string]any{"requestEMsg": protocol.EMsgGCCStrike15V2ClientRedeemMissionReward, "campaignId": campaignID, "redeemId": redeemID, "expectedCost": cost, "quantity": quantity, "preBalance": balance, "generationTime": generation, "pacingSeconds": pacing}
+	if openedItem != nil {
+		result["openedItem"] = *openedItem
 	}
-	return false
+	return result
 }
 
-func armoryRewardFromIncremental(item transport.GCInventoryItem, offer domain.ArmoryOffer) domain.InventoryItem {
-	result := domain.InventoryItem{ID: strconv.FormatUint(item.ID, 10), Name: offer.ItemName, Kind: "cs2_econ_item", Defindex: &item.DefIndex, CustomName: item.CustomName, PaintWear: item.PaintWear, IsStatTrak: item.Quality == 9, IsSouvenir: item.Quality == 12}
+func (s *Service) armoryRewardFromIncremental(item transport.GCInventoryItem, offer domain.ArmoryOffer) domain.InventoryItem {
+	result := domain.InventoryItem{ID: strconv.FormatUint(item.ID, 10), Kind: domain.ItemKindCS2EconItem, Defindex: &item.DefIndex, CustomName: item.CustomName, PaintWear: item.PaintWear, IsStatTrak: item.Quality == 9, IsSouvenir: item.Quality == 12}
+	s.mu.Lock()
+	schema := s.armorySchema
+	s.mu.Unlock()
+	if schema != nil {
+		metadata := schema.Metadata(item.DefIndex, item.PaintKit, item.Attributes)
+		result.Name, result.MarketName = metadata.Name, metadata.MarketName
+		result.ImageURL, result.Kind, result.Rarity = metadata.ImageURL, metadata.Kind, metadata.Rarity
+		result.PaintWearMin, result.PaintWearMax = metadata.PaintWearMin, metadata.PaintWearMax
+	}
 	for _, candidate := range offer.Items {
 		if candidate.Defindex != item.DefIndex || candidate.PaintKit != item.PaintKit {
 			continue
 		}
-		result.Name, result.MarketName, result.ImageURL = candidate.Name, candidate.MarketName, candidate.ImageURL
-		result.Kind, result.Rarity = candidate.Kind, candidate.Rarity
-		result.PaintWearMin, result.PaintWearMax = candidate.WearMin, candidate.WearMax
+		if result.Name == "" {
+			result.Name = candidate.Name
+		}
+		if result.MarketName == "" {
+			result.MarketName = candidate.MarketName
+		}
+		if result.ImageURL == "" {
+			result.ImageURL = candidate.ImageURL
+		}
+		if result.Kind == "" || result.Kind == domain.ItemKindCS2EconItem {
+			result.Kind = candidate.Kind
+		}
+		if result.Rarity == "" {
+			result.Rarity = candidate.Rarity
+		}
+		if result.PaintWearMin == nil {
+			result.PaintWearMin = candidate.WearMin
+		}
+		if result.PaintWearMax == nil {
+			result.PaintWearMax = candidate.WearMax
+		}
 		break
 	}
 	if result.Name == "" {
@@ -258,7 +293,7 @@ func (s *Service) applyConfirmedArmoryRedemptionLocked(cost uint32) {
 	s.armory.Message = fmt.Sprintf("Armory reward confirmed; %d stars remaining", s.armory.Balance)
 }
 
-func (s *Service) reconcileArmoryReward(ctx context.Context, before domain.InventorySnapshot) (domain.InventorySnapshot, *domain.InventoryItem, error) {
+func (s *Service) reconcileArmoryReward(ctx context.Context, before domain.InventorySnapshot, offer domain.ArmoryOffer) (domain.InventorySnapshot, *domain.InventoryItem, error) {
 	const attempts = 4
 	var lastSnapshot domain.InventorySnapshot
 	var lastErr error
@@ -266,12 +301,39 @@ func (s *Service) reconcileArmoryReward(ctx context.Context, before domain.Inven
 		if attempt > 0 {
 			time.Sleep(time.Second)
 		}
-		snapshot, openedItem, err := s.reconcileNewInventoryItemOnce(ctx, before)
+		snapshot, err := s.fetchInventory(ctx, nil)
 		lastSnapshot = snapshot
-		if err == nil && openedItem != nil {
-			return snapshot, openedItem, nil
+		if err == nil {
+			if openedItem := matchingArmoryReward(before, snapshot, offer); openedItem != nil {
+				return snapshot, openedItem, nil
+			}
+			err = fmt.Errorf("full inventory refresh found no unambiguous reward; before_count=%d after_count=%d", len(before.Items), len(snapshot.Items))
 		}
 		lastErr = err
 	}
 	return lastSnapshot, nil, fmt.Errorf("Armory reward was not present after %d GC inventory reconciliations: %w", attempts, lastErr)
+}
+
+func matchingArmoryReward(before, after domain.InventorySnapshot, offer domain.ArmoryOffer) *domain.InventoryItem {
+	beforeIDs := make(map[string]struct{}, len(before.Items))
+	for _, item := range before.Items {
+		beforeIDs[item.ID] = struct{}{}
+	}
+	newItems := make([]*domain.InventoryItem, 0, 1)
+	for index := range after.Items {
+		item := &after.Items[index]
+		if _, existed := beforeIDs[item.ID]; existed {
+			continue
+		}
+		newItems = append(newItems, item)
+		for _, candidate := range offer.Items {
+			if candidate.MarketName != "" && candidate.MarketName == item.MarketName {
+				return item
+			}
+		}
+	}
+	if len(newItems) == 1 {
+		return newItems[0]
+	}
+	return nil
 }

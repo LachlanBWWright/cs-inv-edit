@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
 type TF2Definition struct {
@@ -73,7 +75,7 @@ type TF2RelatedItem struct {
 	DefIndex uint32
 	Name     string
 	Rarity   string
-	PoolKind string
+	PoolKind domain.TF2PoolKind
 	ImageURL string
 }
 
@@ -402,10 +404,10 @@ func resolveTF2LootList(name string, lists kvObject, definitions map[string]TF2D
 			continue
 		}
 		if definition, ok := definitions[strings.ToLower(entry)]; ok {
-			out = append(out, TF2RelatedItem{DefIndex: definition.DefIndex, Name: definition.Name, Rarity: definition.Rarity, PoolKind: "primary"})
+			out = append(out, TF2RelatedItem{DefIndex: definition.DefIndex, Name: definition.Name, Rarity: definition.Rarity, PoolKind: domain.TF2PoolKindPrimary})
 			continue
 		}
-		out = append(out, TF2RelatedItem{Name: humanizeIdentifier(entry), PoolKind: "unresolved"})
+		out = append(out, TF2RelatedItem{Name: humanizeIdentifier(entry), PoolKind: domain.TF2PoolKindUnresolved})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

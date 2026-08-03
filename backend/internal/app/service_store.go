@@ -29,7 +29,7 @@ func (s *Service) Store() domain.StoreSnapshot {
 	if !s.settings.FeatureFlags.EnableStoreRead {
 		return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue."}
 	}
-	if s.connection.State == domain.ConnectionStateConnected && s.store.Status == "requires_connection" {
+	if s.connection.State == domain.ConnectionStateConnected && s.store.Status == domain.StoreStatusRequiresConnection {
 		store := cloneStore(s.store)
 		store.Message = "Steam is connected. Refresh the Store to load the current GC price sheet."
 		if !s.settings.FeatureFlags.EnableFullCS2Store {
@@ -40,7 +40,7 @@ func (s *Service) Store() domain.StoreSnapshot {
 	store := cloneStore(s.store)
 	if !s.settings.FeatureFlags.EnableFullCS2Store {
 		store.Offers = couponStoreOffers(store.Offers)
-		if store.Status == "ready" {
+		if store.Status == domain.StoreStatusReady {
 			store.Message = "Showing coupon items available through Steam's browser checkout. Enable Full CS2 Store to show experimental GC checkout offers."
 		}
 	}
@@ -137,7 +137,7 @@ func (s *Service) RefreshStore() operations.Receipt {
 		if len(meta.ContainerItems) == 1 && meta.ContainerItems[0].ImageURL != "" {
 			imageURL = meta.ContainerItems[0].ImageURL
 		}
-		offers = append(offers, domain.StoreOffer{ID: source.ID, ItemLink: source.ItemLink, DefIndex: defIndex, Name: meta.Name, ImageURL: imageURL, Category: firstNonEmptyApp(source.Category, meta.Kind), Rarity: meta.Rarity, Currency: currency, AmountMinor: amount, FormattedPrice: formatStoreAmount(currency, amount), SaleAmountMinor: saleAmount, PurchaseType: source.PurchaseType, Coupon: schema.IsCoupon(defIndex), Items: domainRelatedItems(meta.ContainerItems), FormattedSalePrice: func() string {
+		offers = append(offers, domain.StoreOffer{ID: source.ID, ItemLink: source.ItemLink, DefIndex: defIndex, Name: meta.Name, ImageURL: imageURL, Category: firstNonEmptyApp(source.Category, string(meta.Kind)), Rarity: meta.Rarity, Currency: currency, AmountMinor: amount, FormattedPrice: formatStoreAmount(currency, amount), SaleAmountMinor: saleAmount, PurchaseType: source.PurchaseType, Coupon: schema.IsCoupon(defIndex), Items: domainRelatedItems(meta.ContainerItems), FormattedSalePrice: func() string {
 			if saleAmount == nil {
 				return ""
 			}
@@ -196,7 +196,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 
 	purchaseCurrency := s.storeCurrencyID
 	purchaseCountry := strings.TrimSpace(s.storeCountry)
-	if s.store.Status != "ready" || purchaseCountry == "" || purchaseCurrency == 0 {
+	if s.store.Status != domain.StoreStatusReady || purchaseCountry == "" || purchaseCurrency == 0 {
 		s.mu.Unlock()
 		log.Printf("[InitializeStorePurchase] CS2 store is not ready (status=%q, country=%q, currency=%d), attempting on-demand RequestStore from GC...", s.store.Status, purchaseCountry, purchaseCurrency)
 		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -205,7 +205,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 				s.mu.Lock()
 				s.storeCurrencyID = storeData.Currency
 				s.storeCountry = storeData.Country
-				if s.store.Status != "ready" {
+				if s.store.Status != domain.StoreStatusReady {
 					s.store.Status = "ready"
 					s.store.Currency = steamCurrencyCode(storeData.Currency)
 					s.store.PriceSheetVersion = storeData.PriceSheetVersion
@@ -413,7 +413,7 @@ func (s *Service) ReconcileStorePurchase(id string) domain.PurchaseSession {
 		s.mu.Unlock()
 		return domain.PurchaseSession{ID: id, Status: "failed", Quantity: 1, CreatedAt: now(), Message: "purchase session not found"}
 	}
-	if session.Status != "awaiting_user" && session.Status != "finalizing" {
+	if session.Status != domain.PurchaseStatusAwaitingUser && session.Status != domain.PurchaseStatusFinalizing {
 		s.mu.Unlock()
 		return session
 	}

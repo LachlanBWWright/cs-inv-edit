@@ -5,6 +5,8 @@ import (
 	"html"
 	"sort"
 	"strings"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
 func RelatedItemMarketNames(items []RelatedItem) []string {
@@ -85,7 +87,7 @@ func (s *Schema) lootListItems(name string, seen map[string]bool) []RelatedItem 
 }
 
 func rareSpecialCollection(items []RelatedItem) RelatedItem {
-	return RelatedItem{Name: "Rare Special Items", Kind: "item_collection", Rarity: "unusual", Items: items}
+	return RelatedItem{Name: "Rare Special Items", Kind: domain.ItemKindItemCollection, Rarity: "unusual", Items: items}
 }
 
 func nestedLootListRarity(parent string, child string) string {
@@ -172,7 +174,7 @@ func (s *Schema) matchKeychain(attributes map[uint32]uint32) *keychainDefinition
 func isGenericStickerItem(item itemDefinition, name string) bool {
 	// Capsule definitions inherit sticker prefabs and may carry attribute 113 as
 	// container metadata. They are containers, not individual sticker items.
-	if itemKind(item) == "container" {
+	if itemKind(item) == domain.ItemKindContainer {
 		return false
 	}
 	lowerName := strings.ToLower(name)
@@ -182,7 +184,7 @@ func isGenericStickerItem(item itemDefinition, name string) bool {
 func isGenericGraffitiItem(item itemDefinition, name string) bool {
 	// Graffiti boxes/capsules also contain "spray" or "graffiti" in their
 	// schema identity. Do not let their attributes replace the container name.
-	if itemKind(item) == "container" {
+	if itemKind(item) == domain.ItemKindContainer {
 		return false
 	}
 	lower := strings.ToLower(item.Name + " " + item.ToolType + " " + item.Prefab + " " + name)
@@ -190,7 +192,7 @@ func isGenericGraffitiItem(item itemDefinition, name string) bool {
 }
 
 func isGenericPatchItem(item itemDefinition, name string) bool {
-	if itemKind(item) == "container" {
+	if itemKind(item) == domain.ItemKindContainer {
 		return false
 	}
 	lower := strings.ToLower(item.Name + " " + item.ToolType + " " + item.Prefab + " " + name)
@@ -223,37 +225,37 @@ func humanizeIdentifier(value string) string {
 	return strings.Join(words, " ")
 }
 
-func itemKind(item itemDefinition) string {
+func itemKind(item itemDefinition) domain.ItemKind {
 	itemClass := strings.ToLower(item.ItemClass)
 	prefab := strings.ToLower(item.Prefab)
 	typeName := strings.ToLower(item.TypeName)
 	switch {
 	case strings.Contains(itemClass, "supply_crate") || strings.Contains(prefab, "crate") || strings.Contains(prefab, "capsule") || strings.Contains(typeName, "weaponcase") || strings.Contains(typeName, "capsule"):
-		return "container"
+		return domain.ItemKindContainer
 	case strings.Contains(itemClass, "sticker") || strings.Contains(prefab, "sticker"):
-		return "sticker_item"
+		return domain.ItemKindStickerItem
 	case strings.Contains(itemClass, "tool") || item.ToolType != "":
-		return "tool_item"
+		return domain.ItemKindToolItem
 	case isWeaponItem(item):
-		return "weapon_skin"
+		return domain.ItemKindWeaponSkin
 	default:
-		return "cs2_econ_item"
+		return domain.ItemKindCS2EconItem
 	}
 }
 
-func kindFromSteamType(typeName string) string {
+func kindFromSteamType(typeName string) domain.ItemKind {
 	lower := strings.ToLower(typeName)
 	switch {
 	case strings.Contains(lower, "container") || strings.Contains(lower, "case") || strings.Contains(lower, "capsule"):
-		return "container"
+		return domain.ItemKindContainer
 	case strings.Contains(lower, "sticker"):
-		return "sticker_item"
+		return domain.ItemKindStickerItem
 	case strings.Contains(lower, "tool") || strings.Contains(lower, "tag"):
-		return "tool_item"
+		return domain.ItemKindToolItem
 	case strings.Contains(lower, "rifle") || strings.Contains(lower, "pistol") || strings.Contains(lower, "sniper") || strings.Contains(lower, "shotgun") || strings.Contains(lower, "smg"):
-		return "weapon_skin"
+		return domain.ItemKindWeaponSkin
 	default:
-		return "cs2_econ_item"
+		return domain.ItemKindCS2EconItem
 	}
 }
 

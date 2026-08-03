@@ -23,7 +23,7 @@ func (s *Service) TF2Store() domain.StoreSnapshot {
 		return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "TF2 store reads are disabled in Settings."}
 	}
 	store := cloneStore(s.tf2Store)
-	if s.connection.State == domain.ConnectionStateConnected && store.Status == "requires_connection" {
+	if s.connection.State == domain.ConnectionStateConnected && store.Status == domain.StoreStatusRequiresConnection {
 		store.Message = "Steam is connected. Refresh the Store to load the current TF2 GC price sheet."
 	}
 	return store

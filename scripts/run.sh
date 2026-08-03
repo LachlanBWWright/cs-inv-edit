@@ -6,21 +6,18 @@ target="${1:-web}"
 
 case "$target" in
   web)
-    echo "[run.sh] Building backend..."
-    pnpm build:services
-    
     echo "[run.sh] Cleaning up any old backend processes..."
     pkill -f "cs2-backend" || true
     pkill -f "bin/data-service" || true
     sleep 1
 
-    echo "[run.sh] Starting backend..."
-    ./bin/cs2-backend > backend.log 2>&1 &
-    BACKEND_PID=$!
-    ./bin/data-service > data-service.log 2>&1 &
-    DATA_SERVICE_PID=$!
+    echo "[run.sh] Starting watched Go services..."
+    ./scripts/watch-go-service.sh cs2-backend ./backend/cmd/cs2-backend ./bin/cs2-backend backend.log backend/cmd/cs2-backend backend/internal backend/go.mod backend/go.sum &
+    BACKEND_WATCHER_PID=$!
+    ./scripts/watch-go-service.sh data-service ./backend/cmd/data-service ./bin/data-service data-service.log backend/cmd/data-service backend/internal/dataservice backend/pricescanner backend/go.mod backend/go.sum &
+    DATA_SERVICE_WATCHER_PID=$!
     
-    trap "kill -9 $BACKEND_PID $DATA_SERVICE_PID 2>/dev/null" EXIT
+    trap 'kill "$BACKEND_WATCHER_PID" "$DATA_SERVICE_WATCHER_PID" 2>/dev/null; wait "$BACKEND_WATCHER_PID" "$DATA_SERVICE_WATCHER_PID" 2>/dev/null' EXIT
 
     echo "[run.sh] Waiting for backend to bind to port 7331..."
     for i in {1..30}; do
@@ -28,7 +25,7 @@ case "$target" in
         echo "[run.sh] Backend is up and healthy!"
         break
       fi
-      if ! kill -0 $BACKEND_PID 2>/dev/null; then
+      if ! kill -0 $BACKEND_WATCHER_PID 2>/dev/null; then
         echo "[run.sh] ERROR: Backend crashed immediately! Check backend.log:"
         cat backend.log
         exit 1
@@ -42,7 +39,7 @@ case "$target" in
         echo "[run.sh] Shared data service is up and healthy!"
         break
       fi
-      if ! kill -0 $DATA_SERVICE_PID 2>/dev/null; then
+      if ! kill -0 $DATA_SERVICE_WATCHER_PID 2>/dev/null; then
         echo "[run.sh] ERROR: Shared data service crashed immediately! Check data-service.log:"
         cat data-service.log
         exit 1

@@ -38,7 +38,7 @@ func TestStorePurchaseSendsAuthoritativeFieldsForMaximumCS2Quantity(t *testing.T
 	service.storeCountry = "DE"
 	service.store = domain.StoreSnapshot{Status: "ready", PriceSheetVersion: 7, Currency: "EUR", Offers: []domain.StoreOffer{{ID: "Name Tag", DefIndex: 1200, Name: "Name Tag", Currency: "EUR", AmountMinor: 175, PurchaseType: 3, Purchasable: true}}}
 	session := service.InitializeStorePurchase(map[string]any{"offerId": "Name Tag", "quantity": uint64(20), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(175)})
-	if session.Status != "awaiting_user" {
+	if session.Status != domain.PurchaseStatusAwaitingUser {
 		t.Fatalf("purchase session = %#v", session)
 	}
 	if session.CheckoutURL != "https://checkout.steampowered.com/checkout/approvetxn/1/" {
@@ -114,7 +114,7 @@ func TestTerminalPurchaseUsesEmbeddedPriceAndTerminalAsSupplementalData(t *testi
 		return nil
 	}
 	session := service.InitializeStorePurchase(map[string]any{"offerId": "terminal:52994080407", "quantity": uint64(1), "expectedPriceSheetVersion": uint64(0), "expectedAmountMinor": uint64(1299), "expectedTerminalOfferItemId": "700"})
-	if session.Status != "awaiting_user" || len(client.StorePurchaseCalls) != 1 {
+	if session.Status != domain.PurchaseStatusAwaitingUser || len(client.StorePurchaseCalls) != 1 {
 		t.Fatalf("terminal purchase session = %#v calls=%#v", session, client.StorePurchaseCalls)
 	}
 	request := client.StorePurchaseCalls[0]
@@ -140,7 +140,7 @@ func TestCouponOnlyStoreUsesBuyItemWithoutGC(t *testing.T) {
 		t.Fatalf("coupon-only offers = %#v", visible.Offers)
 	}
 	session := service.InitializeStorePurchase(map[string]any{"offerId": "coupon", "quantity": uint64(3), "expectedPriceSheetVersion": uint64(7), "expectedAmountMinor": uint64(100)})
-	if session.Status != "awaiting_user" || session.CheckoutURL != "https://store.steampowered.com/buyitem/730/20170/3" {
+	if session.Status != domain.PurchaseStatusAwaitingUser || session.CheckoutURL != "https://store.steampowered.com/buyitem/730/20170/3" {
 		t.Fatalf("coupon purchase session = %#v", session)
 	}
 	if len(client.StorePurchaseCalls) != 0 {
@@ -403,12 +403,6 @@ func TestArmoryPurchaseReturnsIncrementalGCReward(t *testing.T) {
 			t.Fatal("cached inventory ID was not included in incremental baseline")
 		}
 		waits++
-		if waits == 1 {
-			return transport.GCInventoryItem{ID: 99, DefIndex: 1}, nil
-		}
-		if _, exists := known[99]; !exists {
-			t.Fatal("unrelated incremental item was not added to the baseline")
-		}
 		wear := 0.123
 		return transport.GCInventoryItem{ID: 2, DefIndex: 7, PaintKit: 44, PaintWear: &wear, Quality: 9}, nil
 	}
@@ -444,8 +438,8 @@ func TestArmoryPurchaseReturnsIncrementalGCReward(t *testing.T) {
 	if service.armory.Balance != 6 {
 		t.Fatalf("balance=%d want=6", service.armory.Balance)
 	}
-	if waits != 2 {
-		t.Fatalf("incremental waits=%d want=2", waits)
+	if waits != 1 {
+		t.Fatalf("incremental waits=%d want=1", waits)
 	}
 }
 
@@ -456,6 +450,65 @@ func TestFirstNewInventoryItemFindsArmoryReward(t *testing.T) {
 	reward := firstNewInventoryItem(before, after)
 	if reward == nil || reward.ID != "2" || reward.MarketName != "AK-47 | Reward" {
 		t.Fatalf("reward=%#v", reward)
+	}
+}
+
+func TestMatchingArmoryRewardPrefersOfferItemAmongConcurrentArrivals(t *testing.T) {
+	defindex := uint32(7)
+	before := domain.InventorySnapshot{Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}}}
+	after := domain.InventorySnapshot{Items: []domain.InventoryItem{
+		{ID: "1", Name: "Existing"},
+		{ID: "2", Name: "Unrelated market delivery", MarketName: "Sticker | Other"},
+		{ID: "3", Name: "Armory reward", MarketName: "AK-47 | Reward", Defindex: &defindex},
+	}}
+	offer := domain.ArmoryOffer{Items: []domain.RelatedItem{{Defindex: 7, MarketName: "AK-47 | Reward"}}}
+
+	reward := matchingArmoryReward(before, after, offer)
+	if reward == nil || reward.ID != "3" {
+		t.Fatalf("reward=%#v", reward)
+	}
+}
+
+func TestMatchingArmoryRewardAcceptsSoleNewUnopenedContainer(t *testing.T) {
+	before := domain.InventorySnapshot{Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}}}
+	after := domain.InventorySnapshot{Items: []domain.InventoryItem{
+		{ID: "1", Name: "Existing"},
+		{ID: "2", Name: "Gallery Case", Kind: "container"},
+	}}
+	// Container offer Items describe possible contents, not the unopened item
+	// awarded by Armory redemption.
+	offer := domain.ArmoryOffer{Items: []domain.RelatedItem{{MarketName: "AK-47 | Possible drop"}}}
+
+	reward := matchingArmoryReward(before, after, offer)
+	if reward == nil || reward.ID != "2" {
+		t.Fatalf("reward=%#v", reward)
+	}
+}
+
+func TestMatchingArmoryRewardRejectsAmbiguousUnmatchedArrivals(t *testing.T) {
+	before := domain.InventorySnapshot{Items: []domain.InventoryItem{{ID: "1", Name: "Existing"}}}
+	after := domain.InventorySnapshot{Items: []domain.InventoryItem{
+		{ID: "1", Name: "Existing"},
+		{ID: "2", Name: "First unrelated item"},
+		{ID: "3", Name: "Second unrelated item"},
+	}}
+
+	if reward := matchingArmoryReward(before, after, domain.ArmoryOffer{}); reward != nil {
+		t.Fatalf("ambiguous reward=%#v", reward)
+	}
+}
+
+func TestIncrementalArmoryRewardNeverExposesLootListIdentifier(t *testing.T) {
+	service := NewService()
+	reward := service.armoryRewardFromIncremental(
+		transport.GCInventoryItem{ID: 2, DefIndex: 1209, Attributes: map[uint32]uint32{113: 42}},
+		domain.ArmoryOffer{ItemName: "lootlist:sticker_pack_example"},
+	)
+	if strings.Contains(strings.ToLower(reward.Name), "lootlist") {
+		t.Fatalf("reward name exposed internal schema identifier: %#v", reward)
+	}
+	if reward.Name != "CS2 item #1209" {
+		t.Fatalf("reward name=%q want safe fallback", reward.Name)
 	}
 }
 
@@ -900,7 +953,7 @@ func TestFailedMultiGameRefreshDoesNotMutateCS2Inventory(t *testing.T) {
 		t.Fatalf("receipt=%#v", receipt)
 	}
 	after := service.Inventory()
-	if after.Status != "ready" || after.RefreshedAt != "before" || len(after.Items) != 1 || after.Items[0].ID != "cs2-owned" {
+	if after.Status != domain.SnapshotStatusReady || after.RefreshedAt != "before" || len(after.Items) != 1 || after.Items[0].ID != "cs2-owned" {
 		t.Fatalf("CS2 inventory changed after TF2 failure: %#v", after)
 	}
 }
@@ -960,7 +1013,7 @@ func TestSteamInventoryServiceGamesUsesOwnedGamesAndExcludesDedicatedImplementat
 	service.connection = domain.ConnectionStatus{State: "connected", SteamID: "76561198000000000"}
 
 	result := service.SteamInventoryServiceGames(context.Background())
-	if result.Status != "ready" || len(result.Games) != 1 {
+	if result.Status != domain.SnapshotStatusReady || len(result.Games) != 1 {
 		t.Fatalf("games = %#v", result)
 	}
 	if result.Games[0].AppID != 10 {

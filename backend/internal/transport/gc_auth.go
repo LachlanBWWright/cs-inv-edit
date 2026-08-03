@@ -335,6 +335,7 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 			result := LogonResult{
 				EResult:        response.GetEresult(),
 				SteamID:        steamID,
+				RefreshToken:   credentials.AccessToken,
 				WebAccessToken: credentials.WebAccessToken,
 			}
 			resultCode := steamlang.EResult(response.GetEresult())

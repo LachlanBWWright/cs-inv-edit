@@ -132,6 +132,7 @@ type LogonCredentials struct {
 type LogonResult struct {
 	EResult        int32
 	SteamID        uint64
+	RefreshToken   string
 	WebAccessToken string
 }
 
@@ -414,6 +415,20 @@ type SteamInventoryServiceResponse struct {
 	Replayed       bool
 }
 
+type TF2DecalRequest struct {
+	ToolItemID    uint64
+	SubjectItemID uint64
+	PNG           []byte
+}
+
+type TF2DecalResult struct {
+	UGCID              uint64
+	ResponseIndex      int16
+	ResponseCode       uint32
+	InventoryConfirmed bool
+	Diagnostics        []string
+}
+
 type SteamOwnedGame struct {
 	AppID           uint32
 	Name            string
@@ -436,6 +451,7 @@ type GCClient interface {
 	WaitForNewCS2InventoryItem(ctx context.Context, knownIDs map[uint64]struct{}) (GCInventoryItem, error)
 	RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error)
 	RequestSteamInventoryService(ctx context.Context, appID uint32, steamID uint64) (SteamInventoryServiceResponse, error)
+	ApplyTF2Decal(ctx context.Context, request TF2DecalRequest) (TF2DecalResult, error)
 	RequestOwnedGames(ctx context.Context, steamID uint64) ([]SteamOwnedGame, error)
 	RequestArmory(ctx context.Context) (GCArmorySnapshot, error)
 	RequestStore(ctx context.Context, version uint32, currency int32) (GCStoreData, error)
@@ -459,6 +475,7 @@ type TestGCClient struct {
 	GameInventoryErr          error
 	GameInventoryFunc         func(context.Context, uint32) ([]GCInventoryItem, error)
 	SteamInventoryServiceFunc func(context.Context, uint32, uint64) (SteamInventoryServiceResponse, error)
+	ApplyTF2DecalFunc         func(context.Context, TF2DecalRequest) (TF2DecalResult, error)
 	OwnedGamesFunc            func(context.Context, uint64) ([]SteamOwnedGame, error)
 	InventoryFunc             func(context.Context) ([]GCInventoryItem, error)
 	WaitForNewCS2ItemFunc     func(context.Context, map[uint64]struct{}) (GCInventoryItem, error)
@@ -549,6 +566,13 @@ func (m *TestGCClient) RequestSteamInventoryService(ctx context.Context, appID u
 		return m.SteamInventoryServiceFunc(ctx, appID, steamID)
 	}
 	return SteamInventoryServiceResponse{}, nil
+}
+
+func (m *TestGCClient) ApplyTF2Decal(ctx context.Context, request TF2DecalRequest) (TF2DecalResult, error) {
+	if m.ApplyTF2DecalFunc != nil {
+		return m.ApplyTF2DecalFunc(ctx, request)
+	}
+	return TF2DecalResult{}, nil
 }
 
 func (m *TestGCClient) RequestOwnedGames(ctx context.Context, steamID uint64) ([]SteamOwnedGame, error) {

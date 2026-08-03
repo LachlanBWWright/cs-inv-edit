@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +38,7 @@ type SteamGCClient struct {
 	cs2Mu             sync.Mutex
 	cs2Features       CS2FeatureSnapshot
 	cs2SOTypes        map[int32]string
+	httpClient        *http.Client
 }
 
 func NewSteamGCClient() *SteamGCClient {
@@ -47,6 +49,7 @@ func NewSteamGCClient() *SteamGCClient {
 		tf2Features:  emptyTF2FeatureSnapshot(),
 		cs2Features:  emptyCS2FeatureSnapshot(),
 		cs2SOTypes:   make(map[int32]string),
+		httpClient:   newSteamCloudHTTPClient(),
 	}
 }
 

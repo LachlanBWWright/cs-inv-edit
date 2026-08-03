@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
 const (
@@ -39,7 +41,7 @@ type Provider struct {
 type Metadata struct {
 	Name                  string
 	MarketName            string
-	Kind                  string
+	Kind                  domain.ItemKind
 	Rarity                string
 	ImageURL              string
 	ImageSource           string
@@ -93,7 +95,7 @@ type RelatedItem struct {
 	Name        string
 	MarketName  string
 	ListingName string
-	Kind        string
+	Kind        domain.ItemKind
 	Rarity      string
 	ImageURL    string
 	Price       string
@@ -104,7 +106,7 @@ type RelatedItem struct {
 }
 
 type AppliedItem struct {
-	Kind     string
+	Kind     domain.ItemKind
 	Slot     uint32
 	ID       uint32
 	Name     string

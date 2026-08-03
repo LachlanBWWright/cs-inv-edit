@@ -1,9 +1,9 @@
 import type { OperationReceipt } from "@cs-inv-edit/contracts";
 import type { ResultAsync } from "neverthrow";
-import { createOperationApi } from "../../lib/api.js";
-import { appErrorMessage, fromAppPromise } from "../../lib/result.js";
-import type { AppBackendClient } from "../../lib/backend.js";
-import type { AppError } from "../../lib/result-http.js";
+import { createOperationApi } from "../../shared/lib/api.js";
+import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import type { AppBackendClient } from "../../shared/lib/backend.js";
+import type { AppError } from "../../shared/lib/result-http.js";
 
 export interface OperationsController {
   operationApi: ReturnType<typeof createOperationApi>;

@@ -3,10 +3,6 @@
   "private": true,
   "packageManager": "pnpm@10.26.2",
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
     "dev:desktop": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop dev",
     "dev:web": "pnpm --filter @cs-inv-edit/web dev",

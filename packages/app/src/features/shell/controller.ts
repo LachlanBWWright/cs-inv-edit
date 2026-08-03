@@ -4,7 +4,7 @@ import type {
   InventoryItemDto,
   SteamAccountProfile,
 } from "@cs-inv-edit/contracts";
-import type { AppScreen } from "../../view.js";
+import type { AppScreen } from "./view.js";
 
 export type ShellKindFilter = "all" | InventoryItemDto["kind"];
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -421,9 +422,21 @@ func parseBody(r *http.Request) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	defer r.Body.Close()
-	var payload map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	const maxOperationBody = 256 << 10
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxOperationBody+1))
+	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxOperationBody {
+		return nil, fmt.Errorf("operation request body exceeds %d bytes", maxOperationBody)
+	}
+	var payload map[string]any
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, fmt.Errorf("operation request body must contain exactly one JSON value")
 	}
 	return payload, nil
 }

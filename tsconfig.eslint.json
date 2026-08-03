@@ -21,16 +21,11 @@
     "exactOptionalPropertyTypes": true
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
     "packages/**/*.ts",
     "packages/**/*.tsx",
     "apps/**/*.ts",
     "apps/**/*.tsx",
-    "electron/**/*.ts",
-    "vite.config.ts",
     "vitest.config.ts",
-    "tsup.config.ts",
     "capacitor.config.ts"
   ]
 }

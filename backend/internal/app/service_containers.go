@@ -28,7 +28,7 @@ func steamErrorDetail(stage string, err error) string {
 }
 
 type containerOpenResult struct {
-	Kind string `json:"kind"` // "inventory_award", "terminal_offer", "terminal_unsealed"
+	Kind containerOpenResultKind `json:"kind"`
 
 	OpenedItem *domain.InventoryItem `json:"openedItem,omitempty"`
 
@@ -51,13 +51,21 @@ type containerOpenResult struct {
 	Diagnostics     []string `json:"diagnostics,omitempty"`
 }
 
+type containerOpenResultKind string
+
+const (
+	containerOpenResultInventoryAward   containerOpenResultKind = "inventory_award"
+	containerOpenResultTerminalOffer    containerOpenResultKind = "terminal_offer"
+	containerOpenResultTerminalUnsealed containerOpenResultKind = "terminal_unsealed"
+)
+
 func (s *Service) isTerminalContainer(item domain.InventoryItem) bool {
 	return isTerminalInventoryItem(item)
 }
 
 func (s *Service) openContainer(input map[string]any) (bool, string, *containerOpenResult) {
 	itemID, _ := input["itemId"].(string)
-	result := &containerOpenResult{ConsumedItemID: itemID, Kind: "inventory_award"}
+	result := &containerOpenResult{ConsumedItemID: itemID, Kind: containerOpenResultInventoryAward}
 	if itemID == "" {
 		return false, "container item id is required", result
 	}
@@ -91,7 +99,7 @@ func (s *Service) openContainer(input map[string]any) (bool, string, *containerO
 }
 
 func (s *Service) openOrdinaryContainer(accountCtx context.Context, container domain.InventoryItem, input map[string]any, beforeInventory domain.InventorySnapshot, result *containerOpenResult) (bool, string, *containerOpenResult) {
-	result.Kind = "inventory_award"
+	result.Kind = containerOpenResultInventoryAward
 	itemIDUint, _ := strconv.ParseUint(container.ID, 10, 64)
 	toolItemID, err := optionalUint64Input(input, "keyItemId")
 	if err != nil {
@@ -370,7 +378,7 @@ ResolveCandidates:
 			return false, err.Error(), result
 		}
 		offerItemID := strconv.FormatUint(virtualCandidates[0].ID, 10)
-		result.Kind = "terminal_offer"
+		result.Kind = containerOpenResultTerminalOffer
 		result.TerminalItemID = terminal.ID
 		result.OfferItemID = offerItemID
 		result.Offer = &offerItem
@@ -450,7 +458,7 @@ func (s *Service) resumeTerminalOffer(accountCtx context.Context, terminalIDText
 	if shouldRequestFirstTerminalOffer(terminalItem) {
 		firstOfferCounter := uint32(0)
 		result := &containerOpenResult{
-			Kind:            "terminal_offer",
+			Kind:            containerOpenResultTerminalOffer,
 			TerminalItemID:  terminalIDText,
 			PointsRemaining: &firstOfferCounter,
 			BeforeItemCount: len(beforeInventory.Items),
@@ -475,7 +483,7 @@ func shouldRequestFirstTerminalOffer(terminal *domain.InventoryItem) bool {
 }
 
 func (s *Service) resumeTerminalOfferVia(accountCtx context.Context, terminalIDText string, requestEMsg uint32) (bool, operations.State, string, *containerOpenResult) {
-	result := &containerOpenResult{Kind: "terminal_offer", TerminalItemID: terminalIDText}
+	result := &containerOpenResult{Kind: containerOpenResultTerminalOffer, TerminalItemID: terminalIDText}
 	terminalID, err := strconv.ParseUint(terminalIDText, 10, 64)
 	if err != nil || terminalID == 0 {
 		return false, "failed", "terminal id must be a valid Steam item id", result
@@ -604,7 +612,7 @@ ResolveCandidates:
 			return false, "failed", err.Error(), result
 		}
 		offerItemID := strconv.FormatUint(virtualCandidates[0].ID, 10)
-		result.Kind = "terminal_offer"
+		result.Kind = containerOpenResultTerminalOffer
 		result.TerminalItemID = terminalIDText
 		result.OfferItemID = offerItemID
 		result.Offer = &offerItem
@@ -640,7 +648,8 @@ func (s *Service) resolveTerminalOffer(ctx context.Context, raw transport.GCVirt
 	econProvider := s.econProvider
 	s.mu.Unlock()
 
-	var name, marketName, rarity, imageURL, price, kind string
+	var name, marketName, rarity, imageURL, price string
+	var kind domain.ItemKind
 	var wearMin, wearMax *float64
 	if econProvider != nil {
 		if schema, err := econProvider.Load(ctx); err == nil && schema != nil {
@@ -661,7 +670,7 @@ func (s *Service) resolveTerminalOffer(ctx context.Context, raw transport.GCVirt
 		marketName = name
 	}
 	if kind == "" {
-		kind = "weapon_skin"
+		kind = domain.ItemKindWeaponSkin
 	}
 	return domain.RelatedItem{
 		Defindex:    raw.DefIndex,
@@ -769,8 +778,8 @@ func isContainerLikeInventoryItem(item domain.InventoryItem) bool {
 	if item.IsTerminal {
 		return true
 	}
-	haystack := strings.ToLower(item.Kind + " " + item.Name + " " + item.MarketName)
-	return item.Kind == "container" || len(item.ContainerItems) > 0 || strings.Contains(haystack, "capsule") || strings.Contains(haystack, "case") || strings.Contains(haystack, "container") || strings.Contains(haystack, "graffiti box")
+	haystack := strings.ToLower(string(item.Kind) + " " + item.Name + " " + item.MarketName)
+	return item.Kind == domain.ItemKindContainer || len(item.ContainerItems) > 0 || strings.Contains(haystack, "capsule") || strings.Contains(haystack, "case") || strings.Contains(haystack, "container") || strings.Contains(haystack, "graffiti box")
 }
 
 func isTerminalInventoryItem(item domain.InventoryItem) bool {

@@ -44,6 +44,7 @@ type Service struct {
 	connection         domain.ConnectionStatus
 	gcClient           transport.GCClient
 	econProvider       *econ.Provider
+	armorySchema       *econ.Schema
 	multiProvider      *multigame.Provider
 	gameInventories    map[string]domain.GameInventorySnapshot
 	gameRefreshes      map[string]uint64
@@ -64,6 +65,8 @@ type Service struct {
 	tradeAccounts      map[string]steamtrade.AccountSnapshot
 	steamSessions      map[string]*steamAccountSession
 	activeSteamID      string
+	saveSteamSession   func(transport.LogonCredentials) error
+	clearSteamSession  func() error
 }
 
 func NewService() *Service {
@@ -283,7 +286,7 @@ func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 	currency := s.store.Currency
 	s.mu.Unlock()
 	if !enabled {
-		snapshot := transport.TF2FeatureSnapshot{Status: "disabled", Diagnostics: []string{"TF2 inventory is disabled."}}
+		snapshot := transport.TF2FeatureSnapshot{Status: "disabled", RefreshedAt: now(), Diagnostics: []string{"TF2 inventory is disabled."}}
 		snapshot.PresetItems, snapshot.ClassPresets = []transport.TF2PresetItem{}, []transport.TF2ClassPreset{}
 		snapshot.Matches, snapshot.Ladder, snapshot.Ratings = []map[string]any{}, []map[string]any{}, []map[string]any{}
 		snapshot.Quests, snapshot.QuestNodes, snapshot.QuestRewards = []map[string]any{}, []map[string]any{}, []map[string]any{}
@@ -291,7 +294,7 @@ func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 		return snapshot
 	}
 	if !connected {
-		snapshot := transport.TF2FeatureSnapshot{Status: "requires_connection", Diagnostics: []string{"Connect Steam to load TF2 coordinator state."}}
+		snapshot := transport.TF2FeatureSnapshot{Status: "requires_connection", RefreshedAt: now(), Diagnostics: []string{"Connect Steam to load TF2 coordinator state."}}
 		snapshot.PresetItems, snapshot.ClassPresets = []transport.TF2PresetItem{}, []transport.TF2ClassPreset{}
 		snapshot.Matches, snapshot.Ladder, snapshot.Ratings = []map[string]any{}, []map[string]any{}, []map[string]any{}
 		snapshot.Quests, snapshot.QuestNodes, snapshot.QuestRewards = []map[string]any{}, []map[string]any{}, []map[string]any{}
@@ -299,6 +302,9 @@ func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 		return snapshot
 	}
 	snapshot := s.gcClient.TF2Features()
+	if snapshot.RefreshedAt == "" {
+		snapshot.RefreshedAt = now()
+	}
 	snapshot.Currency = currency
 	s.reconcileTF2Operations(snapshot)
 	return snapshot

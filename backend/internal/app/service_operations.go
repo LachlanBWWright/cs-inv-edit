@@ -17,7 +17,7 @@ func (s *Service) RefreshInventory() operations.Receipt {
 	receipt := s.newReceipt("inventory.refresh")
 	s.mu.Lock()
 	if s.connection.State != domain.ConnectionStateConnected && s.connection.State != domain.ConnectionStateSessionConflict {
-		s.inventory.Status = "requires_connection"
+		s.inventory.Status = domain.SnapshotStatusRequiresConnection
 		s.inventory.RefreshedAt = now()
 		receipt.State = "requires_connection"
 		receipt.Message = "connect a Steam account to load inventory"
@@ -27,7 +27,7 @@ func (s *Service) RefreshInventory() operations.Receipt {
 		s.mu.Unlock()
 		return receipt
 	}
-	s.inventory.Status = "loading"
+	s.inventory.Status = domain.SnapshotStatusLoading
 	s.inventory.Message = "loading CS2 inventory from Steam Game Coordinator"
 	s.inventory.Error = ""
 	s.inventory.Diagnostics = nil
@@ -74,8 +74,9 @@ func (s *Service) RefreshInventory() operations.Receipt {
 }
 
 func (s *Service) SubmitOperation(opType string, input map[string]any) operations.Receipt {
+	operation := operations.Type(opType)
 	receipt := s.newReceipt(opType)
-	if opType == "settings" {
+	if operation == operations.TypeSettings {
 		if next, ok := input["backendUrl"].(string); ok {
 			s.mu.Lock()
 			s.settings.BackendURL = next
@@ -242,7 +243,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if opType == "containers.open" {
+	if operation == operations.TypeContainersOpen {
 		s.mu.Lock()
 		if !s.settings.FeatureFlags.EnableContainerOpening {
 			receipt.State = "blocked_by_feature_flag"
@@ -275,7 +276,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if opType == "storage.load" {
+	if operation == operations.TypeStorageLoad {
 		casketIDText, _ := input["casketId"].(string)
 		casketID, parseErr := strconv.ParseUint(casketIDText, 10, 64)
 		s.mu.Lock()
@@ -298,7 +299,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if opType == "terminal.load-offer" {
+	if operation == operations.TypeTerminalLoadOffer {
 		terminalIDText, _ := input["terminalId"].(string)
 		s.mu.Lock()
 		connected := s.connection.State == domain.ConnectionStateConnected
@@ -316,7 +317,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if opType == "storage.move-in" || opType == "storage.move-out" {
+	if operation == operations.TypeStorageMoveIn || operation == operations.TypeStorageMoveOut {
 		casketIDText, _ := input["casketId"].(string)
 		itemIDText, _ := input["itemId"].(string)
 		casketID, casketParseErr := strconv.ParseUint(casketIDText, 10, 64)
@@ -342,7 +343,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 				receipt.State, receipt.Message = "failed", "encode storage change request: "+encodeErr.Error()
 			} else {
 				emsg := protocol.EMsgCasketItemExtract
-				if opType == "storage.move-in" {
+				if operation == operations.TypeStorageMoveIn {
 					emsg = protocol.EMsgCasketItemAdd
 				}
 				if sendErr := s.gcClient.SendProtoToGC(accountCtx, protocol.AppIDCS2, emsg, body); sendErr != nil {
@@ -360,17 +361,17 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	message := "queued"
 	recognizedMutation := false
 	s.mu.Lock()
-	if opType == "steam.connect" {
+	if operation == operations.TypeSteamConnect {
 		s.connection.State = "connected"
 		s.connection.Detail = "connected"
 		state = "completed"
 		message = "steam connected"
-	} else if opType == "steam.guard" {
+	} else if operation == operations.TypeSteamGuard {
 		s.connection.State = "connected"
 		s.connection.Detail = "guard accepted"
 		state = "completed"
 		message = "steam guard accepted"
-	} else if opType == "steam.disconnect" {
+	} else if operation == operations.TypeSteamDisconnect {
 		s.connection.State = "disconnected"
 		s.connection.Detail = "disconnected"
 		state = "completed"
@@ -381,7 +382,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "blocked_by_feature_flag"
 			message = "storage mutations require feature flag"
 		}
-	} else if opType == "tradeups.execute" || opType == "tradeups.preview" {
+	} else if operation == operations.TypeTradeupsExecute || operation == operations.TypeTradeupsPreview {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableTradeups {
 			state = "blocked_by_feature_flag"
@@ -390,7 +391,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "live validation required"
 		}
-	} else if opType == "stickers.extract" {
+	} else if operation == operations.TypeStickersExtract {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableStickerExtract {
 			state = "blocked_by_feature_flag"
@@ -399,7 +400,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "sticker workflow requires live validation"
 		}
-	} else if opType == "nametags.apply" || opType == "nametags.remove" {
+	} else if operation == operations.TypeNametagsApply || operation == operations.TypeNametagsRemove {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableNameTags {
 			state = "blocked_by_feature_flag"
@@ -410,7 +411,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		} else {
 			var ok bool
 			var detail string
-			if opType == "nametags.apply" {
+			if operation == operations.TypeNametagsApply {
 				ok, detail = s.applyNameTag(input)
 			} else {
 				ok, detail = s.removeNameTag(input)
@@ -423,7 +424,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 				message = detail
 			}
 		}
-	} else if opType == "items.delete" {
+	} else if operation == operations.TypeItemsDelete {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableItemDeletion {
 			state = "blocked_by_feature_flag"
@@ -432,7 +433,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "item deletion requires live validation"
 		}
-	} else if opType == "stattrak.swap" {
+	} else if operation == operations.TypeStattrakSwap {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableStatTrakSwap {
 			state = "blocked_by_feature_flag"
@@ -441,7 +442,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "stattrak swap requires live validation"
 		}
-	} else if opType == "strange-parts.apply" {
+	} else if operation == operations.TypeStrangePartsApply {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableStrangeParts {
 			state = "blocked_by_feature_flag"
@@ -450,7 +451,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "strange part application requires live validation"
 		}
-	} else if opType == "items.use" || opType == "items.use-multiple" {
+	} else if operation == operations.TypeItemsUse || operation == operations.TypeItemsUseMultiple {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableItemUse {
 			state = "blocked_by_feature_flag"
@@ -459,7 +460,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "item use requires live validation"
 		}
-	} else if opType == "tools.apply" || opType == "tools.apply-base" {
+	} else if operation == operations.TypeToolsApply || operation == operations.TypeToolsApplyBase {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableToolApplication {
 			state = "blocked_by_feature_flag"
@@ -468,7 +469,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "requires_validation"
 			message = "tool application requires live validation"
 		}
-	} else if opType == "gifts.send" {
+	} else if operation == operations.TypeGiftsSend {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableGifting {
 			state = "blocked_by_feature_flag"

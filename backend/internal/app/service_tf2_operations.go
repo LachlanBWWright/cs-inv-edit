@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -13,9 +14,11 @@ import (
 	"cs-inv-edit/backend/internal/operations"
 	"cs-inv-edit/backend/internal/proto/tf2tracking"
 	"cs-inv-edit/backend/internal/protocol"
+	"cs-inv-edit/backend/internal/transport"
 )
 
 func (s *Service) submitTF2Operation(receipt operations.Receipt, operation string, input map[string]any) operations.Receipt {
+	operationType := operations.Type(operation)
 	mapping, known := protocol.TF2OperationMapping(operation)
 	if !known {
 		return s.finishTF2Operation(receipt, "failed", "unknown TF2 operation", nil)
@@ -51,8 +54,11 @@ func (s *Service) submitTF2Operation(receipt operations.Receipt, operation strin
 	if !connected || steamID == "" {
 		return s.finishTF2Operation(receipt, "requires_connection", "connect a Steam account before performing TF2 operations", result)
 	}
+	if operationType == operations.TypeTF2DecalApply {
+		return s.applyTF2Decal(receipt, input, result)
+	}
 	operationInput := input
-	if operation == "tf2.market.refresh" {
+	if operationType == operations.TypeTF2MarketRefresh {
 		operationInput = cloneInput(input)
 		if _, supplied := operationInput["currency"]; !supplied && storeCurrencyID > 0 {
 			operationInput["currency"] = uint32(storeCurrencyID)
@@ -85,11 +91,53 @@ func (s *Service) submitTF2Operation(receipt operations.Receipt, operation strin
 
 func tf2OperationIsPermanent(operation string) bool {
 	switch operation {
-	case "tf2.items.use", "tf2.tools.strange-part", "tf2.tools.strange-restriction", "tf2.tools.strange-transfer", "tf2.tools.strange-remove", "tf2.tools.strange-reset", "tf2.crafting.craft", "tf2.containers.open":
+	case "tf2.items.use", "tf2.tools.strange-part", "tf2.tools.strange-restriction", "tf2.tools.strange-transfer", "tf2.tools.strange-remove", "tf2.tools.strange-reset", "tf2.crafting.craft", "tf2.containers.open", "tf2.customization.decal-apply":
 		return true
 	default:
 		return false
 	}
+}
+
+func (s *Service) applyTF2Decal(receipt operations.Receipt, input map[string]any, result map[string]any) operations.Receipt {
+	toolID, err := requiredUint64Input(input, "toolItemId")
+	if err != nil {
+		return s.finishTF2Operation(receipt, operations.StateFailed, err.Error(), result)
+	}
+	subjectID, err := requiredUint64Input(input, "subjectItemId")
+	if err != nil {
+		return s.finishTF2Operation(receipt, operations.StateFailed, err.Error(), result)
+	}
+	encoded, ok := input["pngBase64"].(string)
+	if !ok || encoded == "" {
+		return s.finishTF2Operation(receipt, operations.StateFailed, "pngBase64 is required", result)
+	}
+	pngBytes, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return s.finishTF2Operation(receipt, operations.StateFailed, "pngBase64 is invalid: "+err.Error(), result)
+	}
+	s.mu.Lock()
+	_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDTF2)
+	s.mu.Unlock()
+	if sessionErr != nil {
+		return s.finishTF2Operation(receipt, operations.StateRequiresConnection, "connect a Steam account before applying a TF2 decal", result)
+	}
+	ctx, cancel := context.WithTimeout(accountCtx, 75*time.Second)
+	defer cancel()
+	decal, err := s.gcClient.ApplyTF2Decal(ctx, transport.TF2DecalRequest{ToolItemID: toolID, SubjectItemID: subjectID, PNG: pngBytes})
+	if err != nil {
+		return s.finishTF2Operation(receipt, operations.StateFailed, "TF2 decal application failed: "+err.Error(), result)
+	}
+	result["toolItemId"] = fmt.Sprintf("%d", toolID)
+	result["subjectItemId"] = fmt.Sprintf("%d", subjectID)
+	result["ugcId"] = fmt.Sprintf("%d", decal.UGCID)
+	result["responseIndex"] = decal.ResponseIndex
+	result["responseCode"] = decal.ResponseCode
+	result["inventoryConfirmed"] = decal.InventoryConfirmed
+	result["diagnostics"] = decal.Diagnostics
+	if decal.InventoryConfirmed {
+		return s.finishTF2Operation(receipt, operations.StateCompleted, "TF2 decal applied and confirmed by authoritative inventory", result)
+	}
+	return s.finishTF2Operation(receipt, operations.StateReconcilingInventory, "TF2 accepted the decal request; authoritative inventory confirmation is still pending", result)
 }
 
 func tf2OperationEnabled(flags domain.FeatureFlags, featureFlag string) bool {
@@ -123,7 +171,7 @@ func (s *Service) validateTF2OwnedItems(steamID string, itemIDs []uint64) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snapshot, ok := s.gameInventories[gameInventoryKey(steamID, "tf2")]
-	if !ok || snapshot.Status != "ready" {
+	if !ok || snapshot.Status != domain.SnapshotStatusReady {
 		return fmt.Errorf("refresh the authoritative TF2 GC inventory before performing this operation")
 	}
 	owned := make(map[string]bool, len(snapshot.Items))
@@ -139,7 +187,8 @@ func (s *Service) validateTF2OwnedItems(steamID string, itemIDs []uint64) error 
 }
 
 func (s *Service) validateTF2Compatibility(steamID, operation string, input map[string]any) error {
-	if operation != "tf2.tools.strange-part" && operation != "tf2.tools.strange-restriction" && operation != "tf2.tools.strange-transfer" && operation != "tf2.tools.strange-remove" && operation != "tf2.tools.strange-reset" {
+	operationType := operations.Type(operation)
+	if operationType != operations.TypeTF2StrangePart && operationType != operations.TypeTF2StrangeRestriction && operationType != operations.TypeTF2StrangeTransfer && operationType != operations.TypeTF2StrangeRemove && operationType != operations.TypeTF2StrangeReset {
 		return nil
 	}
 	s.mu.Lock()
@@ -150,16 +199,16 @@ func (s *Service) validateTF2Compatibility(steamID, operation string, input map[
 		items[item.AssetID] = item
 	}
 	targetKey := "targetItemId"
-	if operation == "tf2.tools.strange-transfer" {
+	if operationType == operations.TypeTF2StrangeTransfer {
 		targetKey = "sourceItemId"
-	} else if operation == "tf2.tools.strange-remove" || operation == "tf2.tools.strange-reset" {
+	} else if operationType == operations.TypeTF2StrangeRemove || operationType == operations.TypeTF2StrangeReset {
 		targetKey = "itemId"
 	}
 	target := items[stringInput(input, targetKey)]
 	if quality := target.Details.SchemaQuality; quality != "" && !strings.EqualFold(quality, "strange") {
 		return fmt.Errorf("%s must target a Strange-quality item", operation)
 	}
-	if operation == "tf2.tools.strange-transfer" {
+	if operationType == operations.TypeTF2StrangeTransfer {
 		destination := items[stringInput(input, "destinationItemId")]
 		if quality := destination.Details.SchemaQuality; quality != "" && !strings.EqualFold(quality, "strange") {
 			return fmt.Errorf("Strange count transfer destination must be Strange quality")
@@ -168,16 +217,16 @@ func (s *Service) validateTF2Compatibility(steamID, operation string, input map[
 			return fmt.Errorf("Strange count transfer destination is not schema-compatible with the source")
 		}
 	}
-	if operation == "tf2.tools.strange-part" || operation == "tf2.tools.strange-restriction" || operation == "tf2.tools.strange-transfer" {
+	if operationType == operations.TypeTF2StrangePart || operationType == operations.TypeTF2StrangeRestriction || operationType == operations.TypeTF2StrangeTransfer {
 		tool := items[stringInput(input, "toolItemId")]
 		descriptor := strings.TrimSpace(strings.ToLower(tool.Name + " " + tool.Details.ToolType + " " + tool.Details.ItemClass))
 		if descriptor != "" {
 			expected := "strange"
-			if operation == "tf2.tools.strange-part" {
+			if operationType == operations.TypeTF2StrangePart {
 				expected = "strange part"
-			} else if operation == "tf2.tools.strange-restriction" {
+			} else if operationType == operations.TypeTF2StrangeRestriction {
 				expected = "restriction"
-			} else if operation == "tf2.tools.strange-transfer" {
+			} else if operationType == operations.TypeTF2StrangeTransfer {
 				expected = "transfer"
 			}
 			if !strings.Contains(descriptor, expected) {

@@ -1,11 +1,13 @@
 package transport
 
 import (
+	"context"
 	"encoding/hex"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"cs-inv-edit/backend/internal/proto/dota2tracking"
 	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
@@ -13,6 +15,34 @@ import (
 	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
 )
+
+func TestWaitForNewCS2InventoryItemCorrelatesArmoryConfirmation(t *testing.T) {
+	itemID := uint64(53142976713)
+	econItem := mustCS2TestMessage(t, "CSOEconItem", map[string]any{
+		"id": itemID, "def_index": uint32(7),
+	})
+	created := mustCS2TestMessage(t, "CMsgSOSingleObject", map[string]any{
+		"type_id": int32(1), "object_data": econItem,
+	})
+	notification := mustCS2TestMessage(t, "CMsgGCItemCustomizationNotification", map[string]any{
+		"request": protocol.CustomizationClientRedeemMissionReward,
+		"item_id": []any{itemID},
+	})
+	createdEvent := GCEvent{Type: "gc.message", Payload: GCMessage{AppID: protocol.AppIDCS2, EMsg: protocol.EMsgSOCreate, Body: created}}
+	confirmationEvent := GCEvent{Type: "gc.message", Payload: GCMessage{AppID: protocol.AppIDCS2, EMsg: protocol.EMsgItemCustomizationNotification, Body: notification}}
+	for _, events := range [][]GCEvent{{createdEvent, confirmationEvent}, {confirmationEvent, createdEvent}} {
+		client := NewSteamGCClient()
+		for _, event := range events {
+			client.events <- event
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		item, err := client.WaitForNewCS2InventoryItem(ctx, map[uint64]struct{}{})
+		cancel()
+		if err != nil || item.ID != itemID {
+			t.Fatalf("item=%#v err=%v events=%#v", item, err, events)
+		}
+	}
+}
 
 func mustCS2TestMessage(t *testing.T, name string, fields map[string]any) []byte {
 	t.Helper()

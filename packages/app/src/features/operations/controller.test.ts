@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { errAsync, okAsync } from "neverthrow";
 import { createOperationsController } from "./controller.js";
-import type { AppBackendClient } from "../../lib/backend.js";
-import type { AppError } from "../../lib/result-http.js";
+import type { AppBackendClient } from "../../shared/lib/backend.js";
+import type { AppError } from "../../shared/lib/result-http.js";
 import type { OperationReceipt } from "@cs-inv-edit/contracts";
 
 describe("createOperationsController", () => {

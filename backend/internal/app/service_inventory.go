@@ -20,11 +20,11 @@ import (
 )
 
 func emptyInventory() domain.InventorySnapshot {
-	return domain.InventorySnapshot{RefreshedAt: now(), Status: "requires_connection", Items: []domain.InventoryItem{}}
+	return domain.InventorySnapshot{RefreshedAt: now(), Status: domain.SnapshotStatusRequiresConnection, Items: []domain.InventoryItem{}}
 }
 
 func emptyGameInventory(game string, appID uint32) domain.GameInventorySnapshot {
-	return domain.GameInventorySnapshot{Game: game, AppID: appID, RefreshedAt: now(), Status: "requires_connection", Items: []domain.EconomyInventoryItem{}, Diagnostics: []string{}}
+	return domain.GameInventorySnapshot{Game: game, AppID: appID, RefreshedAt: now(), Status: domain.SnapshotStatusRequiresConnection, Items: []domain.EconomyInventoryItem{}, Diagnostics: []string{}}
 }
 
 func emptyArmory() domain.ArmorySnapshot {
@@ -43,12 +43,12 @@ func armoryFromGC(state transport.GCArmorySnapshot, catalog []econ.ArmoryOffer) 
 }
 
 func inventoryError(message string, diagnostics []string) domain.InventorySnapshot {
-	return domain.InventorySnapshot{RefreshedAt: now(), Status: "error", Message: message, Error: message, Diagnostics: append([]string(nil), diagnostics...), Items: []domain.InventoryItem{}}
+	return domain.InventorySnapshot{RefreshedAt: now(), Status: domain.SnapshotStatusError, Message: message, Error: message, Diagnostics: append([]string(nil), diagnostics...), Items: []domain.InventoryItem{}}
 }
 
 func (s *Service) setInventoryLoadingStage(message string) {
 	s.mu.Lock()
-	if s.inventory.Status == "loading" {
+	if s.inventory.Status == domain.SnapshotStatusLoading {
 		s.inventory.Message = message
 	}
 	s.mu.Unlock()
@@ -438,7 +438,7 @@ const xRayScannerLoadedCaseInventoryPosition uint32 = 0xc0000005
 // Panorama client exposes it through the separate "xraymachine" filter rather
 // than the player's regular inventory.
 func isXRayScannerLoadedCase(item transport.GCInventoryItem, metadata econ.Metadata) bool {
-	return metadata.Kind == "container" &&
+	return metadata.Kind == domain.ItemKindContainer &&
 		!isTerminalGCItem(item, metadata) &&
 		item.Quantity == 0 &&
 		item.Inventory == xRayScannerLoadedCaseInventoryPosition
@@ -666,7 +666,7 @@ func domainAppliedItems(items []econ.AppliedItem, images []string) []domain.Appl
 			imageURL = images[len(out)]
 		}
 		var slotPointer *uint32
-		if item.Kind != "charm" {
+		if item.Kind != domain.ItemKindCharm {
 			slotPointer = &slot
 		}
 		out = append(out, domain.AppliedItem{Kind: item.Kind, Slot: slotPointer, ID: &id, Name: item.Name, ImageURL: imageURL, Wear: item.Wear})

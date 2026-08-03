@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
 const stickerSlabKeychainID uint32 = 37
@@ -15,7 +17,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 	item, ok := s.items[defIndex]
 	if !ok {
 		name := fmt.Sprintf("Unknown CS2 item #%d", defIndex)
-		return Metadata{Name: name, MarketName: name, Kind: "unknown"}
+		return Metadata{Name: name, MarketName: name, Kind: domain.ItemKindUnknown}
 	}
 	name := s.localize(item.ItemName)
 	if name == "" {
@@ -26,7 +28,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 	}
 	kind := itemKind(item)
 	if defIndex == 1201 {
-		kind = "storage_unit"
+		kind = domain.ItemKindStorageUnit
 	}
 	marketName := name
 	rarity := item.Rarity
@@ -41,7 +43,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			}
 			if paintName != "" && isPaintableItem(item) {
 				marketName = fmt.Sprintf("%s | %s", name, paintName)
-				kind = "weapon_skin"
+				kind = domain.ItemKindWeaponSkin
 			}
 		}
 	}
@@ -58,7 +60,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			}
 			name = graffitiName
 			marketName = prefix + " | " + graffitiName
-			kind = "tool_item"
+			kind = domain.ItemKindToolItem
 		}
 	}
 	if sticker := s.matchStickerKit(attributes); sticker != nil && isGenericStickerItem(item, name) {
@@ -70,7 +72,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		if stickerName != "" {
 			name = stickerName
 			marketName = "Sticker | " + stickerName
-			kind = "sticker_item"
+			kind = domain.ItemKindStickerItem
 		}
 	}
 	if sticker := s.matchStickerKit(attributes); sticker != nil && isGenericPatchItem(item, name) {
@@ -79,7 +81,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		if patchName != "" {
 			name = patchName
 			marketName = "Patch | " + patchName
-			kind = "sticker_item"
+			kind = domain.ItemKindStickerItem
 		}
 	}
 	if music := s.matchMusicDefinition(attributes); music != nil && isGenericMusicItem(item, name) {
@@ -90,7 +92,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		if musicName != "" {
 			name = musicName
 			marketName = "Music Kit | " + musicName
-			kind = "cs2_econ_item"
+			kind = domain.ItemKindCS2EconItem
 		}
 	}
 	if keychain := s.matchKeychain(attributes); keychain != nil && isGenericKeychainItem(item, name) {
@@ -102,7 +104,7 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 		if keychainName != "" {
 			name = keychainName
 			marketName = "Charm | " + keychainName
-			kind = "tool_item"
+			kind = domain.ItemKindToolItem
 		}
 	}
 	if sticker := s.matchStickerSlabSticker(attributes); sticker != nil && isStickerSlab(attributes) {
@@ -116,13 +118,13 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 	return s.metadataResult(item, name, marketName, kind, rarity, paintKit, attributes, wearMin, wearMax)
 }
 
-func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind string, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {
+func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind domain.ItemKind, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {
 	imageURL, imageKey := s.itemImageLookup(item, paintKit, attributes)
 	tradable := schemaTradable(item)
 	marketable := (*bool)(nil)
 	// Unsealed graffiti is the consumable spray instance. Only its sealed form
 	// is transferable through Steam inventory or the Community Market.
-	if kind == "tool_item" && strings.HasPrefix(marketName, "Graffiti | ") {
+	if kind == domain.ItemKindToolItem && strings.HasPrefix(marketName, "Graffiti | ") {
 		transferable := false
 		tradable, marketable = &transferable, &transferable
 	}
@@ -226,7 +228,7 @@ func schemaTradable(item itemDefinition) *bool {
 func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []AppliedItem {
 	item := s.items[defIndex]
 	itemName := s.localize(item.ItemName)
-	if itemKind(item) == "container" {
+	if itemKind(item) == domain.ItemKindContainer {
 		return nil
 	}
 	// Attribute 113 identifies the sticker item itself on generic sticker
@@ -238,7 +240,7 @@ func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []A
 	out := make([]AppliedItem, 0, 7)
 	if sticker := s.matchStickerSlabSticker(attributes); sticker != nil && isStickerSlab(attributes) {
 		name := firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name), fmt.Sprintf("Sticker #%d", attributes[321]))
-		out = append(out, AppliedItem{Kind: "sticker", Slot: 0, ID: attributes[321], Name: name, ImageURL: s.stickerImageURL(*sticker, false)})
+		out = append(out, AppliedItem{Kind: domain.ItemKindSticker, Slot: 0, ID: attributes[321], Name: name, ImageURL: s.stickerImageURL(*sticker, false)})
 	}
 	for slot := uint32(0); slot < 6; slot++ {
 		id := attributes[113+slot*4]
@@ -250,9 +252,9 @@ func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []A
 		if ok {
 			name = firstNonEmpty(s.localize(sticker.ItemName), humanizeIdentifier(sticker.Name), name)
 		}
-		kind := "sticker"
+		kind := domain.ItemKindSticker
 		if isAgent {
-			kind = "patch"
+			kind = domain.ItemKindPatch
 		}
 		var wear *float64
 		if wearBits, ok := attributes[114+slot*4]; ok && !isAgent {
@@ -267,7 +269,7 @@ func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []A
 		if ok {
 			name = firstNonEmpty(s.localize(keychain.ItemName), humanizeIdentifier(keychain.Name), name)
 		}
-		out = append(out, AppliedItem{Kind: "charm", ID: id, Name: name, ImageURL: s.trackedImageURL(keychain.Image)})
+		out = append(out, AppliedItem{Kind: domain.ItemKindCharm, ID: id, Name: name, ImageURL: s.trackedImageURL(keychain.Image)})
 	}
 	return out
 }
@@ -318,7 +320,7 @@ func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
 		m.ImageURL = desc.IconURL
 		m.ImageSource = "steam-inventory-description"
 	}
-	if desc.Type != "" && m.Kind == "unknown" {
+	if desc.Type != "" && m.Kind == domain.ItemKindUnknown {
 		m.Kind = kindFromSteamType(desc.Type)
 	}
 	return m.NormalizeCS2TransferState()
@@ -346,7 +348,7 @@ func (m Metadata) NormalizeCS2TransferState() Metadata {
 // actual finish in that case, so keep the richer schema-derived market name.
 // This also lets the subsequent market-description lookup fetch the skin icon.
 func wouldDiscardWeaponFinish(metadata Metadata, replacement string) bool {
-	return metadata.Kind == "weapon_skin" &&
+	return metadata.Kind == domain.ItemKindWeaponSkin &&
 		strings.Contains(metadata.MarketName, " | ") &&
 		!strings.Contains(replacement, " | ")
 }
@@ -369,7 +371,7 @@ func (m Metadata) WithMarketDescription(desc MarketDescription) Metadata {
 		m.ImageURL = desc.IconURL
 		m.ImageSource = "steam-market-description"
 	}
-	if desc.Type != "" && (m.Kind == "" || m.Kind == "unknown") {
+	if desc.Type != "" && (m.Kind == "" || m.Kind == domain.ItemKindUnknown) {
 		m.Kind = kindFromSteamType(desc.Type)
 	}
 	m.MarketPrice = desc.Price
