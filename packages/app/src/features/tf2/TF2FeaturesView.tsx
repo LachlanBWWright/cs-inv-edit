@@ -6,105 +6,21 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import type {
-  EconomyInventoryItemDto,
-  GameInventorySnapshot,
-  OperationReceipt,
-  TF2FeatureSnapshot,
-} from "@cs-inv-edit/contracts";
-import demomanIcon from "../../assets/images/tf2/classes/demoman.png";
-import engineerIcon from "../../assets/images/tf2/classes/engineer.png";
-import heavyIcon from "../../assets/images/tf2/classes/heavy.png";
-import medicIcon from "../../assets/images/tf2/classes/medic.png";
-import pyroIcon from "../../assets/images/tf2/classes/pyro.png";
-import scoutIcon from "../../assets/images/tf2/classes/scout.png";
-import sniperIcon from "../../assets/images/tf2/classes/sniper.png";
-import soldierIcon from "../../assets/images/tf2/classes/soldier.png";
-import spyIcon from "../../assets/images/tf2/classes/spy.png";
+import type { OperationReceipt } from "@cs-inv-edit/contracts";
 import { ItemPreviewMedia } from "../inventory/ItemPreviewMedia.js";
 import { SegmentedControl } from "../../shared/ui/SegmentedControl.js";
 
-type TF2Item = Extract<EconomyInventoryItemDto, { game: "tf2" }>;
-type SlotGroup = "Weapons" | "Cosmetics" | "Class equipment" | "Taunts";
+import {
+  tf2Classes as classes,
+  tf2Slots as slots,
+  tf2SlotGroupNames as slotGroupNames,
+  supportsTF2Selection as supportsSelection,
+  tf2ItemGroup as itemGroup,
+  type TF2Item,
+} from "./tf2-loadout-model.js";
+import type { TF2FeaturesViewProps } from "./tf2-features-view-props.js";
 
-const classes = [
-  { id: 1, name: "Scout", icon: scoutIcon },
-  { id: 2, name: "Sniper", icon: sniperIcon },
-  { id: 3, name: "Soldier", icon: soldierIcon },
-  { id: 4, name: "Demoman", icon: demomanIcon },
-  { id: 5, name: "Medic", icon: medicIcon },
-  { id: 6, name: "Heavy", icon: heavyIcon },
-  { id: 7, name: "Pyro", icon: pyroIcon },
-  { id: 8, name: "Spy", icon: spyIcon },
-  { id: 9, name: "Engineer", icon: engineerIcon },
-] as const;
-
-const slots = [
-  { id: 0, name: "Primary", keys: ["primary"], group: "Weapons" },
-  { id: 1, name: "Secondary", keys: ["secondary"], group: "Weapons" },
-  { id: 2, name: "Melee", keys: ["melee"], group: "Weapons" },
-  { id: 3, name: "Utility", keys: ["utility"], group: "Class equipment" },
-  { id: 4, name: "Building", keys: ["building"], group: "Class equipment" },
-  { id: 5, name: "PDA", keys: ["pda", "pda1"], group: "Class equipment" },
-  { id: 6, name: "PDA 2", keys: ["pda2"], group: "Class equipment" },
-  { id: 7, name: "Head", keys: ["head", "headgear"], group: "Cosmetics" },
-  { id: 8, name: "Cosmetic", keys: ["misc"], group: "Cosmetics" },
-  { id: 9, name: "Action", keys: ["action"], group: "Class equipment" },
-  { id: 10, name: "Cosmetic 2", keys: ["misc2"], group: "Cosmetics" },
-  ...Array.from({ length: 8 }, (_, index) => ({
-    id: index + 11,
-    name: `Taunt ${index + 1}`,
-    keys: [index === 0 ? "taunt" : `taunt${index + 1}`],
-    group: "Taunts" as const,
-  })),
-] satisfies { id: number; name: string; keys: string[]; group: SlotGroup }[];
-const slotGroupNames: SlotGroup[] = [
-  "Weapons",
-  "Cosmetics",
-  "Class equipment",
-  "Taunts",
-];
-
-function supportsSelection(
-  item: TF2Item,
-  className: string,
-  slotKeys: readonly string[],
-) {
-  const normalizedClass = className.toLowerCase();
-  const usable =
-    item.details.usableClasses?.map((value) => value.toLowerCase()) ?? [];
-  if (
-    usable.length > 0 &&
-    !usable.includes(normalizedClass) &&
-    !usable.includes("all_class")
-  )
-    return false;
-  const configured =
-    item.details.loadoutSlots?.[normalizedClass] ??
-    item.details.loadoutSlots?.[className] ??
-    item.details.equipSlot;
-  return configured ? slotKeys.includes(configured.toLowerCase()) : false;
-}
-
-function itemGroup(item: TF2Item) {
-  if (item.details.itemKind === "weapon") return "Weapons";
-  if (item.details.itemKind === "cosmetic") return "Cosmetics";
-  if (item.details.itemKind === "taunt") return "Taunts";
-  return "Other";
-}
-
-export function TF2FeaturesView(props: {
-  snapshot?: GameInventorySnapshot;
-  features?: TF2FeatureSnapshot;
-  loading: boolean;
-  compactMode: "icons" | "concise" | "detailed";
-  onRefresh: () => void;
-  onOperation: (
-    type: string,
-    input: unknown,
-    suppressToast?: boolean,
-  ) => Promise<OperationReceipt>;
-}) {
+export function TF2FeaturesView(props: TF2FeaturesViewProps) {
   const [classId, setClassId] = createSignal(1);
   const [presetId, setPresetId] = createSignal(0);
   const [slotId, setSlotId] = createSignal(0);

@@ -22,10 +22,8 @@ import {
   scanPriceMap,
   type ReturnEstimate,
 } from "../commerce/roi-utils.js";
-import { Dialog } from "../../shared/ui/Dialog.js";
-import { sortRelatedItemsByRarity } from "../inventory/inventory-view-utils.js";
-import { RelatedItemPreview } from "../inventory/RelatedItemPreview.js";
-import { InventoryLoadingState } from "../../shared/ui/InventoryLoadingState.js";
+import { ArmoryContentsDialog } from "./ArmoryContentsDialog.js";
+import { ArmoryStatus } from "./ArmoryStatus.js";
 import {
   ARMORY_PURCHASE_TIMEOUT_MS,
   ARMORY_STAR_COST_MINOR,
@@ -324,40 +322,11 @@ export function ArmoryView(props: {
         }}
       />
       <div class="flex w-full flex-col gap-5">
-        <Show when={ready()}>
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <p class="text-xl font-semibold leading-none">
-              {props.armory?.balance ?? 0} stars
-            </p>
-          </div>
-        </Show>
-        <Show
-          when={
-            (!props.armory || props.armory.status === "loading") &&
-            (props.armory?.offers.length ?? 0) === 0
-          }
-        >
-          <InventoryLoadingState
-            active={!props.armory || props.armory.status === "loading"}
-            title="Loading CS2 Armory"
-            currentStage={props.armory?.message}
-            variant="catalog"
-          />
-        </Show>
-        <Show when={props.armory?.status === "requires_connection"}>
-          <Alert variant="warning">
-            Connect and refresh inventory before loading Armory state.
-          </Alert>
-        </Show>
-        <Show when={props.armory?.status === "error"}>
-          <Alert variant="danger">{props.armory?.message}</Alert>
-        </Show>
-        <Show when={purchaseError()}>
-          {(message) => <Alert variant="danger">{message()}</Alert>}
-        </Show>
-        <For each={diagnostics()}>
-          {(line) => <Alert variant="warning">{line}</Alert>}
-        </For>
+        <ArmoryStatus
+          armory={props.armory}
+          purchaseError={purchaseError()}
+          diagnostics={diagnostics()}
+        />
         <div class="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
           <For each={offers()}>
             {(offer) => {
@@ -418,35 +387,11 @@ export function ArmoryView(props: {
           </Alert>
         </Show>
       </div>
-      <Dialog
-        open={!!contentsOffer()}
-        title={contentsOffer()?.name || "Armory collection"}
-        description="Possible items available from this Armory offer"
-        onOpenChange={(open) => {
-          if (!open) setContentsOffer(undefined);
-        }}
-      >
-        <Show
-          when={(contentsOffer()?.items?.length ?? 0) > 0}
-          fallback={
-            <p class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-              No item contents were found in the current CS2 schema.
-            </p>
-          }
-        >
-          <div class="grid gap-2 sm:grid-cols-2">
-            <For each={sortRelatedItemsByRarity(contentsOffer()?.items ?? [])}>
-              {(item) => (
-                <RelatedItemPreview
-                  item={item}
-                  context="collection"
-                  onRequestMarketPreview={props.onMarketPreview}
-                />
-              )}
-            </For>
-          </div>
-        </Show>
-      </Dialog>
+      <ArmoryContentsDialog
+        offer={contentsOffer()}
+        onClose={() => setContentsOffer(undefined)}
+        onMarketPreview={props.onMarketPreview}
+      />
     </div>
   );
 }

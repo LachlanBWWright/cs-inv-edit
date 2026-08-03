@@ -12,13 +12,9 @@ import { Alert } from "../../shared/ui/Alert.js";
 import { InventoryLoadingState } from "../../shared/ui/InventoryLoadingState.js";
 import { PullToRefresh } from "../../shared/ui/PullToRefresh.js";
 import { ResponsiveInspector } from "../../shared/ui/ResponsiveInspector.js";
-import { economyOutlineClass } from "./game-inventory-utils.js";
 import type { EconomyInventorySort } from "./game-inventory-utils.js";
-import { ItemMarketBadges } from "./ItemMarketBadges.js";
 import { RevealAnimation } from "../../shared/ui/RevealAnimation.js";
-import { TF2ItemEffectBadges } from "../tf2/TF2ItemEffectBadges.js";
-
-import { ItemImage } from "./game-inventory-elements.js";
+import { GameInventoryCard } from "./GameInventoryCard.js";
 import { createGameInventoryModel } from "./game-inventory-model.js";
 import { GameInventoryDetails } from "./game-inventory-details.js";
 
@@ -354,58 +350,13 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           >
             <For each={items()}>
               {(item) => (
-                <button
-                  type="button"
-                  class={
-                    item.game === "tf2"
-                      ? `inventory-item-card rarity-outline group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition ${economyOutlineClass(item)} ${selected()?.assetId === item.assetId ? "is-selected" : ""}`
-                      : `inventory-item-card rarity-outline group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 text-left transition duration-150 ${economyOutlineClass(item)} ${selected()?.assetId === item.assetId ? "is-selected" : ""}`
-                  }
-                  aria-pressed={selected()?.assetId === item.assetId}
-                  onClick={() => props.setSelectedAssetId(item.assetId)}
-                >
-                  <ItemMarketBadges
-                    item={item}
-                    priceMinor={marketPrices().get(item.marketName ?? "")}
-                  />
-                  <Show when={item.game === "tf2"}>
-                    <TF2ItemEffectBadges item={item} />
-                  </Show>
-                  <ItemImage item={item} card />
-                  <div
-                    class={
-                      props.compactMode === "icons"
-                        ? "flex flex-1 flex-col px-3 py-3 text-center"
-                        : "flex flex-1 flex-col px-3 py-3"
-                    }
-                  >
-                    <p
-                      class={`${props.compactMode === "icons" ? "text-xs" : "text-base"} line-clamp-2 font-medium leading-tight text-slate-100`}
-                      title={item.name}
-                    >
-                      {item.name}
-                    </p>
-                    <Show when={props.compactMode !== "icons"}>
-                      <Show when={item.details.customName}>
-                        <p class="mt-1 truncate text-sm text-cyan-200">
-                          “{item.details.customName}”
-                        </p>
-                      </Show>
-                      <Show when={item.type || item.quality}>
-                        <p class="mt-1 truncate text-sm text-slate-400">
-                          {[item.type, item.quality]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </Show>
-                    </Show>
-                    <Show when={item.quantity > 1}>
-                      <p class="mt-1 text-xs text-slate-400">
-                        Quantity {item.quantity}
-                      </p>
-                    </Show>
-                  </div>
-                </button>
+                <GameInventoryCard
+                  item={item}
+                  selected={selected()?.assetId === item.assetId}
+                  compactMode={props.compactMode}
+                  priceMinor={marketPrices().get(item.marketName ?? "")}
+                  onSelect={() => props.setSelectedAssetId(item.assetId)}
+                />
               )}
             </For>
           </div>
@@ -422,9 +373,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
             />
           </Show>
           <Show
-            when={
-              (snapshot()?.items.length ?? 0) > 0 && items().length === 0
-            }
+            when={(snapshot()?.items.length ?? 0) > 0 && items().length === 0}
           >
             <p class="rounded-2xl border border-slate-800 p-5 text-sm text-slate-400">
               No matching items.

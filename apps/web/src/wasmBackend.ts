@@ -8,18 +8,14 @@ import {
   ok,
   okAsync,
 } from "neverthrow";
-import {
-  healthStatusSchema,
-  type FeatureFlags,
-  type HealthStatus,
-  type SettingsData,
-} from "@cs-inv-edit/contracts";
+import { healthStatusSchema, type HealthStatus } from "@cs-inv-edit/contracts";
 import {
   createWasmConnectionStatus as createConnectionStatus,
   createWasmEvents as createEvents,
   createWasmInventorySnapshot as createInventorySnapshot,
   createWasmReceipt as createReceipt,
 } from "./wasm-backend-state.js";
+import { defaultWasmSettings } from "./wasm-backend-settings.js";
 
 declare global {
   interface Window {
@@ -38,48 +34,6 @@ const wasmAssetPaths = {
   wasm: `${wasmAssetBasePath}wasm/cs2-backend.wasm`,
   loader: `${wasmAssetBasePath}wasm/wasm_exec.js`,
 } as const;
-
-const defaultFeatureFlags: FeatureFlags = {
-  enableStorageMutations: true,
-  enableContainerOpening: true,
-  enableInventoryDebug: false,
-  showStorageUnitItems: false,
-  enableTradeups: false,
-  enableStickerExtract: false,
-  enableNameTags: true,
-  enableItemDeletion: false,
-  enableStatTrakSwap: false,
-  enableStrangeParts: false,
-  enableItemUse: false,
-  enableToolApplication: false,
-  enableGifting: false,
-  enableTf2Inventory: true,
-  enableTf2Store: true,
-  enableTf2Loadouts: false,
-  enableTf2ItemUse: false,
-  enableTf2Tools: false,
-  enableTf2Crafting: false,
-  enableTf2Unboxing: false,
-  enableTf2Customization: false,
-  enableDota2Inventory: false,
-  enableSteamInventory: true,
-  enableStoreRead: false,
-  enableStorePurchases: true,
-};
-
-const defaultSettings: SettingsData = {
-  backendUrl: window.location.origin,
-  validationMode: true,
-  sacrificialAccountMode: true,
-  featureFlags: defaultFeatureFlags,
-  animations: {
-    container: "slot-machine",
-    tradeUp: "slot-machine",
-    armory: "slot-machine",
-    terminal: "slot-machine",
-  },
-  armoryPurchasePacingSeconds: 5,
-};
 
 async function loadWasmRuntime() {
   const wasmPath = wasmAssetPaths.wasm;
@@ -311,7 +265,7 @@ export function createWasmBackendClient(): LocalAgentClient {
       ),
     operations: () => okAsync([]),
     events: () => okAsync(createEvents()),
-    settings: () => okAsync(defaultSettings),
+    settings: () => okAsync(defaultWasmSettings),
     steamStatus: () =>
       okAsync(
         createConnectionStatus(

@@ -1,81 +1,25 @@
 import { createEffect, createSignal, on } from "solid-js";
-import type {
-  ConnectionStatus,
-  InitializeStorePurchaseRequest,
-  InventoryItemDto,
-  InventorySnapshot,
-  OpenContainerRequest,
-  OperationReceipt,
-  PriceScanResult,
-  PurchaseSession,
-  RelatedItemDto,
-  SettingsData,
-} from "@cs-inv-edit/contracts";
+import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
-import { RevealAnimation, type RevealItem } from "../../shared/ui/RevealAnimation.js";
+import {
+  RevealAnimation,
+  type RevealItem,
+} from "../../shared/ui/RevealAnimation.js";
 import {
   isActiveTerminal,
   isOpenableContainer,
   isTerminal,
   itemKey,
-  itemKindLabel,
-  itemWeaponName,
   resolveSelectedInventoryItem,
-  sortInventoryItems,
-  type InventorySort,
 } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
-import type { InventoryMode } from "../shell/view.js";
 import { formatUSDMinor } from "./ItemMarketBadges.js";
 import type { ReturnEstimate } from "../commerce/roi-utils.js";
 import { createOpenContainerHandler } from "./inventory-open-container.js";
 import { createInventoryActionHandlers } from "./inventory-action-handlers.js";
-export interface InventoryViewProps {
-  mode: InventoryMode;
-  inventory: InventorySnapshot | undefined;
-  loading?: boolean;
-  selectedItemId: string | undefined;
-  setSelectedItemId: (id: string | undefined) => void;
-  connection: ConnectionStatus | undefined;
-  settings: SettingsData | undefined;
-  query: string;
-  kindFilter: "all" | InventoryItemDto["kind"];
-  rarityFilter: string;
-  weaponFilter: string;
-  collectionFilter: string;
-  sort: InventorySort;
-  marketPrices: ReadonlyMap<string, number>;
-  compactMode: "icons" | "concise" | "detailed";
-  onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
-  onScanPrices: (
-    marketNames: string[],
-    appId?: number,
-  ) => Promise<PriceScanResult | undefined>;
-  onRename: (input: {
-    subjectItemId: string;
-    toolItemId: string;
-    name: string;
-  }) => Promise<unknown>;
-  onRemoveName: (input: { itemId: string }) => Promise<unknown>;
-  onOpenContainer: (
-    input: OpenContainerRequest,
-    suppressToast?: boolean,
-  ) => Promise<unknown>;
-  onTerminalPurchase: (
-    input: InitializeStorePurchaseRequest,
-  ) => Promise<PurchaseSession>;
-  onLoadTerminalOffer: (terminalId: string) => Promise<OperationReceipt>;
-  onLoadStorageContents: (casketId: string) => Promise<OperationReceipt>;
-  onMoveFromStorage: (input: {
-    casketId: string;
-    itemId: string;
-  }) => Promise<OperationReceipt>;
-  onMoveIntoStorage: (input: {
-    casketId: string;
-    itemId: string;
-  }) => Promise<OperationReceipt>;
-  onRefresh: () => void;
-}
+import { filterInventoryItems } from "./inventory-filtering.js";
+import type { InventoryViewProps } from "./inventory-view-props.js";
+export type { InventoryViewProps } from "./inventory-view-props.js";
 
 export function InventoryView(props: InventoryViewProps) {
   const [renameOpen, setRenameOpen] = createSignal(false);
@@ -117,45 +61,16 @@ export function InventoryView(props: InventoryViewProps) {
     message: string;
   }>();
   const filteredItems = () => {
-    const q = props.query.toLowerCase();
-    const matches = (props.inventory?.items ?? []).filter((item) => {
-      const searchable = [
-        item.name,
-        item.marketName,
-        item.marketPrice,
-        item.customName,
-        item.kind,
-        itemKindLabel(item.kind),
-        item.collection,
-        item.exterior,
-        item.rarity,
-        item.storageLocation,
-        item.toolType,
-        item.stickers && item.stickers.length > 0 ? "sticker" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      const matchesQuery = !q || searchable.includes(q);
-      const matchesKind =
-        props.kindFilter === "all" || item.kind === props.kindFilter;
-      const matchesRarity =
-        props.rarityFilter === "all" || item.rarity === props.rarityFilter;
-      const matchesWeapon =
-        props.weaponFilter === "all" ||
-        itemWeaponName(item) === props.weaponFilter;
-      const matchesCollection =
-        props.collectionFilter === "all" ||
-        item.collection === props.collectionFilter;
-      return (
-        matchesQuery &&
-        matchesKind &&
-        matchesRarity &&
-        matchesWeapon &&
-        matchesCollection
-      );
+    return filterInventoryItems({
+      items: props.inventory?.items ?? [],
+      query: props.query,
+      kind: props.kindFilter,
+      rarity: props.rarityFilter,
+      weapon: props.weaponFilter,
+      collection: props.collectionFilter,
+      sort: props.sort,
+      marketPrices: props.marketPrices,
     });
-    return sortInventoryItems(matches, props.sort, props.marketPrices);
   };
 
   const visibleItems = () =>

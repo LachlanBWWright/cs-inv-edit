@@ -8,7 +8,6 @@ import {
   compactItemMeta,
   compactItemName,
   itemDisplayName,
-  itemKindLabel,
   itemSubtitle,
   rarityBorderClass,
 } from "./inventory-view-utils.js";
@@ -22,113 +21,6 @@ import {
   InventoryItemIcon as ItemIcon,
   InventoryItemWear as ItemWear,
 } from "./inventory-view-content-elements.js";
-
-export interface InventoryFiltersProps {
-  class?: string;
-  kindFilter: "all" | InventoryItemDto["kind"];
-  rarityFilter: string;
-  weaponFilter: string;
-  collectionFilter: string;
-  rarityOptions: string[];
-  weaponOptions: string[];
-  collectionOptions: string[];
-  onKindFilterChange: (value: "all" | InventoryItemDto["kind"]) => void;
-  onRarityFilterChange: (value: string) => void;
-  onWeaponFilterChange: (value: string) => void;
-  onCollectionFilterChange: (value: string) => void;
-}
-
-export function InventoryFilters(props: InventoryFiltersProps) {
-  const selectClass =
-    "mt-1.5 h-10 w-full rounded-xl border border-slate-700/80 bg-slate-900 px-3 text-sm text-slate-100 outline-none transition hover:border-slate-600 focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-400/15";
-  return (
-    <div
-      class={
-        props.class ??
-        "grid gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-3 sm:grid-cols-2"
-      }
-    >
-      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-        Item type
-        <select
-          aria-label="Item type"
-          class={selectClass}
-          value={props.kindFilter}
-          onInput={(event) =>
-            props.onKindFilterChange(
-              event.currentTarget.value as "all" | InventoryItemDto["kind"],
-            )
-          }
-        >
-          <option value="all">All types</option>
-          <For
-            each={
-              [
-                "weapon_skin",
-                "sticker_item",
-                "container",
-                "storage_unit",
-                "tool_item",
-                "cs2_econ_item",
-                "unknown",
-              ] as const
-            }
-          >
-            {(kind) => <option value={kind}>{itemKindLabel(kind)}</option>}
-          </For>
-        </select>
-      </label>
-      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-        Rarity
-        <select
-          aria-label="Rarity tier"
-          class={selectClass}
-          value={props.rarityFilter}
-          onInput={(event) =>
-            props.onRarityFilterChange(event.currentTarget.value)
-          }
-        >
-          <option value="all">All rarities</option>
-          <For each={props.rarityOptions}>
-            {(rarity) => <option value={rarity}>{rarity}</option>}
-          </For>
-        </select>
-      </label>
-      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-        Weapon
-        <select
-          aria-label="Weapon"
-          class={selectClass}
-          value={props.weaponFilter}
-          onInput={(event) =>
-            props.onWeaponFilterChange(event.currentTarget.value)
-          }
-        >
-          <option value="all">All weapons</option>
-          <For each={props.weaponOptions}>
-            {(weapon) => <option value={weapon}>{weapon}</option>}
-          </For>
-        </select>
-      </label>
-      <label class="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-        Collection
-        <select
-          aria-label="Collection"
-          class={selectClass}
-          value={props.collectionFilter}
-          onInput={(event) =>
-            props.onCollectionFilterChange(event.currentTarget.value)
-          }
-        >
-          <option value="all">All collections</option>
-          <For each={props.collectionOptions}>
-            {(collection) => <option value={collection}>{collection}</option>}
-          </For>
-        </select>
-      </label>
-    </div>
-  );
-}
 
 export interface InventoryGridProps {
   inventory: InventorySnapshot | undefined;

@@ -1,14 +1,5 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
-import { errAsync } from "neverthrow";
-import type {
-  ArmorySnapshot,
-  ConnectionStatus,
-  RelatedItemDto,
-  SteamAccountProfile,
-  StoreSnapshot,
-} from "@cs-inv-edit/contracts";
-import type { LocalAgentClient } from "../../shared/lib/backend.js";
-import type { SharedDataClient } from "../../shared/lib/shared-data.js";
+import type { ArmorySnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import { enabledModeOrDefault } from "./view.js";
 import {
@@ -19,11 +10,8 @@ import { createShellController } from "./controller.js";
 import { createToastController } from "../notifications/controller.js";
 import { createSteamInventoryServiceController } from "../steam-inventory-service/controller.js";
 
-export interface AppProps {
-  backend: LocalAgentClient;
-  data: SharedDataClient;
-  platform: "desktop" | "web";
-}
+import type { AppProps } from "./app-props.js";
+export type { AppProps } from "./app-props.js";
 
 import {
   accountStorageKey,
@@ -37,6 +25,14 @@ import { createAppResources } from "./app-resources.js";
 import { createAccountController } from "../accounts/account-controller.js";
 import { createCommerceRefreshers } from "../commerce/commerce-refreshers.js";
 import { shouldShowAccountScreen } from "../accounts/account-route.js";
+import {
+  installAutomaticGameInventoryRefresh,
+  installConnectedAccountSync,
+} from "./app-controller-effects.js";
+import {
+  createMarketPreviewRequester,
+  logSteamDiagnostics,
+} from "./app-market-preview.js";
 
 export function createAppController(props: AppProps) {
   const shell = createShellController(screenFromUrl());
@@ -105,39 +101,9 @@ export function createAppController(props: AppProps) {
         diagnostics: current?.diagnostics,
       })),
   });
-  const marketPreviewCache = new Map<
-    string,
-    Promise<RelatedItemDto | undefined>
-  >();
-  const requestMarketPreview = (marketName: string) => {
-    const cached = marketPreviewCache.get(marketName);
-    if (cached) return cached;
-    const request = props.backend
-      .marketPreview(marketName)
-      .match(
-        (preview) => preview,
-        () => undefined,
-      )
-      .then((preview) => {
-        if (!preview) marketPreviewCache.delete(marketName);
-        return preview;
-      });
-    marketPreviewCache.set(marketName, request);
-    return request;
-  };
+  const requestMarketPreview = createMarketPreviewRequester(props.backend);
 
-  const logSteamDiagnostics = (label: string, status?: ConnectionStatus) => {
-    if (!status?.diagnostics?.length) return;
-    console.groupCollapsed(`[steam] ${label} diagnostics`);
-    for (const line of status.diagnostics) {
-      console.info(line);
-    }
-    console.groupEnd();
-  };
-
-  createEffect(() => {
-    logSteamDiagnostics("status", connection());
-  });
+  createEffect(() => logSteamDiagnostics("status", connection()));
 
   createEffect(() => {
     const currentSettings = settings();
@@ -171,66 +137,17 @@ export function createAppController(props: AppProps) {
     selectionScope = nextScope;
   });
 
-  let automaticGameRefresh = "";
-  createEffect(() => {
-    const game =
-      shell.view() === "steam-inventory"
-        ? "steam"
-        : shell.view() === "tf2-inventory"
-          ? "tf2"
-          : shell.view() === "dota2-inventory"
-            ? "dota2"
-            : undefined;
-    const steamId =
-      connection()?.state === "connected" ? connection()?.steamId : undefined;
-    if (!game || !steamId) {
-      automaticGameRefresh = "";
-      return;
-    }
-    const enabled =
-      game === "steam"
-        ? settings()?.featureFlags.enableSteamInventory
-        : game === "tf2"
-          ? settings()?.featureFlags.enableTf2Inventory
-          : settings()?.featureFlags.enableDota2Inventory;
-    const refetchGame = () =>
-      game === "steam"
-        ? refetchSteamInventory()
-        : game === "tf2"
-          ? refetchTF2Inventory()
-          : refetchDota2Inventory();
-    const key = `${steamId}\u0000${game}`;
-    if (!enabled || automaticGameRefresh === key) return;
-    automaticGameRefresh = key;
-    void props.backend
-      .refreshGameInventory(game)
-      .andThen((receipt) =>
-        receipt.state === "failed" ||
-        receipt.state === "requires_connection" ||
-        receipt.state === "blocked_by_feature_flag"
-          ? errAsync({
-              message: receipt.message ?? `${game} inventory refresh failed`,
-            })
-          : fromAppPromise(
-              Promise.resolve(refetchGame()),
-              `${game} inventory reload failed`,
-            ),
-      )
-      .match(
-        () => undefined,
-        (error) => {
-          automaticGameRefresh = "";
-          void refetchGame();
-          pushToast({
-            title: "Inventory refresh failed",
-            description: appErrorMessage(
-              error,
-              `Unable to refresh ${game} inventory`,
-            ),
-            variant: "danger",
-          });
-        },
-      );
+  installAutomaticGameInventoryRefresh({
+    backend: props.backend,
+    shell,
+    connection,
+    settings,
+    refetch: {
+      steam: refetchSteamInventory,
+      tf2: refetchTF2Inventory,
+      dota2: refetchDota2Inventory,
+    },
+    pushToast,
   });
 
   const steamService = createSteamInventoryServiceController({
@@ -340,34 +257,7 @@ export function createAppController(props: AppProps) {
     );
   });
 
-  createEffect(() => {
-    const status = connection();
-    if (!status) return;
-    if (status.state !== "connected" || !status.accountName) {
-      shell.setAccounts((current) =>
-        current.map((account) => ({ ...account, signedIn: false })),
-      );
-      return;
-    }
-    shell.setAccounts((current) => {
-      const next = current.map((account) => ({ ...account, signedIn: false }));
-      const index = next.findIndex(
-        (account) =>
-          account.accountName.toLowerCase() ===
-          status.accountName!.toLowerCase(),
-      );
-      const profile: SteamAccountProfile = {
-        accountName: status.accountName!,
-        steamId: status.steamId,
-        avatarUrl: status.avatarUrl,
-        signedIn: true,
-        lastSignedInAt: new Date().toISOString(),
-      };
-      if (index >= 0) next[index] = { ...next[index], ...profile };
-      else next.unshift(profile);
-      return next;
-    });
-  });
+  installConnectedAccountSync(shell, connection);
 
   const stopSteamStatus = props.backend.watchSteamStatus?.((status) => {
     const wasConnected = connection()?.state === "connected";
@@ -380,8 +270,6 @@ export function createAppController(props: AppProps) {
     }
   });
   onCleanup(() => stopSteamStatus?.());
-
-  const dismissToast = toastController.dismissToast;
 
   createEffect(() => {
     const currentView = shell.view();
@@ -496,7 +384,7 @@ export function createAppController(props: AppProps) {
     connection,
     setConnection,
     pushToast,
-    dismissToast,
+    dismissToast: toastController.dismissToast,
     refreshInventoryState,
     refreshArmoryState,
     refreshStoreState,

@@ -2,7 +2,7 @@ import { For, Show } from "solid-js";
 import type { SidebarProps } from "./Sidebar.js";
 import type { InventorySort } from "../inventory/inventory-view-utils.js";
 import type { EconomyInventorySort } from "../inventory/game-inventory-utils.js";
-import { InventoryFilters } from "../inventory/inventory-view-content-sections.js";
+import { InventoryFilters } from "../inventory/InventoryFilters.js";
 import { SettingsView } from "../settings/SettingsView.js";
 import { Button } from "../../shared/ui/Button.js";
 import { MobileSheet } from "../../shared/ui/MobileSheet.js";
