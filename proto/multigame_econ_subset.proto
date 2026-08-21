@@ -1,0 +1,84 @@
+syntax = "proto2";
+
+package multigameecon;
+option go_package = "cs-inv-edit/backend/internal/proto/generated/multigamepb";
+
+// Wire-compatible subset derived from the pinned TF2 and Dota 2
+// gcsdk_gcmessages.proto/base_gcmessages.proto sources. Field numbers and
+// widths must remain identical to upstream.
+message CMsgClientHello {
+  optional uint32 version = 1;
+  optional uint32 client_session_need = 3;
+  optional uint32 client_launcher = 4;
+  optional uint32 engine = 7;
+}
+
+// Dota 2 welcome subset. TF2 uses field 3 for txn_country_code and must not be
+// decoded with this message.
+message CMsgClientWelcome {
+  optional uint32 version = 1;
+  optional bytes game_data = 2;
+  repeated CMsgSOCacheSubscribed outofdate_subscribed_caches = 3;
+  repeated CMsgSOCacheSubscriptionCheck uptodate_subscribed_caches = 4;
+}
+
+message CMsgSOIDOwner {
+  optional uint32 type = 1;
+  optional uint64 id = 2;
+}
+
+message CMsgSOCacheSubscribed {
+  message SubscribedType {
+    optional int32 type_id = 1;
+    repeated bytes object_data = 2;
+  }
+  repeated SubscribedType objects = 2;
+  optional fixed64 version = 3;
+  optional CMsgSOIDOwner owner_soid = 4;
+}
+
+message CMsgSOCacheSubscriptionCheck {
+  optional fixed64 owner = 1;
+  optional fixed64 version = 2;
+  optional CMsgSOIDOwner owner_soid = 3;
+  optional uint32 service_id = 4;
+  repeated uint32 service_list = 5;
+  optional fixed64 sync_version = 6;
+}
+
+message CMsgSOCacheSubscriptionRefresh {
+  optional fixed64 owner = 1;
+  optional CMsgSOIDOwner owner_soid = 2;
+}
+
+message CSOEconItemAttribute {
+  optional uint32 def_index = 1;
+  optional uint32 value = 2;
+  optional bytes value_bytes = 3;
+}
+
+message CSOEconItemEquipped {
+  optional uint32 new_class = 1;
+  optional uint32 new_slot = 2;
+}
+
+message CSOEconItem {
+  optional uint64 id = 1;
+  optional uint32 account_id = 2;
+  optional uint32 inventory = 3;
+  optional uint32 def_index = 4;
+  optional uint32 quantity = 5;
+  optional uint32 level = 6;
+  optional uint32 quality = 7;
+  optional uint32 flags = 8;
+  optional uint32 origin = 9;
+  optional string custom_name = 10;
+  optional string custom_desc = 11;
+  repeated CSOEconItemAttribute attribute = 12;
+  optional CSOEconItem interior_item = 13;
+  optional bool in_use = 14;
+  optional uint32 style = 15;
+  optional uint64 original_id = 16;
+  optional bool contains_equipped_state = 17;
+  repeated CSOEconItemEquipped equipped_state = 18;
+}

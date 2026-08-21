@@ -7,12 +7,16 @@
     "dev": "cd ../.. && ./scripts/run.sh",
     "start-vite": "vite --host 127.0.0.1 --port 5174",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4174"
+    "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@cs-inv-edit/app": "*",
-    "@cs-inv-edit/contracts": "*",
+    "@cs-inv-edit/app": "workspace:*",
+    "@cs-inv-edit/contracts": "workspace:*",
     "@tailwindcss/vite": "^4.3.1",
+    "neverthrow": "^8.2.0",
     "vite-plugin-solid": "^2.11.8",
     "solid-js": "^1.9.10",
     "tailwindcss": "^4.3.1",

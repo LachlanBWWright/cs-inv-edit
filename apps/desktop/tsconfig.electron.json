@@ -5,7 +5,7 @@
     "rootDir": "src",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["node", "electron"]
+    "types": ["node", "electron", "vite/client"]
   },
   "include": ["src/electron", "src/preload"]
 }

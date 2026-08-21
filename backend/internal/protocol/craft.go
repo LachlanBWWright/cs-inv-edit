@@ -6,8 +6,8 @@ import (
 )
 
 func EncodeCraftRequest(recipe int16, itemIDs []uint64) ([]byte, error) {
-	if len(itemIDs) != 10 {
-		return nil, fmt.Errorf("trade-up requires exactly 10 item ids")
+	if len(itemIDs) != 5 && len(itemIDs) != 10 {
+		return nil, fmt.Errorf("trade-up requires exactly 5 or 10 item ids")
 	}
 	if hasDuplicateIDs(itemIDs) {
 		return nil, fmt.Errorf("trade-up item ids must be unique")

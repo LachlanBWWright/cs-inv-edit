@@ -1,20 +1,24 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"cs-inv-edit/backend/internal/app"
-	cs2pb "cs-inv-edit/backend/internal/proto/generated"
+	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/rpc"
+	"cs-inv-edit/backend/internal/sessionstore"
 )
 
 type encodeResult struct {
@@ -41,12 +45,45 @@ func main() {
 	}
 
 	service := app.NewService()
+	configureSessionPersistence(service)
 	handler := rpc.NewHandler(service)
 
 	log.Printf("cs2-backend listening on http://%s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func configureSessionPersistence(service *app.Service) {
+	if os.Getenv("CSINV_STEAM_SESSION_PERSISTENCE") == "disabled" {
+		return
+	}
+	path := os.Getenv("CSINV_STEAM_SESSION_FILE")
+	if path == "" {
+		defaultPath, err := sessionstore.DefaultPath()
+		if err != nil {
+			log.Printf("Steam session persistence unavailable: %v", err)
+			return
+		}
+		path = defaultPath
+	}
+	store := sessionstore.NewFile(path)
+	service.ConfigureSteamSessionPersistence(store.Save, store.Clear)
+	credentials, err := store.Load()
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		log.Printf("Saved Steam session was not loaded: %v", err)
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		if err := service.RestoreSteamSession(ctx, credentials); err != nil {
+			log.Printf("Saved Steam session could not be restored: %v", err)
+		}
+	}()
 }
 
 func runEncode(args []string) error {

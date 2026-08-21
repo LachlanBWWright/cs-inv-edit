@@ -17,8 +17,14 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true
+    "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "electron/**/*.ts", "vite.config.ts", "tsup.config.ts", "capacitor.config.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "vitest.config.ts",
+    "capacitor.config.ts"
+  ]
 }

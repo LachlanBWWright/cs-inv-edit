@@ -1,12 +1,93 @@
 package domain
 
+type ConnectionState string
+
+const (
+	ConnectionStateDisconnected    ConnectionState = "disconnected"
+	ConnectionStateConnecting      ConnectionState = "connecting"
+	ConnectionStateAwaitingGuard   ConnectionState = "awaiting_guard"
+	ConnectionStateNeedsSteamGuard ConnectionState = "needs_steam_guard"
+	ConnectionStateAwaitingQR      ConnectionState = "awaiting_qr"
+	ConnectionStateConnected       ConnectionState = "connected"
+	ConnectionStateSessionConflict ConnectionState = "session_conflict"
+	ConnectionStateError           ConnectionState = "error"
+)
+
+type TF2PoolKind string
+
+const (
+	TF2PoolKindPrimary    TF2PoolKind = "primary"
+	TF2PoolKindUnresolved TF2PoolKind = "unresolved"
+)
+
+type ItemKind string
+
+const (
+	ItemKindUnknown        ItemKind = "unknown"
+	ItemKindCS2EconItem    ItemKind = "cs2_econ_item"
+	ItemKindContainer      ItemKind = "container"
+	ItemKindSticker        ItemKind = "sticker"
+	ItemKindStickerItem    ItemKind = "sticker_item"
+	ItemKindPatch          ItemKind = "patch"
+	ItemKindCharm          ItemKind = "charm"
+	ItemKindKeychain       ItemKind = "keychain"
+	ItemKindToolItem       ItemKind = "tool_item"
+	ItemKindWeaponSkin     ItemKind = "weapon_skin"
+	ItemKindStorageUnit    ItemKind = "storage_unit"
+	ItemKindItemCollection ItemKind = "item_collection"
+)
+
+type SnapshotStatus string
+
+const (
+	SnapshotStatusReady              SnapshotStatus = "ready"
+	SnapshotStatusLoading            SnapshotStatus = "loading"
+	SnapshotStatusError              SnapshotStatus = "error"
+	SnapshotStatusRequiresConnection SnapshotStatus = "requires_connection"
+)
+
+type StoreStatus string
+
+const (
+	StoreStatusReady              StoreStatus = "ready"
+	StoreStatusError              StoreStatus = "error"
+	StoreStatusRequiresConnection StoreStatus = "requires_connection"
+)
+
+type PurchaseStatus string
+
+const (
+	PurchaseStatusInitializing PurchaseStatus = "initializing"
+	PurchaseStatusAwaitingUser PurchaseStatus = "awaiting_user"
+	PurchaseStatusFinalizing   PurchaseStatus = "finalizing"
+	PurchaseStatusCompleted    PurchaseStatus = "completed"
+	PurchaseStatusFailed       PurchaseStatus = "failed"
+)
+
+type SteamInventoryServiceGame struct {
+	AppID           uint32 `json:"appId"`
+	Name            string `json:"name"`
+	PlaytimeMinutes uint32 `json:"playtimeMinutes"`
+	LastPlayed      uint32 `json:"lastPlayed"`
+	HasMarket       bool   `json:"hasMarket"`
+}
+
+type SteamInventoryServiceGames struct {
+	Games       []SteamInventoryServiceGame `json:"games"`
+	RefreshedAt string                      `json:"refreshedAt"`
+	Status      SnapshotStatus              `json:"status"`
+	Message     string                      `json:"message,omitempty"`
+	Diagnostics []string                    `json:"diagnostics"`
+}
+
 type ConnectionStatus struct {
-	State       string   `json:"state"`
-	Detail      string   `json:"detail,omitempty"`
-	SteamID     string   `json:"steamId,omitempty"`
-	AccountName string   `json:"accountName,omitempty"`
-	AvatarURL   string   `json:"avatarUrl,omitempty"`
-	Diagnostics []string `json:"diagnostics,omitempty"`
+	State          ConnectionState `json:"state"`
+	Detail         string          `json:"detail,omitempty"`
+	SteamID        string          `json:"steamId,omitempty"`
+	AccountName    string          `json:"accountName,omitempty"`
+	AvatarURL      string          `json:"avatarUrl,omitempty"`
+	Diagnostics    []string        `json:"diagnostics,omitempty"`
+	QRChallengeURL string          `json:"qrChallengeUrl,omitempty"`
 }
 
 type Sticker struct {
@@ -15,73 +96,221 @@ type Sticker struct {
 	Wear      *float64 `json:"wear,omitempty"`
 }
 
+type AppliedItem struct {
+	Kind     ItemKind `json:"kind"`
+	Slot     *uint32  `json:"slot,omitempty"`
+	ID       *uint32  `json:"id,omitempty"`
+	Name     string   `json:"name"`
+	ImageURL string   `json:"imageUrl,omitempty"`
+	Wear     *float64 `json:"wear,omitempty"`
+}
+
 type InventoryItem struct {
-	ID                 string     `json:"id"`
-	Name               string     `json:"name"`
-	MarketName         string     `json:"marketName,omitempty"`
-	MarketPrice        string     `json:"marketPrice,omitempty"`
-	MarketSalePrice    string     `json:"marketSalePrice,omitempty"`
-	MarketSellListings *int       `json:"marketSellListings,omitempty"`
-	CustomName         string     `json:"customName,omitempty"`
-	ImageURL           string     `json:"imageUrl,omitempty"`
-	Kind               string     `json:"kind"`
-	Defindex           *uint32    `json:"defindex,omitempty"`
-	PaintWear          *float64   `json:"paintWear,omitempty"`
-	Stickers           []Sticker  `json:"stickers,omitempty"`
-	StorageCount       *uint32    `json:"storageCount,omitempty"`
-	CasketID           *string    `json:"casketId,omitempty"`
-	Collection         string     `json:"collection,omitempty"`
-	Exterior           string     `json:"exterior,omitempty"`
-	Rarity             string     `json:"rarity,omitempty"`
-	StorageLocation    string     `json:"storageLocation,omitempty"`
-	ToolType           string     `json:"toolType,omitempty"`
-	UnsupportedFields  []string   `json:"unsupportedFields,omitempty"`
-	HasCustomName      bool       `json:"hasCustomName,omitempty"`
-	IsNameTagTool      bool       `json:"isNameTagTool,omitempty"`
-	Debug              *ItemDebug `json:"debug,omitempty"`
+	ID                      string          `json:"id"`
+	Name                    string          `json:"name"`
+	MarketName              string          `json:"marketName,omitempty"`
+	MarketPrice             string          `json:"marketPrice,omitempty"`
+	MarketSalePrice         string          `json:"marketSalePrice,omitempty"`
+	MarketSellListings      *int            `json:"marketSellListings,omitempty"`
+	CustomName              string          `json:"customName,omitempty"`
+	ImageURL                string          `json:"imageUrl,omitempty"`
+	InspectURL              string          `json:"inspectUrl,omitempty"`
+	Kind                    ItemKind        `json:"kind"`
+	Defindex                *uint32         `json:"defindex,omitempty"`
+	PaintWear               *float64        `json:"paintWear,omitempty"`
+	PaintWearMin            *float64        `json:"paintWearMin,omitempty"`
+	PaintWearMax            *float64        `json:"paintWearMax,omitempty"`
+	Stickers                []Sticker       `json:"stickers,omitempty"`
+	AppliedItems            []AppliedItem   `json:"appliedItems,omitempty"`
+	IsStatTrak              bool            `json:"isStatTrak,omitempty"`
+	IsSouvenir              bool            `json:"isSouvenir,omitempty"`
+	Tradable                *bool           `json:"tradable,omitempty"`
+	Marketable              *bool           `json:"marketable,omitempty"`
+	TradableAfter           string          `json:"tradableAfter,omitempty"`
+	StorageEligible         *bool           `json:"storageEligible,omitempty"`
+	StorageIneligibleReason string          `json:"storageIneligibleReason,omitempty"`
+	StorageCount            *uint32         `json:"storageCount,omitempty"`
+	GraffitiCharges         *uint32         `json:"graffitiCharges,omitempty"`
+	CasketID                *string         `json:"casketId,omitempty"`
+	Collection              string          `json:"collection,omitempty"`
+	CollectionItems         []RelatedItem   `json:"collectionItems,omitempty"`
+	TradeUpItems            []RelatedItem   `json:"tradeUpItems,omitempty"`
+	ContainerItems          []RelatedItem   `json:"containerItems,omitempty"`
+	TerminalOffers          []TerminalOffer `json:"terminalOffers,omitempty"`
+	TerminalPointsRemaining *uint32         `json:"terminalPointsRemaining,omitempty"`
+	IsTerminal              bool            `json:"isTerminal,omitempty"`
+	IsActiveTerminal        bool            `json:"isActiveTerminal,omitempty"`
+	Exterior                string          `json:"exterior,omitempty"`
+	Rarity                  string          `json:"rarity,omitempty"`
+	StorageLocation         string          `json:"storageLocation,omitempty"`
+	ToolType                string          `json:"toolType,omitempty"`
+	RequiredKeyDefIndexes   []uint32        `json:"requiredKeyDefIndexes,omitempty"`
+	UnsupportedFields       []string        `json:"unsupportedFields,omitempty"`
+	Diagnostics             []string        `json:"diagnostics,omitempty"`
+	HasCustomName           bool            `json:"hasCustomName,omitempty"`
+	IsNameTagTool           bool            `json:"isNameTagTool,omitempty"`
+	Debug                   *ItemDebug      `json:"debug,omitempty"`
+}
+
+type TerminalOffer struct {
+	FauxItemID     string      `json:"fauxItemId"`
+	GenerationTime uint32      `json:"generationTime,omitempty"`
+	PurchasePrice  uint32      `json:"purchasePrice,omitempty"`
+	Item           RelatedItem `json:"item"`
+}
+
+type RelatedItem struct {
+	Defindex    uint32        `json:"defindex,omitempty"`
+	PaintKit    uint32        `json:"paintKit,omitempty"`
+	Name        string        `json:"name"`
+	MarketName  string        `json:"marketName,omitempty"`
+	ListingName string        `json:"listingName,omitempty"`
+	Kind        ItemKind      `json:"kind,omitempty"`
+	Rarity      string        `json:"rarity,omitempty"`
+	ImageURL    string        `json:"imageUrl,omitempty"`
+	Price       string        `json:"price,omitempty"`
+	PaintWear   *float64      `json:"paintWear,omitempty"`
+	WearMin     *float64      `json:"wearMin,omitempty"`
+	WearMax     *float64      `json:"wearMax,omitempty"`
+	Items       []RelatedItem `json:"items,omitempty"`
 }
 
 type InventorySnapshot struct {
 	Items       []InventoryItem `json:"items"`
+	Collections []Collection    `json:"collections,omitempty"`
 	RefreshedAt string          `json:"refreshedAt"`
-	Status      string          `json:"status,omitempty"`
+	Status      SnapshotStatus  `json:"status,omitempty"`
 	Message     string          `json:"message,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	Diagnostics []string        `json:"diagnostics,omitempty"`
 }
 
-type FeatureFlags struct {
-	EnableStorageMutations bool `json:"enableStorageMutations"`
-	EnableContainerOpening bool `json:"enableContainerOpening"`
-	EnableInventoryDebug   bool `json:"enableInventoryDebug"`
-	EnableTradeups         bool `json:"enableTradeups"`
-	EnableStickerExtract   bool `json:"enableStickerExtract"`
-	EnableNameTags         bool `json:"enableNameTags"`
-	EnableItemDeletion     bool `json:"enableItemDeletion"`
-	EnableStatTrakSwap     bool `json:"enableStatTrakSwap"`
-	EnableStrangeParts     bool `json:"enableStrangeParts"`
-	EnableItemUse          bool `json:"enableItemUse"`
-	EnableToolApplication  bool `json:"enableToolApplication"`
-	EnableGifting          bool `json:"enableGifting"`
+type Collection struct {
+	Name  string        `json:"name"`
+	Items []RelatedItem `json:"items"`
 }
 
-type ItemDebug struct {
-	GCID                  string            `json:"gcId,omitempty"`
-	GCOriginalID          string            `json:"gcOriginalId,omitempty"`
-	GCDefIndex            uint32            `json:"gcDefIndex,omitempty"`
-	GCInventory           uint32            `json:"gcInventory,omitempty"`
-	GCQuantity            uint32            `json:"gcQuantity,omitempty"`
-	GCQuality             uint32            `json:"gcQuality,omitempty"`
-	GCRarity              uint32            `json:"gcRarity,omitempty"`
-	GCPaintKit            uint32            `json:"gcPaintKit,omitempty"`
-	DescriptionMatched    bool              `json:"descriptionMatched"`
-	MarketDescriptionUsed bool              `json:"marketDescriptionUsed"`
-	Attributes            map[string]uint32 `json:"attributes,omitempty"`
+type ArmoryOffer struct {
+	CampaignID     uint32        `json:"campaignId"`
+	RedeemID       uint32        `json:"redeemId"`
+	ExpectedCost   uint32        `json:"expectedCost"`
+	GenerationTime uint32        `json:"generationTime"`
+	ItemName       string        `json:"itemName,omitempty"`
+	Name           string        `json:"name,omitempty"`
+	Category       string        `json:"category,omitempty"`
+	Items          []RelatedItem `json:"items,omitempty"`
+}
+
+type ArmorySnapshot struct {
+	Balance        uint32         `json:"balance"`
+	GenerationTime uint32         `json:"generationTime"`
+	ItemIDs        []string       `json:"itemIds"`
+	Offers         []ArmoryOffer  `json:"offers"`
+	RefreshedAt    string         `json:"refreshedAt"`
+	Status         SnapshotStatus `json:"status"`
+	Message        string         `json:"message,omitempty"`
+	Diagnostics    []string       `json:"diagnostics,omitempty"`
+}
+
+type StoreOffer struct {
+	ID                       string        `json:"id"`
+	ItemLink                 string        `json:"itemLink"`
+	DefIndex                 uint32        `json:"defIndex"`
+	Name                     string        `json:"name"`
+	Description              string        `json:"description,omitempty"`
+	ImageURL                 string        `json:"imageUrl,omitempty"`
+	Category                 string        `json:"category,omitempty"`
+	Rarity                   string        `json:"rarity,omitempty"`
+	Currency                 string        `json:"currency"`
+	AmountMinor              uint64        `json:"amountMinor"`
+	FormattedPrice           string        `json:"formattedPrice"`
+	SaleAmountMinor          *uint64       `json:"saleAmountMinor,omitempty"`
+	FormattedSalePrice       string        `json:"formattedSalePrice,omitempty"`
+	RequiresSupplementalData bool          `json:"requiresSupplementalData"`
+	SupplementalDataKind     string        `json:"supplementalDataKind,omitempty"`
+	PurchaseType             uint32        `json:"-"`
+	Coupon                   bool          `json:"coupon"`
+	Purchasable              bool          `json:"purchasable"`
+	UnsupportedReason        string        `json:"unsupportedReason,omitempty"`
+	Items                    []RelatedItem `json:"items,omitempty"`
+}
+
+type StoreSnapshot struct {
+	Status            StoreStatus  `json:"status"`
+	PriceSheetVersion uint32       `json:"priceSheetVersion,omitempty"`
+	Currency          string       `json:"currency,omitempty"`
+	Offers            []StoreOffer `json:"offers"`
+	RefreshedAt       string       `json:"refreshedAt"`
+	Message           string       `json:"message,omitempty"`
+	Diagnostics       []string     `json:"diagnostics,omitempty"`
+}
+type PurchaseSession struct {
+	ID               string         `json:"id"`
+	Status           PurchaseStatus `json:"status"`
+	OfferID          string         `json:"offerId"`
+	DefIndex         uint32         `json:"defIndex"`
+	Name             string         `json:"name"`
+	Quantity         uint32         `json:"quantity"`
+	Currency         string         `json:"currency"`
+	AmountMinor      uint64         `json:"amountMinor"`
+	FormattedAmount  string         `json:"formattedAmount"`
+	TransactionID    string         `json:"transactionId,omitempty"`
+	OrderID          string         `json:"orderId,omitempty"`
+	CheckoutURL      string         `json:"checkoutUrl,omitempty"`
+	PurchasedItemIDs []string       `json:"purchasedItemIds,omitempty"`
+	CreatedAt        string         `json:"createdAt"`
+	ExpiresAt        string         `json:"expiresAt,omitempty"`
+	Message          string         `json:"message,omitempty"`
+	Diagnostics      []string       `json:"diagnostics,omitempty"`
+	ErrorCode        string         `json:"errorCode,omitempty"`
+	ErrorResult      *int32         `json:"errorResult,omitempty"`
+}
+
+type FeatureFlags struct {
+	EnableStorageMutations    bool `json:"enableStorageMutations"`
+	EnableContainerOpening    bool `json:"enableContainerOpening"`
+	EnableInventoryDebug      bool `json:"enableInventoryDebug"`
+	ShowStorageUnitItems      bool `json:"showStorageUnitItems"`
+	EnableProtocolConsole     bool `json:"enableProtocolConsole"`
+	EnableTradeups            bool `json:"enableTradeups"`
+	EnableNameTags            bool `json:"enableNameTags"`
+	EnableItemDeletion        bool `json:"enableItemDeletion"`
+	EnableStatTrakSwap        bool `json:"enableStatTrakSwap"`
+	EnableStrangeParts        bool `json:"enableStrangeParts"`
+	EnableItemUse             bool `json:"enableItemUse"`
+	EnableToolApplication     bool `json:"enableToolApplication"`
+	EnableGifting             bool `json:"enableGifting"`
+	EnableArmoryRead          bool `json:"enableArmoryRead"`
+	EnableArmoryRedemption    bool `json:"enableArmoryRedemption"`
+	EnableStoreRead           bool `json:"enableStoreRead"`
+	EnableStorePurchases      bool `json:"enableStorePurchases"`
+	EnableFullCS2Store        bool `json:"enableFullCs2Store"`
+	EnableCS2Loadouts         bool `json:"enableCs2Loadouts"`
+	EnableTF2Inventory        bool `json:"enableTf2Inventory"`
+	EnableTF2Store            bool `json:"enableTf2Store"`
+	EnableTF2Loadouts         bool `json:"enableTf2Loadouts"`
+	EnableTF2ItemUse          bool `json:"enableTf2ItemUse"`
+	EnableTF2Tools            bool `json:"enableTf2Tools"`
+	EnableTF2Crafting         bool `json:"enableTf2Crafting"`
+	EnableTF2Unboxing         bool `json:"enableTf2Unboxing"`
+	EnableTF2Customization    bool `json:"enableTf2Customization"`
+	EnableDota2Inventory      bool `json:"enableDota2Inventory"`
+	EnableSteamInventory      bool `json:"enableSteamInventory"`
+	EnableSteamTradeMutations bool `json:"enableSteamTradeMutations"`
 }
 
 type Settings struct {
-	BackendURL             string       `json:"backendUrl"`
-	ValidationMode         bool         `json:"validationMode"`
-	SacrificialAccountMode bool         `json:"sacrificialAccountMode"`
-	FeatureFlags           FeatureFlags `json:"featureFlags"`
+	BackendURL                  string            `json:"backendUrl"`
+	ValidationMode              bool              `json:"validationMode"`
+	SacrificialAccountMode      bool              `json:"sacrificialAccountMode"`
+	FeatureFlags                FeatureFlags      `json:"featureFlags"`
+	Animations                  AnimationSettings `json:"animations"`
+	ArmoryPurchasePacingSeconds uint32            `json:"armoryPurchasePacingSeconds"`
+}
+
+type AnimationSettings struct {
+	Container string `json:"container"`
+	TradeUp   string `json:"tradeUp"`
+	Armory    string `json:"armory"`
+	Terminal  string `json:"terminal"`
 }

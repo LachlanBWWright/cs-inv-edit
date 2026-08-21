@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - 'copilot/**'
+      - "copilot/**"
   pull_request:
 
 jobs:
@@ -14,31 +14,140 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: npm run lint
+      - name: Static checks
+        run: pnpm --silent static-check
 
       - name: Test
-        run: npm run test
+        run: pnpm test
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Build SolidJS Storybook
+        run: pnpm storybook:build
 
-      - name: Build shared shells
-        run: npm run build
+      - name: Install screenshot browser
+        run: pnpm --filter @cs-inv-edit/app exec playwright install --with-deps chromium
 
-      - name: Upload web and desktop artifacts
+      - name: Capture component screenshots
+        run: pnpm storybook:screenshot
+
+      - name: Upload component screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: cs-inv-edit-builds
+          name: storybook-screenshots
+          path: packages/app/artifacts/storybook/*.png
+          if-no-files-found: error
+
+      - name: Check generated API contracts
+        run: pnpm check:api-codegen
+
+      - name: Build shared shells
+        run: pnpm build
+
+  mac-app:
+    needs: quality
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build installable macOS app
+        run: pnpm build:mac
+
+      - name: Upload macOS DMG and ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: cs-inv-edit-macos-${{ runner.arch }}
           path: |
-            dist
-            dist-electron
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+          if-no-files-found: error
+
+  android-app:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Android web assets
+        run: pnpm build:wasm-web
+
+      - name: Sync Capacitor project
+        run: pnpm exec cap sync android
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build installable APK and release bundle
+        working-directory: android
+        run: ./gradlew assembleDebug bundleRelease
+
+      - name: Upload Android APK and AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: cs-inv-edit-android
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error

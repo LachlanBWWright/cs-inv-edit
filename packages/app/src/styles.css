@@ -3,39 +3,520 @@
 
 :root {
   color-scheme: dark;
-  --background: #020617;
-  --foreground: #f8fafc;
-  --surface: #0f172a;
-  --surface-strong: #111827;
-  --border: rgba(148, 163, 184, 0.18);
-  --accent: #22d3ee;
-  --accent-strong: #06b6d4;
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 28%), var(--background);
-  color: var(--foreground);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+.rarity-outline {
+  --rarity-color: 51 65 85;
+  border-color: rgb(var(--rarity-color));
 }
 
-* {
-  box-sizing: border-box;
+/* TF2 backend Quality labels from Steam description tags. */
+.economy-outline--tf2-normal {
+  --rarity-color: 178 178 178;
+}
+.economy-outline--tf2-unique {
+  --rarity-color: 255 215 0;
+}
+.economy-outline--tf2-vintage {
+  --rarity-color: 71 98 145;
+}
+.economy-outline--tf2-genuine {
+  --rarity-color: 77 116 85;
+}
+.economy-outline--tf2-strange {
+  --rarity-color: 207 106 50;
+}
+.economy-outline--tf2-unusual {
+  --rarity-color: 134 80 172;
+}
+.economy-outline--tf2-haunted {
+  --rarity-color: 56 243 171;
+}
+.economy-outline--tf2-collectors {
+  --rarity-color: 170 0 0;
+}
+.economy-outline--tf2-community,
+.economy-outline--tf2-selfmade {
+  --rarity-color: 112 176 74;
+}
+.economy-outline--tf2-decorated {
+  --rarity-color: 250 250 250;
+}
+.economy-outline--tf2-valve {
+  --rarity-color: 165 15 121;
+}
+
+/* Dota 2 backend Rarity labels from Steam description tags. */
+.economy-outline--dota-common {
+  --rarity-color: 176 195 217;
+}
+.economy-outline--dota-uncommon {
+  --rarity-color: 94 152 217;
+}
+.economy-outline--dota-rare {
+  --rarity-color: 75 105 255;
+}
+.economy-outline--dota-mythical {
+  --rarity-color: 136 71 255;
+}
+.economy-outline--dota-legendary {
+  --rarity-color: 211 44 230;
+}
+.economy-outline--dota-immortal {
+  --rarity-color: 228 174 57;
+}
+.economy-outline--dota-arcana {
+  --rarity-color: 173 229 92;
+}
+.economy-outline--dota-ancient {
+  --rarity-color: 235 75 75;
+}
+
+@layer base {
+  body {
+    @apply min-h-screen bg-slate-950 text-slate-50;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+  }
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 ::selection {
-  background: rgba(34, 211, 238, 0.35);
+  background: rgb(8 145 178);
 }
 
-.bg-app {
-  background: var(--background);
+* {
+  scrollbar-color: rgb(71 85 105) rgb(2 6 23);
+  scrollbar-width: thin;
 }
 
-.surface {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.96));
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-.panel-border {
-  border-color: var(--border);
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(2 6 23);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgb(2 6 23);
+  border-radius: 999px;
+  background: rgb(71 85 105);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(8 145 178);
+}
+
+::-webkit-scrollbar-corner {
+  background: rgb(2 6 23);
+}
+
+.inventory-item-card {
+  /* Keep badges and other positioned card decorations in the card's layer.
+     Without isolation, their z-index competes with sticky navigation overlays. */
+  isolation: isolate;
+  transition-property: background-color, border-color, box-shadow;
+}
+
+.inventory-item-card:hover,
+.inventory-item-card:focus-visible,
+.inventory-item-card.is-selected {
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--rarity-color)) 28%,
+    rgb(2 6 23)
+  );
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, rgb(var(--rarity-color)) 65%, rgb(2 6 23));
+  outline: none;
+}
+
+.tf2-effect-badges {
+  position: absolute;
+  right: 0.5rem;
+  top: 2.35rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.tf2-effect-badge {
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border: 1px solid currentcolor;
+  border-radius: 0.35rem;
+  background: rgb(2 6 23);
+}
+
+.tf2-effect-badge svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.tf2-effect-badge--strange {
+  color: rgb(207 106 50);
+}
+
+.tf2-effect-badge--unusual {
+  color: rgb(134 80 172);
+}
+
+.tf2-effect-badge--combined {
+  position: relative;
+  color: rgb(134 80 172);
+}
+
+.tf2-effect-badge--combined svg {
+  position: absolute;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.tf2-effect-badge--combined svg:first-child {
+  color: rgb(207 106 50);
+  transform: translate(-0.18rem, 0.18rem);
+}
+
+.tf2-effect-badge--combined svg:last-child {
+  transform: translate(0.18rem, -0.18rem);
+}
+
+.rarity-common {
+  /* Common — white */
+  --rarity-color: 176 195 217;
+}
+
+.rarity-uncommon {
+  /* Uncommon — baby blue */
+  --rarity-color: 94 152 217;
+}
+
+.rarity-rare {
+  /* Rare — blue */
+  --rarity-color: 75 105 255;
+}
+
+.rarity-mythical {
+  /* Mythical — purple */
+  --rarity-color: 136 71 255;
+}
+
+.rarity-legendary {
+  /* Legendary — hot pink */
+  --rarity-color: 211 44 230;
+}
+
+.rarity-ancient {
+  /* Ancient — red */
+  --rarity-color: 235 75 75;
+}
+
+.rarity-exceedingly-rare {
+  /* Exceedingly Rare — gold */
+  --rarity-color: 228 174 57;
+}
+
+.rarity-immortal {
+  /* Immortal / Contraband — gold-orange */
+  --rarity-color: 228 174 51;
+}
+
+.modal-backdrop {
+  background: rgb(2 6 23 / 0.7);
+}
+
+.reveal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.reveal-panel {
+  width: min(900px, 94vw);
+  overflow: hidden;
+  border: 1px solid rgb(51 65 85);
+  border-radius: 1.5rem;
+  background: rgb(2 6 23);
+  padding: 2rem 0;
+  box-shadow: 0 30px 100px rgb(0 0 0 / 0.55);
+  text-align: center;
+}
+
+.reveal-eyebrow {
+  margin: 0 0 1.5rem;
+  color: rgb(165 243 252);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.reveal-countdown {
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+  font-size: 7rem;
+  font-weight: 800;
+  color: white;
+}
+
+.reveal-window {
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem 0;
+}
+
+.reveal-marker {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgb(34 211 238);
+}
+
+.reveal-reel {
+  position: relative;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  transform: translateX(calc(0px - var(--reveal-start-offset, 88px)));
+}
+
+.reveal-reel.is-waiting {
+  will-change: transform;
+}
+
+.reveal-item {
+  width: 220px;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  border-width: 2px;
+  border-radius: 1rem;
+  background: rgb(15 23 42);
+  padding: 1rem;
+  color: rgb(241 245 249);
+  font-weight: 600;
+}
+
+.reveal-item.is-compact {
+  width: 176px;
+  min-height: 176px;
+  font-size: 0.8rem;
+}
+.reveal-item img {
+  width: 100%;
+  height: 120px;
+  object-fit: contain;
+}
+.reveal-item.is-compact img {
+  height: 90px;
+}
+.reveal-item-placeholder {
+  display: grid;
+  width: 100%;
+  height: 90px;
+  place-items: center;
+  color: rgb(71 85 105);
+  font-size: 2rem;
+}
+.wear-color-factory-new {
+  background-color: rgb(6 182 212);
+}
+.wear-color-minimal-wear {
+  background-color: rgb(16 185 129);
+}
+.wear-color-field-tested {
+  background-color: rgb(251 191 36);
+}
+.wear-color-well-worn {
+  background-color: rgb(249 115 22);
+}
+.wear-color-battle-scarred {
+  background-color: rgb(225 29 72);
+}
+.wear-color-impossible {
+  background-color: rgb(51 65 85);
+}
+
+.contract-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+.contract-desk {
+  width: min(920px, 96vw);
+  padding: clamp(1rem, 4vw, 3rem);
+  background: #211c16;
+  box-shadow: 0 32px 100px #000;
+}
+.contract-paper {
+  position: relative;
+  min-height: 560px;
+  overflow: hidden;
+  padding: clamp(2rem, 6vw, 5rem);
+  color: #24221d;
+  background-color: #d8d0b9;
+  box-shadow: 4px 8px 24px rgb(0 0 0 / 0.55);
+  font-family: Georgia, "Times New Roman", serif;
+  transform: rotate(-0.35deg);
+}
+.contract-paper h2 {
+  margin: 0.35rem 0 2rem;
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+.contract-kicker {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.contract-copy {
+  max-width: 650px;
+  font-size: clamp(0.9rem, 2vw, 1.1rem);
+  line-height: 1.75;
+}
+.contract-rule {
+  height: 1px;
+  margin: 2rem 0 1rem;
+  background: rgb(36 34 29);
+}
+.contract-sign-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.contract-canvas {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 150px;
+  cursor: crosshair;
+  touch-action: none;
+  border: 1px solid rgb(36 34 29 / 0.35);
+  border-bottom: 2px solid #24221d;
+  background: rgb(255 252 239);
+}
+.contract-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  font-family: Inter, sans-serif;
+}
+.contract-actions button,
+.contract-result button {
+  border: 1px solid #39352b;
+  padding: 0.65rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.contract-clear {
+  background: transparent;
+}
+.contract-submit,
+.contract-result button {
+  color: #eee8d5;
+  background: #34372e;
+}
+.contract-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.contract-seal {
+  position: absolute;
+  top: 3rem;
+  right: 3rem;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 3px double #7b2d29;
+  border-radius: 50%;
+  color: #7b2d29;
+  font-weight: 800;
+  transform: rotate(8deg);
+  opacity: 0.75;
+}
+.contract-result {
+  display: grid;
+  min-height: 330px;
+  place-items: center;
+  align-content: center;
+  gap: 1rem;
+  text-align: center;
+}
+.contract-result p {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.contract-result strong {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+}
+.contract-result img {
+  width: min(360px, 70vw);
+  height: 180px;
+  object-fit: contain;
+}
+@media (max-width: 540px) {
+  .contract-paper {
+    min-height: 520px;
+    padding: 2rem 1.25rem;
+  }
+  .contract-seal {
+    top: 1.25rem;
+    right: 1.25rem;
+    width: 45px;
+    height: 45px;
+  }
 }

@@ -1,11 +1,52 @@
+import { fileURLToPath } from "node:url";
 import js from "@eslint/js";
+import { fixupPluginRules } from "@eslint/compat";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import neverthrow from "eslint-plugin-neverthrow";
 
+const tsconfigRootDir = fileURLToPath(new URL(".", import.meta.url));
+const neverthrowRule = neverthrow.rules["must-use-result"];
+const patchedNeverthrowRule = {
+  ...neverthrowRule,
+  create(context) {
+    const parserServices = context.sourceCode.parserServices;
+    if (!parserServices) {
+      throw new Error(
+        "types not available, maybe you need set the parser to @typescript-eslint/parser",
+      );
+    }
+    const legacyContext = new Proxy(context, {
+      get(target, property, receiver) {
+        return property === "parserServices"
+          ? parserServices
+          : Reflect.get(target, property, receiver);
+      },
+    });
+    return neverthrowRule.create(legacyContext);
+  },
+};
+const patchedNeverthrow = fixupPluginRules({
+  ...neverthrow,
+  rules: {
+    ...neverthrow.rules,
+    "must-use-result": patchedNeverthrowRule,
+  },
+});
+
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "backend/**", "**/*.d.ts", "**/coverage/**", "**/*.config.{ts,js,mjs,cjs}", "**/vite.config.ts", "**/vitest.config.ts", "apps/desktop/src/renderer/**", "apps/desktop/src/preload/**"],
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "backend/**",
+      "**/*.d.ts",
+      "**/coverage/**",
+      "**/src/generated/**",
+      "**/*.config.{ts,js,mjs,cjs}",
+      "**/vite.config.ts",
+      "**/vitest.config.ts",
+    ],
   },
   {
     files: ["packages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}"],
@@ -18,15 +59,19 @@ export default [
           jsx: true,
         },
         project: "./tsconfig.eslint.json",
-        tsconfigRootDir: new URL(".", import.meta.url).pathname,
+        tsconfigRootDir,
       },
       globals: {
+        __dirname: "readonly",
+        __filename: "readonly",
         clearInterval: "readonly",
         clearTimeout: "readonly",
         console: "readonly",
         document: "readonly",
         fetch: "readonly",
+        module: "readonly",
         process: "readonly",
+        require: "readonly",
         setInterval: "readonly",
         setTimeout: "readonly",
         window: "readonly",
@@ -34,15 +79,57 @@ export default [
     },
     plugins: {
       "@typescript-eslint": tsPlugin,
-      neverthrow,
+      neverthrow: patchedNeverthrow,
     },
     rules: {
       ...js.configs.recommended.rules,
       ...tsPlugin.configs.recommended.rules,
       "max-depth": ["error", 3],
-      "max-lines": ["error", { max: 300, skipBlankLines: true, skipComments: true }],
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "max-lines": [
+        "error",
+        { max: 400, skipBlankLines: true, skipComments: true },
+      ],
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unsafe-argument": "error",
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
+      "@typescript-eslint/no-unsafe-type-assertion": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/naming-convention": [
+        "error",
+        {
+          selector: "variableLike",
+          format: ["camelCase", "PascalCase", "UPPER_CASE"],
+          leadingUnderscore: "allowSingleOrDouble",
+        },
+        {
+          selector: "typeLike",
+          format: ["PascalCase"],
+        },
+      ],
+      "neverthrow/must-use-result": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ThrowStatement",
+          message: "Use neverthrow results instead of exceptions.",
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "packages/**/*.{test,spec}.{ts,tsx}",
+      "apps/**/*.{test,spec}.{ts,tsx}",
+      "**/*.config.{ts,js,mjs,cjs}",
+    ],
+    rules: {
+      "neverthrow/must-use-result": "off",
     },
   },
 ];

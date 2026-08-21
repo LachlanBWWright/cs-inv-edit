@@ -4,6 +4,9 @@ bin/
 .cache/
 coverage/
 .nyc_output/
+storybook-static/
+artifacts/storybook/
+*.tsbuildinfo
 
 # Local environment and secrets
 .env
@@ -24,6 +27,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local Steam research captures (may contain account/session data)
+research/steam-purchase/logs/
+
 # Electron/package artifacts
 out/
 release/
@@ -36,3 +42,6 @@ release/
 *.test
 *.prof
 *.coverprofile
+
+# WebAssembly backend build outputs
+apps/web/public/wasm/

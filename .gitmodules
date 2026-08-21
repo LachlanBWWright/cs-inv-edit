@@ -1,3 +1,16 @@
 [submodule "proto/vendor/gametracking-cs2"]
 	path = proto/vendor/gametracking-cs2
 	url = https://github.com/SteamTracking/GameTracking-CS2.git
+[submodule "proto/vendor/gametracking-tf2"]
+	path = proto/vendor/gametracking-tf2
+	url = https://github.com/SteamTracking/GameTracking-TF2.git
+[submodule "proto/vendor/gametracking-dota2"]
+	path = proto/vendor/gametracking-dota2
+	url = https://github.com/SteamTracking/GameTracking-Dota2.git
+[submodule "vendor/counter-strike-image-tracker"]
+	path = vendor/counter-strike-image-tracker
+	url = https://github.com/ByMykel/counter-strike-image-tracker.git
+	shallow = true
+[submodule "proto/vendor/steam-protobufs"]
+	path = proto/vendor/steam-protobufs
+	url = https://github.com/SteamTracking/Protobufs.git

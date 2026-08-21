@@ -36,11 +36,28 @@ func (handler *nonAuthedUnifiedHandler) Register(handlers map[steamlang.EMsg]fun
 }
 
 func (handler *nonAuthedUnifiedHandler) SendNonAuthedMessage(conn steamcm.Connection, name string, body proto.Message) (*nonAuthedUnifiedResponse, error) {
+	return handler.sendMessage(context.Background(), conn, steamlang.EMsg(9804), name, body, 0, 8*time.Second)
+}
+
+func (handler *nonAuthedUnifiedHandler) SendAuthedMessage(ctx context.Context, conn steamcm.Connection, name string, body proto.Message) (*nonAuthedUnifiedResponse, error) {
+	return handler.sendMessage(ctx, conn, steamlang.EMsg_ServiceMethodCallFromClient, name, body, 0, 30*time.Second)
+}
+
+func (handler *nonAuthedUnifiedHandler) SendAuthedMessageForApp(ctx context.Context, conn steamcm.Connection, appID uint32, name string, body proto.Message) (*nonAuthedUnifiedResponse, error) {
+	return handler.sendMessage(ctx, conn, steamlang.EMsg_ServiceMethodCallFromClient, name, body, appID, 30*time.Second)
+}
+
+func (handler *nonAuthedUnifiedHandler) sendMessage(ctx context.Context, conn steamcm.Connection, emsg steamlang.EMsg, name string, body proto.Message, routingAppID uint32, timeout time.Duration) (*nonAuthedUnifiedResponse, error) {
 	jobID := conn.GetNextJobId()
-	header := steammsg.NewProtoHeader(steamlang.EMsg(9804))
+	header := steammsg.NewProtoHeader(emsg)
 	header.Proto.JobidSource = proto.Uint64(uint64(jobID))
 	header.Proto.TargetJobName = proto.String(name)
-	header.Proto.Realm = proto.Uint32(1)
+	if routingAppID != 0 {
+		header.Proto.RoutingAppid = proto.Uint32(routingAppID)
+	}
+	if emsg == steamlang.EMsg(9804) {
+		header.Proto.Realm = proto.Uint32(1)
+	}
 	packet, err := steammsg.EncodePacket(header, body, nil)
 	if err != nil {
 		return nil, err
@@ -58,9 +75,11 @@ func (handler *nonAuthedUnifiedHandler) SendNonAuthedMessage(conn steamcm.Connec
 		return nil, err
 	}
 	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case result := <-resultCh:
 		return result.value, result.err
-	case <-time.After(8 * time.Second):
+	case <-time.After(timeout):
 		return nil, context.DeadlineExceeded
 	}
 }

@@ -1,27 +1,191 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { ResultAsync, err, ok, fromThrowable } from "neverthrow";
+import type { AppError } from "@cs-inv-edit/app";
+import { backendSchemas } from "@cs-inv-edit/contracts";
+import type { EconomyGame } from "@cs-inv-edit/contracts";
+import type { SafeParseSchema } from "@cs-inv-edit/app";
+import { watchSteamStatusWithRecovery } from "@cs-inv-edit/app";
+
+function isAppError(value: unknown): value is AppError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof value.message === "string"
+  );
+}
+
+const invokeResult = <T>(
+  schema: SafeParseSchema<T>,
+  channel: string,
+  ...args: unknown[]
+) =>
+  ResultAsync.fromPromise<unknown, AppError>(
+    ipcRenderer.invoke(channel, ...args),
+    (cause) => ({ message: `Electron IPC failed for ${channel}`, cause }),
+  ).andThen((payload) => {
+    if (!payload || typeof payload !== "object" || !("ok" in payload))
+      return err({
+        message: `Invalid Electron IPC envelope for ${channel}`,
+        cause: payload,
+      });
+    if (payload.ok === false && "error" in payload && isAppError(payload.error))
+      return err(payload.error);
+    if (payload.ok !== true || !("value" in payload))
+      return err({
+        message: `Invalid Electron IPC envelope for ${channel}`,
+        cause: payload,
+      });
+    const parsed = schema.safeParse(payload.value);
+    return parsed.success
+      ? ok(parsed.data)
+      : err({
+          message: `Invalid Electron IPC payload for ${channel}`,
+          cause: parsed.error,
+        });
+  });
 
 const api = {
-  health: () => ipcRenderer.invoke("backend:health"),
-  inventory: () => ipcRenderer.invoke("backend:inventory"),
-  refreshInventory: () => ipcRenderer.invoke("backend:refreshInventory"),
-  submitOperation: (type: string, input?: unknown) => ipcRenderer.invoke("backend:submitOperation", type, input),
-  operations: () => ipcRenderer.invoke("backend:operations"),
-  events: () => ipcRenderer.invoke("backend:events"),
-  settings: () => ipcRenderer.invoke("backend:settings"),
-  steamStatus: () => ipcRenderer.invoke("backend:steamStatus"),
-  connectSteam: (input?: unknown) => ipcRenderer.invoke("backend:connectSteam", input),
-  submitSteamGuard: (input?: unknown) => ipcRenderer.invoke("backend:submitSteamGuard", input),
-  disconnectSteam: () => ipcRenderer.invoke("backend:disconnectSteam"),
-  applyNameTag: (input: unknown) => ipcRenderer.invoke("backend:applyNameTag", input),
-  removeNameTag: (input: unknown) => ipcRenderer.invoke("backend:removeNameTag", input),
-  deleteItem: (input: unknown) => ipcRenderer.invoke("backend:deleteItem", input),
-  applyStatTrakSwap: (input: unknown) => ipcRenderer.invoke("backend:applyStatTrakSwap", input),
-  applyStrangePart: (input: unknown) => ipcRenderer.invoke("backend:applyStrangePart", input),
-  useItem: (input: unknown) => ipcRenderer.invoke("backend:useItem", input),
-  useMultipleItems: (input: unknown) => ipcRenderer.invoke("backend:useMultipleItems", input),
-  applyToolToItem: (input: unknown) => ipcRenderer.invoke("backend:applyToolToItem", input),
-  applyToolToBaseItem: (input: unknown) => ipcRenderer.invoke("backend:applyToolToBaseItem", input),
-  giftItem: (input: unknown) => ipcRenderer.invoke("backend:giftItem", input),
+  health: () => invokeResult(backendSchemas.health, "backend:health"),
+  inventory: () => invokeResult(backendSchemas.inventory, "backend:inventory"),
+  refreshInventory: () =>
+    invokeResult(backendSchemas.receipt, "backend:refreshInventory"),
+  gameInventory: (game: EconomyGame) =>
+    invokeResult(backendSchemas.gameInventory, "backend:gameInventory", game),
+  refreshGameInventory: (game: EconomyGame) =>
+    invokeResult(backendSchemas.receipt, "backend:refreshGameInventory", game),
+  tf2Features: () =>
+    invokeResult(backendSchemas.tf2Features, "backend:tf2Features"),
+  cs2Features: () =>
+    invokeResult(backendSchemas.cs2Features, "backend:cs2Features"),
+  steamInventoryService: (appId: number) =>
+    invokeResult(
+      backendSchemas.gameInventory,
+      "backend:steamInventoryService",
+      appId,
+    ),
+  steamInventoryServiceGames: () =>
+    invokeResult(
+      backendSchemas.steamInventoryServiceGames,
+      "backend:steamInventoryServiceGames",
+    ),
+  refreshSteamInventoryService: (appId: number) =>
+    invokeResult(
+      backendSchemas.receipt,
+      "backend:refreshSteamInventoryService",
+      appId,
+    ),
+  armory: () => invokeResult(backendSchemas.armory, "backend:armory"),
+  marketPreview: (marketName: string) =>
+    invokeResult(
+      backendSchemas.marketPreview,
+      "backend:marketPreview",
+      marketName,
+    ),
+  refreshArmory: () =>
+    invokeResult(backendSchemas.receipt, "backend:refreshArmory"),
+  redeemArmory: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:redeemArmory", input),
+  store: () => invokeResult(backendSchemas.store, "backend:store"),
+  refreshStore: () =>
+    invokeResult(backendSchemas.receipt, "backend:refreshStore"),
+  trades: () => invokeResult(backendSchemas.trades, "backend:trades"),
+  refreshTrades: () =>
+    invokeResult(backendSchemas.trades, "backend:refreshTrades"),
+  tradeAccounts: () =>
+    invokeResult(backendSchemas.tradeAccounts, "backend:tradeAccounts"),
+  refreshTradeAccounts: (steamId?: string) =>
+    invokeResult(
+      backendSchemas.tradeAccounts,
+      "backend:refreshTradeAccounts",
+      steamId,
+    ),
+  createTradeOffer: (input: unknown) =>
+    invokeResult(
+      backendSchemas.tradeMutation,
+      "backend:createTradeOffer",
+      input,
+    ),
+  acceptTradeOffer: (id: string) =>
+    invokeResult(backendSchemas.tradeMutation, "backend:acceptTradeOffer", id),
+  counterTradeOffer: (id: string, input: unknown) =>
+    invokeResult(
+      backendSchemas.tradeMutation,
+      "backend:counterTradeOffer",
+      id,
+      input,
+    ),
+  initializeStorePurchase: (input: unknown) =>
+    invokeResult(
+      backendSchemas.purchaseSession,
+      "backend:initializeStorePurchase",
+      input,
+    ),
+  storePurchase: (id: string) =>
+    invokeResult(backendSchemas.purchaseSession, "backend:storePurchase", id),
+  reconcileStorePurchase: (id: string) =>
+    invokeResult(
+      backendSchemas.purchaseSession,
+      "backend:reconcileStorePurchase",
+      id,
+    ),
+  submitOperation: (type: string, input?: unknown) =>
+    invokeResult(
+      backendSchemas.receipt,
+      "backend:submitOperation",
+      type,
+      input,
+    ),
+  operations: () => invokeResult(backendSchemas.receipts, "backend:operations"),
+  events: () => invokeResult(backendSchemas.events, "backend:events"),
+  protocolTrace: (after: number) =>
+    invokeResult(backendSchemas.protocolTrace, "backend:protocolTrace", after),
+  settings: () => invokeResult(backendSchemas.settings, "backend:settings"),
+  steamStatus: () =>
+    invokeResult(backendSchemas.connection, "backend:steamStatus"),
+  connectSteam: (input?: unknown) =>
+    invokeResult(backendSchemas.connection, "backend:connectSteam", input),
+  startSteamQR: () =>
+    invokeResult(backendSchemas.connection, "backend:startSteamQR"),
+  watchSteamStatus: (listener: (status: unknown) => void) => {
+    const parse = fromThrowable(JSON.parse, (cause) => cause);
+    return watchSteamStatusWithRecovery({
+      socketUrl: "ws://127.0.0.1:7331/steam/status/ws",
+      readStatus: api.steamStatus,
+      listener,
+      parseMessage: (message) =>
+        parse(message)
+          .map((value) => backendSchemas.connection.safeParse(value))
+          .match(
+            (result) => (result.success ? result.data : undefined),
+            () => undefined,
+          ),
+    });
+  },
+  submitSteamGuard: (input?: unknown) =>
+    invokeResult(backendSchemas.connection, "backend:submitSteamGuard", input),
+  disconnectSteam: () =>
+    invokeResult(backendSchemas.connection, "backend:disconnectSteam"),
+  applyNameTag: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:applyNameTag", input),
+  removeNameTag: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:removeNameTag", input),
+  deleteItem: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:deleteItem", input),
+  applyStatTrakSwap: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:applyStatTrakSwap", input),
+  applyStrangePart: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:applyStrangePart", input),
+  useItem: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:useItem", input),
+  useMultipleItems: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:useMultipleItems", input),
+  applyToolToItem: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:applyToolToItem", input),
+  applyToolToBaseItem: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:applyToolToBaseItem", input),
+  giftItem: (input: unknown) =>
+    invokeResult(backendSchemas.receipt, "backend:giftItem", input),
 };
 
 contextBridge.exposeInMainWorld("cs2", api);

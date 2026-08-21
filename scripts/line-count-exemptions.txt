@@ -1,0 +1,1 @@
+# No line-count exemptions. Keep production and test modules within the configured limit.

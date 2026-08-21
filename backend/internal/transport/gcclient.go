@@ -5,24 +5,51 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Lucino772/envelop/pkg/steam/steamcm"
 )
 
 type SteamGCClient struct {
-	mu          sync.Mutex
-	conn        *steamcm.SteamConnection
-	events      chan GCEvent
-	state       GCConnectionState
-	pendingAuth *steamAuthSession
+	mu                sync.Mutex
+	sessionMu         sync.Mutex
+	requestMu         sync.Mutex
+	conn              *steamcm.SteamConnection
+	events            chan GCEvent
+	microTxnAuth      chan []byte
+	state             GCConnectionState
+	pendingAuth       *steamAuthSession
+	activeSteamID     uint64
+	connectionEpoch   uint64
+	reauthCredentials LogonCredentials
+	gamesPlayed       []uint32
+	heartbeatCancel   context.CancelFunc
+	lastWelcome       []byte
+	steamTraceActive  atomic.Bool
+	protocolMu        sync.Mutex
+	protocolEnabled   bool
+	protocolNextID    uint64
+	protocolTrace     []ProtocolTraceEntry
+	tf2Mu             sync.Mutex
+	tf2Features       TF2FeatureSnapshot
+	cs2Mu             sync.Mutex
+	cs2Features       CS2FeatureSnapshot
+	cs2SOTypes        map[int32]string
+	httpClient        *http.Client
 }
 
 func NewSteamGCClient() *SteamGCClient {
 	return &SteamGCClient{
-		events: make(chan GCEvent, 64),
-		state:  GCConnectionState{State: "disconnected"},
+		events:       make(chan GCEvent, 64),
+		microTxnAuth: make(chan []byte, 8),
+		state:        GCConnectionState{State: "disconnected"},
+		tf2Features:  emptyTF2FeatureSnapshot(),
+		cs2Features:  emptyCS2FeatureSnapshot(),
+		cs2SOTypes:   make(map[int32]string),
+		httpClient:   newSteamCloudHTTPClient(),
 	}
 }
 
@@ -43,10 +70,18 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 
 	events := s.events
 	unified := newNonAuthedUnifiedHandler()
-	conn := steamcm.NewSteamConnection(
+	var conn *steamcm.SteamConnection
+	conn = steamcm.NewSteamConnection(
 		steamcm.NewSteamBaseHandler(),
 		unified,
-		NewGCHandler(events),
+		NewGCHandler(events, &s.steamTraceActive, s.recordIncomingProtocol, s.recordGCProtocol, func(eventType string) {
+			s.handleSteamSessionEnded(conn, eventType)
+		}, func(body []byte) {
+			select {
+			case s.microTxnAuth <- append([]byte(nil), body...):
+			default:
+			}
+		}),
 	)
 	s.mu.Lock()
 	s.conn = conn
@@ -54,7 +89,7 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- connectSteamCM(conn, diagnostics)
+		errCh <- connectSteamCMWithRetry(conn, diagnostics, 3, 750*time.Millisecond)
 	}()
 
 	select {
@@ -110,8 +145,51 @@ func (s *SteamGCClient) Close() error {
 	}
 	s.conn = nil
 	s.pendingAuth = nil
+	if s.heartbeatCancel != nil {
+		s.heartbeatCancel()
+		s.heartbeatCancel = nil
+	}
+	s.activeSteamID = 0
+	s.reauthCredentials = LogonCredentials{}
+	s.gamesPlayed = nil
+	s.connectionEpoch++
+	s.lastWelcome = nil
 	s.state = GCConnectionState{State: "closed"}
 	return nil
+}
+
+func (s *SteamGCClient) handleSteamSessionEnded(conn *steamcm.SteamConnection, eventType string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn != conn {
+		return
+	}
+	if s.heartbeatCancel != nil {
+		s.heartbeatCancel()
+		s.heartbeatCancel = nil
+	}
+	s.conn = nil
+	s.activeSteamID = 0
+	s.connectionEpoch++
+	s.lastWelcome = nil
+	s.state = GCConnectionState{State: "session_lost:" + eventType}
+}
+
+func (s *SteamGCClient) activateAuthenticatedAccount(steamID uint64) {
+	s.mu.Lock()
+	s.activeSteamID = steamID
+	s.connectionEpoch++
+	// ClientWelcome and its SOCaches belong to exactly one authenticated
+	// account and connection epoch. Never expose them after a relogin.
+	s.lastWelcome = nil
+	s.mu.Unlock()
+	s.tf2Mu.Lock()
+	s.tf2Features = emptyTF2FeatureSnapshot()
+	s.tf2Mu.Unlock()
+	s.cs2Mu.Lock()
+	s.cs2Features = emptyCS2FeatureSnapshot()
+	s.cs2SOTypes = make(map[int32]string)
+	s.cs2Mu.Unlock()
 }
 
 func (s *SteamGCClient) clearConn(conn *steamcm.SteamConnection) {
@@ -153,6 +231,24 @@ func connectSteamCM(conn *steamcm.SteamConnection, diagnostics steamCMDiagnostic
 	return conn.Connect()
 }
 
+func connectSteamCMWithRetry(conn *steamcm.SteamConnection, diagnostics steamCMDiagnostics, attempts int, delay time.Duration) error {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := connectSteamCM(conn, diagnostics); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < attempts {
+			time.Sleep(delay)
+		}
+	}
+	return fmt.Errorf("steam cm transport startup failed after %d attempts: %w", attempts, lastErr)
+}
+
 func diagnoseSteamCM() (steamCMDiagnostics, error) {
 	lines := []string{"steam cm directory lookup started"}
 	servers := steamcm.NewServers()
@@ -163,8 +259,20 @@ func diagnoseSteamCM() (steamCMDiagnostics, error) {
 	records := servers.Records()
 	lines = append(lines, fmt.Sprintf("steam cm directory returned %d candidate records", len(records)))
 	if len(records) == 0 {
-		wrapped := fmt.Errorf("steam cm directory returned no connectable servers")
-		return steamCMDiagnostics{RecordCount: len(records), TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		lines = append(lines, "steam cm directory returned no connectable servers; trying DNS fallback")
+		addresses, err := net.LookupHost("cm0.steampowered.com")
+		if err != nil {
+			wrapped := fmt.Errorf("steam cm DNS fallback failed: %w", err)
+			return steamCMDiagnostics{RecordCount: 0, TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		}
+		for _, address := range addresses {
+			records = append(records, &steamcm.ServerRecord{Host: address, Port: 27017})
+		}
+		lines = append(lines, fmt.Sprintf("steam cm DNS fallback returned %d candidate records", len(records)))
+		if len(records) == 0 {
+			wrapped := fmt.Errorf("steam cm directory and DNS fallback returned no connectable servers")
+			return steamCMDiagnostics{RecordCount: 0, TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		}
 	}
 
 	var lastErr error

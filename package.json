@@ -1,32 +1,63 @@
 {
   "name": "cs-inv-edit",
   "private": true,
+  "packageManager": "pnpm@11.21.0",
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "dev:desktop": "npm run build:backend && npm run dev -w @cs-inv-edit/desktop",
-    "dev:web": "npm run dev -w @cs-inv-edit/web",
-    "build": "npm run build -ws --if-present && npm run build:backend",
+    "dev:desktop": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop dev",
+    "dev:web": "pnpm --filter @cs-inv-edit/web dev",
+    "build": "pnpm -r --if-present build && pnpm build:services",
     "build:backend": "go build -o bin/cs2-backend ./backend/cmd/cs2-backend",
+    "build:data-service": "go build -o bin/data-service ./backend/cmd/data-service",
+    "build:services": "pnpm build:backend && pnpm build:data-service",
     "build:repo": "./scripts/build.sh",
     "test:backend": "go test ./backend/...",
     "test:frontend": "vitest run",
     "test": "./scripts/test.sh",
-    "lint": "eslint .",
+    "storybook": "pnpm --filter @cs-inv-edit/app storybook",
+    "storybook:build": "pnpm --filter @cs-inv-edit/app build:storybook",
+    "storybook:screenshot": "pnpm --filter @cs-inv-edit/app storybook:screenshot",
+    "lint": "pnpm -r --if-present lint",
+    "static-check": "./scripts/static-check.sh",
+    "format": "prettier --write .",
+    "generate:api": "./scripts/generate-api-contracts.sh",
+    "check:api-codegen": "./scripts/check-api-codegen.sh",
+    "typecheck": "pnpm -r --if-present typecheck",
     "run": "./scripts/run.sh",
-    "check": "npm run lint && npm run build && npm run test",
-    "test-backend": "./bin/cs2-backend"
+    "check": "pnpm lint && pnpm typecheck && pnpm test:frontend && pnpm test:backend && pnpm build && pnpm find:long-files && pnpm find:deep-indentation && pnpm check:api-codegen",
+    "find:deep-indentation": "./scripts/find-deep-indentation.sh",
+    "find:long-files": "./scripts/find-long-files.sh",
+    "test-backend": "./bin/cs2-backend",
+    "build:wasm-backend": "mkdir -p apps/web/public/wasm && wasm_exec=\"$(go env GOROOT)/lib/wasm/wasm_exec.js\" && if [ ! -f \"$wasm_exec\" ]; then wasm_exec=\"$(go env GOROOT)/misc/wasm/wasm_exec.js\"; fi && rm -f apps/web/public/wasm/wasm_exec.js && cp \"$wasm_exec\" apps/web/public/wasm/wasm_exec.js && GOOS=js GOARCH=wasm go build -o apps/web/public/wasm/cs2-backend.wasm ./backend/cmd/wasm-backend",
+    "build:wasm-web": "pnpm build:wasm-backend && pnpm --filter @cs-inv-edit/web build",
+    "build:android": "pnpm build:wasm-web && cap sync android && cd android && ./gradlew assembleDebug bundleRelease",
+    "build:mac": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop package:mac"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
+    "@eslint/compat": "^2.1.0",
     "@eslint/js": "^10.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.63.0",
-    "@typescript-eslint/parser": "^8.63.0",
-    "eslint": "^10.6.0",
+    "@hey-api/openapi-ts": "0.99.0",
+    "@types/node": "^24.13.3",
+    "@typescript-eslint/eslint-plugin": "^8.64.0",
+    "@typescript-eslint/parser": "^8.64.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.7.0",
     "eslint-plugin-neverthrow": "^1.1.4",
+    "prettier": "^3.9.6",
     "typescript": "^5.9.3",
+    "vite": "^7.3.6",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "neverthrow": "^8.2.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   }
 }

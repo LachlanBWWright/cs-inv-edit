@@ -2,10 +2,12 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"testing"
 
 	"cs-inv-edit/backend/internal/protocol"
+	"github.com/Lucino772/envelop/pkg/steam/steamcm"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 	"github.com/Lucino772/envelop/pkg/steam/steammsg"
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
@@ -54,13 +56,48 @@ func TestEncodeGCClientPacketWrapsPayload(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedSteamIDPrefersResponseHeaderIdentity(t *testing.T) {
+	const placeholderSteamID uint64 = 76561197960265728
+	const authenticatedID uint64 = 76561198000000000
+
+	response := steamLogonResponse{
+		Body:    &steampb.CMsgClientLogonResponse{ClientSuppliedSteamid: proto.Uint64(placeholderSteamID)},
+		SteamID: authenticatedID,
+	}
+	if got := authenticatedSteamID(response); got != authenticatedID {
+		t.Fatalf("authenticatedSteamID()=%d, want response-header SteamID %d", got, authenticatedID)
+	}
+}
+
+func TestSteamMachineIDUsesSteamKitMessageObjectShape(t *testing.T) {
+	machineID := steamMachineID("example")
+	values := map[string]any{}
+	reader := bytes.NewReader(machineID)
+	if kind, err := reader.ReadByte(); err != nil || kind != 0 {
+		t.Fatalf("machine ID root kind=%d err=%v", kind, err)
+	}
+	root, err := readCString(reader)
+	if err != nil || root != "MessageObject" {
+		t.Fatalf("machine ID root=%q err=%v", root, err)
+	}
+	if err := parseBinaryKV(reader, values); err != nil {
+		t.Fatalf("parse machine ID: %v", err)
+	}
+	for _, key := range []string{"bb3", "ff2", "3b3"} {
+		value, ok := values[key].(string)
+		if !ok || len(value) != 40 {
+			t.Fatalf("machine ID %s=%#v", key, values[key])
+		}
+	}
+}
+
 func TestEncodeGamesPlayedPacketAdvertisesCS2(t *testing.T) {
 	packet, err := encodeGamesPlayedPacket(730)
 	if err != nil {
 		t.Fatalf("encodeGamesPlayedPacket returned error: %v", err)
 	}
-	if packet.MsgType() != steamlang.EMsg_ClientGamesPlayed {
-		t.Fatalf("expected ClientGamesPlayed packet, got %v", packet.MsgType())
+	if packet.MsgType() != steamlang.EMsg_ClientGamesPlayedWithDataBlob {
+		t.Fatalf("expected ClientGamesPlayedWithDataBlob packet, got %v", packet.MsgType())
 	}
 	var body steampb.CMsgClientGamesPlayed
 	if _, err := steammsg.DecodePacket(packet, &body); err != nil {
@@ -73,8 +110,25 @@ func TestEncodeGamesPlayedPacketAdvertisesCS2(t *testing.T) {
 	if game.GetGameId() != 730 {
 		t.Fatalf("expected CS2 app id 730, got %d", game.GetGameId())
 	}
-	if game.GetGameExtraInfo() != "Counter-Strike 2" {
-		t.Fatalf("unexpected game extra info %q", game.GetGameExtraInfo())
+	if game.GameExtraInfo != nil {
+		t.Fatalf("real app presence must omit game_extra_info, got %q", game.GetGameExtraInfo())
+	}
+}
+
+func TestEncodeGamesPlayedPacketKeepsCS2ActiveWithAnotherEconomyGame(t *testing.T) {
+	packet, err := encodeGamesPlayedPacketForApps([]uint32{730, 440})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body steampb.CMsgClientGamesPlayed
+	if _, err := steammsg.DecodePacket(packet, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.GetGamesPlayed()) != 2 || body.GetGamesPlayed()[0].GetGameId() != 730 || body.GetGamesPlayed()[1].GetGameId() != 440 {
+		t.Fatalf("games played = %#v", body.GetGamesPlayed())
+	}
+	if body.GetGamesPlayed()[0].GameExtraInfo != nil || body.GetGamesPlayed()[1].GameExtraInfo != nil {
+		t.Fatalf("real app presence must omit game_extra_info: %#v", body.GetGamesPlayed())
 	}
 }
 
@@ -119,5 +173,63 @@ func TestSteamGCClientSendToGCRequiresConnection(t *testing.T) {
 	}
 	if err := client.SendGamesPlayed(t.Context(), 730); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("expected ErrNotConnected, got %v", err)
+	}
+}
+
+func TestSteamGCClientSendToGCHonorsCancelledContextBeforeTransmission(t *testing.T) {
+	client := NewSteamGCClient()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := client.SendProtoToGC(ctx, 730, 9209, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+}
+
+func TestAuthenticatedAccountEpochClearsPreviousClientWelcome(t *testing.T) {
+	client := NewSteamGCClient()
+	client.lastWelcome = []byte{1, 2, 3}
+	client.activeSteamID = 111
+	client.connectionEpoch = 4
+
+	client.activateAuthenticatedAccount(222)
+
+	if client.activeSteamID != 222 || client.connectionEpoch != 5 {
+		t.Fatalf("identity=%d epoch=%d", client.activeSteamID, client.connectionEpoch)
+	}
+	if len(client.lastWelcome) != 0 {
+		t.Fatalf("new account inherited ClientWelcome bytes: %x", client.lastWelcome)
+	}
+}
+
+func TestSteamSessionEndInvalidatesConnectionButRetainsReauthState(t *testing.T) {
+	client := NewSteamGCClient()
+	conn := &steamcm.SteamConnection{}
+	client.conn = conn
+	client.state = GCConnectionState{State: "logged_on"}
+	client.activeSteamID = 76561198000000000
+	client.lastWelcome = []byte{1, 2, 3}
+	client.reauthCredentials = LogonCredentials{Username: "test", AccessToken: "refresh-token"}
+	client.gamesPlayed = []uint32{730}
+
+	client.handleSteamSessionEnded(conn, "steam.logged_off")
+
+	if client.conn != nil || client.activeSteamID != 0 || len(client.lastWelcome) != 0 {
+		t.Fatalf("ended session retained live state: conn=%v steamID=%d welcome=%x", client.conn, client.activeSteamID, client.lastWelcome)
+	}
+	if client.state.State != "session_lost:steam.logged_off" {
+		t.Fatalf("state = %q", client.state.State)
+	}
+	if client.reauthCredentials.AccessToken != "refresh-token" || len(client.gamesPlayed) != 1 || client.gamesPlayed[0] != 730 {
+		t.Fatalf("recovery state was discarded: credentials=%#v games=%v", client.reauthCredentials, client.gamesPlayed)
+	}
+}
+
+func TestEncodeClientHeartbeatPacket(t *testing.T) {
+	packet, err := encodeClientHeartbeatPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.MsgType() != steamlang.EMsg_ClientHeartBeat || !packet.IsProto() {
+		t.Fatalf("heartbeat packet type=%v proto=%t", packet.MsgType(), packet.IsProto())
 	}
 }

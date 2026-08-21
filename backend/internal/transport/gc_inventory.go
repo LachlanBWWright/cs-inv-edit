@@ -3,403 +3,347 @@ package transport
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"math"
 	"time"
 
-	"cs-inv-edit/backend/internal/proto/generated"
+	"cs-inv-edit/backend/internal/proto/dota2tracking"
+	"cs-inv-edit/backend/internal/proto/tf2tracking"
+	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
-	"github.com/Lucino772/envelop/pkg/steam"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
-	"github.com/Lucino772/envelop/pkg/steam/steammsg"
-	"github.com/Lucino772/envelop/pkg/steam/steampb"
-	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
+func sessionConflictError(err error) error {
+	var resultErr steamResultError
+	if errors.As(err, &resultErr) && (resultErr.result == steamlang.EResult_LoggedInElsewhere || resultErr.result == steamlang.EResult_AlreadyLoggedInElsewhere) {
+		return SteamSessionConflictError{Result: int32(resultErr.result)}
+	}
+	return err
+}
+
+// cs2ClientVersion must match game/csgo/steam.inf in the pinned
+// proto/vendor/gametracking-cs2 revision.
+const cs2ClientVersion uint32 = 2000877
+
 func (s *SteamGCClient) SendGamesPlayed(_ context.Context, appID uint32) error {
+	return s.sendGamesPlayed([]uint32{appID})
+}
+
+func (s *SteamGCClient) SetGamesPlayed(_ context.Context, appIDs []uint32) error {
+	return s.sendGamesPlayed(appIDs)
+}
+
+func (s *SteamGCClient) sendGamesPlayed(appIDs []uint32) error {
 	s.mu.Lock()
 	conn := s.conn
 	s.mu.Unlock()
 	if conn == nil {
 		return ErrNotConnected
 	}
-	packet, err := encodeGamesPlayedPacket(appID)
+	packet, err := encodeGamesPlayedPacketForApps(appIDs)
 	if err != nil {
 		return err
 	}
 	if err := conn.SendPacket(packet); err != nil {
 		return err
 	}
-	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appid=%d gameid=%d", steamlang.EMsg_ClientGamesPlayed.String(), appID, steamAppGameID(appID))}
-	return nil
-}
-
-func (s *SteamGCClient) SendToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
-	return s.sendToGC(appID, emsg, body, false)
-}
-
-func (s *SteamGCClient) SendProtoToGC(_ context.Context, appID uint32, emsg uint32, body []byte) error {
-	return s.sendToGC(appID, emsg, body, true)
-}
-
-func (s *SteamGCClient) sendToGC(appID uint32, emsg uint32, body []byte, protobufPayload bool) error {
 	s.mu.Lock()
-	conn := s.conn
+	s.gamesPlayed = append([]uint32(nil), appIDs...)
 	s.mu.Unlock()
-	if conn == nil {
-		return ErrNotConnected
-	}
-	packet, err := encodeGCClientPacket(appID, emsg, body, protobufPayload)
-	if err != nil {
-		return err
-	}
-	if err := conn.SendPacket(packet); err != nil {
-		return err
-	}
-	diagnosticEMsg := emsg
-	if protobufPayload {
-		diagnosticEMsg = emsg | protoMask
-	}
-	s.events <- GCEvent{Type: "gc.sent", Payload: GCMessage{AppID: appID, EMsg: diagnosticEMsg, Body: append([]byte(nil), packetBodyForDiagnostics(emsg, body, protobufPayload)...)}}
+	s.events <- GCEvent{Type: "steam.games_played.sent", Payload: fmt.Sprintf("emsg=%s appids=%v", steamlang.EMsg_ClientGamesPlayedWithDataBlob.String(), appIDs)}
 	return nil
 }
 
-func packetBodyForDiagnostics(emsg uint32, body []byte, protobufPayload bool) []byte {
-	if !protobufPayload {
-		return body
-	}
-	payload, err := encodeGCProtoPayload(emsg, body)
-	if err != nil {
-		return body
-	}
-	return payload
+func (s *SteamGCClient) ensureGamesPlayedIncludes(appIDs ...uint32) error {
+	s.mu.Lock()
+	current := append([]uint32(nil), s.gamesPlayed...)
+	s.mu.Unlock()
+	return s.sendGamesPlayed(mergeGamesPlayed(current, appIDs))
 }
 
-func (s *SteamGCClient) RequestInventory(ctx context.Context) ([]GCInventoryItem, error) {
-	trace := newDiagnosticTrace("cs2 gc inventory request started")
-	if err := s.SendGamesPlayed(ctx, protocol.AppIDCS2); err != nil {
-		wrapped := fmt.Errorf("cs2 games played presence failed: %w", err)
-		return nil, trace.Error(wrapped)
+func mergeGamesPlayed(current, required []uint32) []uint32 {
+	seen := make(map[uint32]struct{}, len(current)+len(required))
+	merged := make([]uint32, 0, len(current)+len(required))
+	for _, appID := range append(append([]uint32(nil), current...), required...) {
+		if _, exists := seen[appID]; exists {
+			continue
+		}
+		seen[appID] = struct{}{}
+		merged = append(merged, appID)
 	}
-	trace.Add("cs2 games played presence sent")
-	body, err := proto.Marshal(&cs2pb.CMsgClientHello{
-		Version:           proto.Uint32(2000244),
-		ClientSessionNeed: proto.Uint32(0),
-		ClientLauncher:    proto.Uint32(0),
-		SteamLauncher:     proto.Uint32(0),
-	})
+	return merged
+}
+
+func (s *SteamGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	return s.requestGameInventoryLocked(ctx, appID)
+}
+
+func (s *SteamGCClient) requestGameInventoryLocked(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {
+	if appID != 440 && appID != 570 {
+		return nil, fmt.Errorf("unsupported multi-game inventory AppID %d", appID)
+	}
+	trace := newDiagnosticTrace(fmt.Sprintf("appid=%d GC inventory request started", appID))
+	if err := s.ensureSteamSession(ctx); err != nil {
+		return nil, trace.Error(fmt.Errorf("steam session recovery failed: %w", err))
+	}
+	if err := s.ensureGamesPlayedIncludes(protocol.AppIDCS2, appID); err != nil {
+		return nil, trace.Error(fmt.Errorf("multi-game presence failed: %w", err))
+	}
+	hello, err := gameClientHello(appID)
 	if err != nil {
 		return nil, err
 	}
-	helloEMsg := uint32(protocol.EMsgGCClientHello)
-	if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
-		wrapped := fmt.Errorf("cs2 gc client hello send failed: %w", err)
-		return nil, trace.Error(wrapped)
+	if err := s.SendProtoToGC(ctx, appID, 4006, hello); err != nil {
+		return nil, trace.Error(fmt.Errorf("appid=%d GC hello failed: %w", appID, err))
 	}
-	trace.Add(fmt.Sprintf("cs2 gc ClientHello sent emsg=%d", helloEMsg))
-	helloRetry := time.NewTimer(time.Second)
-	defer helloRetry.Stop()
-	helloRetryDelay := time.Second
-	statusNoSessionCount := 0
+	trace.Add(fmt.Sprintf("appid=%d GC ClientHello sent emsg=4006", appID))
+	retry := time.NewTicker(3 * time.Second)
+	defer retry.Stop()
+	welcomeSeen := false
 	for {
 		select {
 		case <-ctx.Done():
-			wrapped := fmt.Errorf("cs2 gc inventory timed out waiting for ClientWelcome: %w", ctx.Err())
-			return nil, trace.Error(wrapped)
-		case <-helloRetry.C:
-			if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
-				wrapped := fmt.Errorf("cs2 gc client hello retry failed: %w", err)
-				return nil, trace.Error(wrapped)
+			return nil, trace.Error(fmt.Errorf("appid=%d timed out waiting for authoritative economy SOCache: %w", appID, ctx.Err()))
+		case <-retry.C:
+			if err := s.SendProtoToGC(ctx, appID, 4006, hello); err != nil {
+				return nil, trace.Error(err)
 			}
-			trace.Add(fmt.Sprintf("cs2 gc ClientHello retry sent emsg=%d delay=%s", helloEMsg, helloRetryDelay))
-			helloRetryDelay *= 2
-			if helloRetryDelay > 8*time.Second {
-				helloRetryDelay = 8 * time.Second
-			}
-			helloRetry.Reset(helloRetryDelay)
+			trace.Add(fmt.Sprintf("appid=%d GC ClientHello retry sent", appID))
 		case event := <-s.events:
-			trace.Add(fmt.Sprintf("cs2 gc observed event type=%s", event.Type))
-			if event.Type == "steam.games_played.sent" || event.Type == "gc.sent" {
-				trace.Add(fmt.Sprintf("cs2 gc observed event payload=%v", event.Payload))
-			}
 			message, ok := event.Payload.(GCMessage)
-			if !ok || event.Type != "gc.message" {
+			if !ok || event.Type != "gc.message" || message.AppID != appID {
 				continue
 			}
-			trace.Add(fmt.Sprintf("cs2 gc observed appid=%d emsg=%d body_bytes=%d", message.AppID, message.EMsg, len(message.Body)))
-			if message.AppID != protocol.AppIDCS2 {
-				continue
-			}
-			if message.EMsg == protocol.EMsgGCCStrike15V2ClientLogonFatalError {
-				return nil, trace.Error(decodeCS2ClientLogonFatalError(message.Body))
-			}
-			if message.EMsg == protocol.EMsgGCClientConnectionStatus {
-				status, err := decodeCS2ConnectionStatus(message.Body)
-				if err != nil {
-					return nil, trace.Error(err)
+			trace.Add(fmt.Sprintf("appid=%d observed emsg=%d bytes=%d", appID, message.EMsg, len(message.Body)))
+			switch message.EMsg {
+			case 4004:
+				welcomeSeen = true
+				if items, found, decodeErr := decodeGameWelcomeInventory(appID, message.Body); decodeErr != nil {
+					return nil, trace.Error(decodeErr)
+				} else if found {
+					trace.Add(fmt.Sprintf("appid=%d welcome inventory_items=%d", appID, len(items)))
+					return items, nil
 				}
-				trace.Add("cs2 gc connection status " + status)
-				if isCS2ConnectionStatusNoSession(message.Body) {
-					statusNoSessionCount++
-					nextHello := nextCS2HelloEMsg(helloEMsg)
-					if nextHello != helloEMsg {
-						helloEMsg = nextHello
-						helloRetryDelay = time.Second
-						trace.Add(fmt.Sprintf("cs2 gc switching ClientHello variant after NO_SESSION next_emsg=%d", helloEMsg))
-						if err := s.SendProtoToGC(ctx, protocol.AppIDCS2, helloEMsg, body); err != nil {
-							wrapped := fmt.Errorf("cs2 gc client hello variant send failed: %w", err)
-							return nil, trace.Error(wrapped)
+				if appID == 570 {
+					refreshes, decodeErr := dotaWelcomeSOCacheRefreshes(message.Body)
+					if decodeErr != nil {
+						return nil, trace.Error(decodeErr)
+					}
+					for _, refresh := range refreshes {
+						if sendErr := s.SendProtoToGC(ctx, appID, 28, refresh); sendErr != nil {
+							return nil, trace.Error(fmt.Errorf("appid=%d send welcome SOCache subscription refresh: %w", appID, sendErr))
 						}
-						trace.Add(fmt.Sprintf("cs2 gc ClientHello variant sent emsg=%d", helloEMsg))
-						resetTimer(helloRetry, helloRetryDelay)
-						continue
 					}
-					if statusNoSessionCount >= 2 {
-						return nil, trace.Error(fmt.Errorf("CS2 GC refused session: %s", status))
+					if len(refreshes) > 0 {
+						trace.Add(fmt.Sprintf("appid=%d welcome SOCache subscription_refreshes=%d", appID, len(refreshes)))
 					}
 				}
-				continue
-			}
-			if message.EMsg == protocol.EMsgGCClientWelcome {
-				items, err := decodeInventoryFromClientWelcome(message.Body)
-				if err != nil {
-					return nil, trace.Error(err)
+			case 24:
+				items, found, decodeErr := decodeGenericSubscribedInventory(appID, message.Body)
+				if decodeErr != nil {
+					return nil, trace.Error(decodeErr)
 				}
-				trace.Add(fmt.Sprintf("cs2 gc ClientWelcome decoded inventory_items=%d", len(items)))
-				return items, nil
+				if found {
+					trace.Add(fmt.Sprintf("appid=%d subscribed inventory_items=%d welcome_seen=%t", appID, len(items), welcomeSeen))
+					return items, nil
+				}
+			case 27:
+				refresh, decodeErr := gameSOCacheSubscriptionRefresh(appID, message.Body)
+				if decodeErr != nil {
+					return nil, trace.Error(fmt.Errorf("appid=%d decode SOCache subscription check: %w", appID, decodeErr))
+				}
+				if sendErr := s.SendProtoToGC(ctx, appID, 28, refresh); sendErr != nil {
+					return nil, trace.Error(fmt.Errorf("appid=%d send SOCache subscription refresh: %w", appID, sendErr))
+				}
+				trace.Add(fmt.Sprintf("appid=%d SOCache subscription refresh sent emsg=28", appID))
 			}
 		}
 	}
 }
 
-func decodeCS2ClientLogonFatalError(body []byte) error {
-	var fatal cs2pb.CMsgGCCStrike15V2ClientLogonFatalError
-	if err := proto.Unmarshal(body, &fatal); err != nil {
-		return fmt.Errorf("CS2 GC ClientLogonFatalError emsg=%d body_bytes=%d decode failed: %w", protocol.EMsgGCCStrike15V2ClientLogonFatalError, len(body), err)
-	}
-	message := fatal.GetMessage()
-	if message == "" {
-		message = fmt.Sprintf("errorcode=%d", fatal.GetErrorcode())
-	}
-	if fatal.GetCountry() != "" {
-		return fmt.Errorf("CS2 GC ClientLogonFatalError: %s country=%s", message, fatal.GetCountry())
-	}
-	return fmt.Errorf("CS2 GC ClientLogonFatalError: %s", message)
-}
-
-func decodeCS2ConnectionStatus(body []byte) (string, error) {
-	var status cs2pb.CMsgConnectionStatus
-	if err := proto.Unmarshal(body, &status); err != nil {
-		return "", fmt.Errorf("CS2 GC ConnectionStatus emsg=%d body_bytes=%d decode failed: %w", protocol.EMsgGCClientConnectionStatus, len(body), err)
-	}
-	return fmt.Sprintf(
-		"status=%s client_session_need=%d queue_position=%d queue_size=%d wait_seconds=%d estimated_wait_seconds_remaining=%d",
-		status.GetStatus().String(),
-		status.GetClientSessionNeed(),
-		status.GetQueuePosition(),
-		status.GetQueueSize(),
-		status.GetWaitSeconds(),
-		status.GetEstimatedWaitSecondsRemaining(),
-	), nil
-}
-
-func isCS2ConnectionStatusNoSession(body []byte) bool {
-	var status cs2pb.CMsgConnectionStatus
-	if err := proto.Unmarshal(body, &status); err != nil {
-		return false
-	}
-	return status.GetStatus() == cs2pb.GCConnectionStatus_GCConnectionStatus_NO_SESSION
-}
-
-func nextCS2HelloEMsg(current uint32) uint32 {
-	switch current {
-	case protocol.EMsgGCClientHello:
-		return protocol.EMsgGCClientHelloR2
-	case protocol.EMsgGCClientHelloR2:
-		return protocol.EMsgGCClientHelloR3
-	case protocol.EMsgGCClientHelloR3:
-		return protocol.EMsgGCClientHelloR4
-	default:
-		return current
-	}
-}
-
-func resetTimer(timer *time.Timer, delay time.Duration) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
-	timer.Reset(delay)
-}
-
-func encodeGCClientPacket(appID uint32, emsg uint32, body []byte, protobufPayload bool) (*steammsg.Packet, error) {
-	if appID == 0 {
-		return nil, fmt.Errorf("app id is required")
-	}
-	if emsg == 0 {
-		return nil, fmt.Errorf("gc emsg is required")
-	}
-	payload := append([]byte(nil), body...)
-	if protobufPayload {
-		var err error
-		payload, err = encodeGCProtoPayload(emsg, body)
-		if err != nil {
-			return nil, err
-		}
-	}
-	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientToGC)
-	header.Proto.RoutingAppid = proto.Uint32(appID)
-	msgType := emsg
-	if protobufPayload {
-		msgType = emsg | protoMask
-	}
-	msg := &steampb.CMsgGCClient{
-		Appid:   proto.Uint32(appID),
-		Msgtype: proto.Uint32(msgType),
-		Payload: payload,
-	}
-	return steammsg.EncodePacket(header, msg, nil)
-}
-
-func encodeGCProtoPayload(emsg uint32, body []byte) ([]byte, error) {
-	headerBytes, err := proto.Marshal(&steampb.CMsgProtoBufHeader{
-		JobidSource: proto.Uint64(^uint64(0)),
-	})
+func gameSOCacheSubscriptionRefresh(appID uint32, body []byte) ([]byte, error) {
+	check, err := unmarshalGameMessage(appID, "CMsgSOCacheSubscriptionCheck", body)
 	if err != nil {
 		return nil, err
 	}
-	payload := make([]byte, 8, 8+len(headerBytes)+len(body))
-	binary.LittleEndian.PutUint32(payload[0:4], emsg|protoMask)
-	binary.LittleEndian.PutUint32(payload[4:8], uint32(len(headerBytes)))
-	payload = append(payload, headerBytes...)
-	payload = append(payload, body...)
-	return payload, nil
+	ownerField := tracking.Field(check, "owner")
+	ownerSOIDField := tracking.Field(check, "owner_soid")
+	if !check.Has(ownerField) && !check.Has(ownerSOIDField) {
+		return nil, fmt.Errorf("SOCache subscription check omitted owner identity")
+	}
+	fields := make(map[string]any)
+	if check.Has(ownerField) {
+		fields["owner"] = tracking.Uint(check, "owner")
+	}
+	if check.Has(ownerSOIDField) {
+		owner := check.Get(ownerSOIDField).Message()
+		fields["owner_soid"] = map[string]any{"type": uint32(tracking.Uint(owner, "type")), "id": tracking.Uint(owner, "id")}
+	}
+	return marshalGameMessage(appID, "CMsgSOCacheSubscriptionRefresh", fields)
 }
 
-func decodeGCProtoPayload(message GCMessage) (gcProtoMessage, error) {
-	if message.EMsg&protoMask == 0 {
-		return gcProtoMessage{EMsg: message.EMsg, Body: append([]byte(nil), message.Body...)}, nil
+func dotaWelcomeSOCacheRefreshes(body []byte) ([][]byte, error) {
+	welcome, err := dota2tracking.UnmarshalMessage("CMsgClientWelcome", body)
+	if err != nil {
+		return nil, err
 	}
-	emsg := message.EMsg &^ protoMask
-	if len(message.Body) < 8 {
-		return gcProtoMessage{EMsg: emsg, Body: append([]byte(nil), message.Body...)}, nil
+	checks := tracking.List(welcome, "uptodate_subscribed_caches")
+	refreshes := make([][]byte, 0, checks.Len())
+	for index := 0; index < checks.Len(); index++ {
+		check := checks.Get(index).Message()
+		ownerField := tracking.Field(check, "owner_soid")
+		if !check.Has(ownerField) {
+			return nil, fmt.Errorf("Dota 2 welcome SOCache subscription check omitted owner_soid")
+		}
+		owner := check.Get(ownerField).Message()
+		body, err := dota2tracking.MarshalMessage("CMsgSOCacheSubscriptionRefresh", map[string]any{
+			"owner_soid": map[string]any{"type": uint32(tracking.Uint(owner, "type")), "id": tracking.Uint(owner, "id")},
+		})
+		if err != nil {
+			return nil, err
+		}
+		refreshes = append(refreshes, body)
 	}
-	innerMsg := binary.LittleEndian.Uint32(message.Body[0:4])
-	headerLen := int(binary.LittleEndian.Uint32(message.Body[4:8]))
-	if innerMsg != message.EMsg && innerMsg != emsg {
-		return gcProtoMessage{EMsg: emsg, Body: append([]byte(nil), message.Body...)}, nil
-	}
-	if headerLen < 0 || 8+headerLen > len(message.Body) {
-		return gcProtoMessage{}, fmt.Errorf("protobuf GC payload for appid=%d emsg=%d has invalid header length %d for %d bytes", message.AppID, message.EMsg, headerLen, len(message.Body))
-	}
-	var header steampb.CMsgProtoBufHeader
-	if err := proto.Unmarshal(message.Body[8:8+headerLen], &header); err != nil {
-		return gcProtoMessage{}, fmt.Errorf("failed to decode GC protobuf header for appid=%d emsg=%d: %w", message.AppID, message.EMsg, err)
-	}
-	return gcProtoMessage{EMsg: emsg, Body: append([]byte(nil), message.Body[8+headerLen:]...)}, nil
+	return refreshes, nil
 }
 
-func decodeInventoryFromClientWelcome(body []byte) ([]GCInventoryItem, error) {
-	var welcome cs2pb.CMsgClientWelcome
-	if err := proto.Unmarshal(body, &welcome); err != nil {
-		return nil, fmt.Errorf("failed to decode CS2 ClientWelcome: %w", err)
+func gameClientHello(appID uint32) ([]byte, error) {
+	// These versions come from steam.inf at the pinned tracker revisions listed
+	// in docs/multi-game-economy-sources.md. Dota 2 must explicitly identify
+	// Source 2 because the protobuf's legacy default is Source 1.
+	switch appID {
+	case 440:
+		return tf2tracking.MarshalFields("CMsgClientHello", map[string]any{"version": uint32(10815139)})
+	case 570:
+		return dota2tracking.MarshalMessage("CMsgClientHello", map[string]any{"version": uint32(6859), "client_session_need": uint32(0), "client_launcher": uint32(0), "engine": uint32(1)})
+	default:
+		return nil, fmt.Errorf("unsupported hello AppID %d", appID)
 	}
-	items := make([]GCInventoryItem, 0)
-	var decodeErrors int
-	for _, cache := range welcome.GetOutofdateSubscribedCaches() {
-		for _, objectType := range cache.GetObjects() {
-			for _, objectData := range objectType.GetObjectData() {
-				var econ cs2pb.CSOEconItem
-				if err := proto.Unmarshal(objectData, &econ); err != nil {
-					decodeErrors++
-					continue
-				}
-				if econ.GetId() == 0 {
-					continue
-				}
-				paintWear := econPaintWear(&econ)
-				items = append(items, GCInventoryItem{
-					ID:         econ.GetId(),
-					OriginalID: econ.GetOriginalId(),
-					DefIndex:   econ.GetDefIndex(),
-					Quantity:   econ.GetQuantity(),
-					Quality:    econ.GetQuality(),
-					Rarity:     econ.GetRarity(),
-					Inventory:  econ.GetInventory(),
-					CustomName: econ.GetCustomName(),
-					PaintKit:   econPaintKit(&econ),
-					PaintWear:  paintWear,
-					Attributes: econAttributes(&econ),
-				})
-			}
+}
+
+func marshalGameMessage(appID uint32, name string, fields map[string]any) ([]byte, error) {
+	switch appID {
+	case 440:
+		return tf2tracking.MarshalFields(name, fields)
+	case 570:
+		return dota2tracking.MarshalMessage(name, fields)
+	default:
+		return nil, fmt.Errorf("unsupported GameTracking AppID %d", appID)
+	}
+}
+
+func unmarshalGameMessage(appID uint32, name string, body []byte) (*dynamicpb.Message, error) {
+	switch appID {
+	case 440:
+		return tf2tracking.UnmarshalMessage(name, body)
+	case 570:
+		return dota2tracking.UnmarshalMessage(name, body)
+	default:
+		return nil, fmt.Errorf("unsupported GameTracking AppID %d", appID)
+	}
+}
+
+func decodeGameWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
+	// TF2's authoritative CMsgClientWelcome field 3 is txn_country_code, while
+	// Dota 2 uses field 3 for outofdate_subscribed_caches. Never decode the TF2
+	// country string as a Dota SOCache; TF2 inventory arrives in EMsg 24.
+	if appID == 440 {
+		return nil, false, nil
+	}
+	if appID != 570 {
+		return nil, false, fmt.Errorf("unsupported welcome AppID %d", appID)
+	}
+	return decodeGenericWelcomeInventory(appID, body)
+}
+
+func decodeGenericWelcomeInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
+	welcome, err := unmarshalGameMessage(appID, "CMsgClientWelcome", body)
+	if err != nil {
+		return nil, false, err
+	}
+	caches := tracking.List(welcome, "outofdate_subscribed_caches")
+	for index := 0; index < caches.Len(); index++ {
+		if items, found, err := decodeGenericSubscribedTypes(appID, tracking.List(caches.Get(index).Message(), "objects")); found || err != nil {
+			return items, found, err
 		}
 	}
-	if len(items) == 0 && decodeErrors > 0 {
-		return nil, fmt.Errorf("failed to decode CS2 econ items from SOCache: %d object decode errors", decodeErrors)
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("CS2 ClientWelcome contained no decoded econ inventory items")
-	}
-	return items, nil
+	return nil, false, nil
 }
 
-func econAttributes(item *cs2pb.CSOEconItem) map[uint32]uint32 {
-	attributes := make(map[uint32]uint32)
-	for _, attribute := range item.GetAttribute() {
-		value := attribute.GetValue()
-		if value == 0 && len(attribute.GetValueBytes()) >= 4 {
-			value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
-		}
-		attributes[attribute.GetDefIndex()] = value
+func decodeGenericSubscribedInventory(appID uint32, body []byte) ([]GCInventoryItem, bool, error) {
+	cache, err := unmarshalGameMessage(appID, "CMsgSOCacheSubscribed", body)
+	if err != nil {
+		return nil, false, err
 	}
-	return attributes
+	return decodeGenericSubscribedTypes(appID, tracking.List(cache, "objects"))
 }
 
-func econPaintKit(item *cs2pb.CSOEconItem) uint32 {
-	for _, attribute := range item.GetAttribute() {
-		if attribute.GetDefIndex() == 6 {
-			return attribute.GetValue()
-		}
-	}
-	return 0
-}
-
-func econPaintWear(item *cs2pb.CSOEconItem) *float64 {
-	for _, attribute := range item.GetAttribute() {
-		if attribute.GetDefIndex() != 8 {
+func decodeGenericSubscribedTypes(appID uint32, types protoreflect.List) ([]GCInventoryItem, bool, error) {
+	for typeIndex := 0; typeIndex < types.Len(); typeIndex++ {
+		objectType := types.Get(typeIndex).Message()
+		if tracking.Int(objectType, "type_id") != 1 {
 			continue
 		}
-		value := attribute.GetValue()
-		if value == 0 && len(attribute.GetValueBytes()) >= 4 {
-			value = binary.LittleEndian.Uint32(attribute.GetValueBytes()[:4])
+		objectData := tracking.List(objectType, "object_data")
+		items := make([]GCInventoryItem, 0, objectData.Len())
+		for dataIndex := 0; dataIndex < objectData.Len(); dataIndex++ {
+			item, err := unmarshalGameMessage(appID, "CSOEconItem", objectData.Get(dataIndex).Bytes())
+			if err != nil {
+				return nil, true, fmt.Errorf("decode economy item: %w", err)
+			}
+			if tracking.Uint(item, "id") == 0 {
+				continue
+			}
+			attributeList := tracking.List(item, "attribute")
+			attributes := make(map[uint32]uint32, attributeList.Len())
+			attributeBytes := make(map[uint32][]byte, attributeList.Len())
+			for attributeIndex := 0; attributeIndex < attributeList.Len(); attributeIndex++ {
+				attribute := attributeList.Get(attributeIndex).Message()
+				definitionIndex := uint32(tracking.Uint(attribute, "def_index"))
+				if appID == 570 && !tracking.Has(attribute, "def_index") {
+					definitionIndex = 65535
+				}
+				value := uint32(tracking.Uint(attribute, "value"))
+				valueBytes := tracking.Bytes(attribute, "value_bytes")
+				if value == 0 && len(valueBytes) >= 4 {
+					value = binary.LittleEndian.Uint32(valueBytes[:4])
+				}
+				attributes[definitionIndex] = value
+				if len(valueBytes) > 0 {
+					attributeBytes[definitionIndex] = append([]byte(nil), valueBytes...)
+				}
+			}
+			equippedList := tracking.List(item, "equipped_state")
+			equipped := make([]GCEquippedState, 0, equippedList.Len())
+			for stateIndex := 0; stateIndex < equippedList.Len(); stateIndex++ {
+				state := equippedList.Get(stateIndex).Message()
+				equipped = append(equipped, GCEquippedState{Class: uint32(tracking.Uint(state, "new_class")), Slot: uint32(tracking.Uint(state, "new_slot"))})
+			}
+			quantity, level, quality := uint32(tracking.Uint(item, "quantity")), uint32(tracking.Uint(item, "level")), uint32(tracking.Uint(item, "quality"))
+			if appID == 570 {
+				if !tracking.Has(item, "quantity") {
+					quantity = 1
+				}
+				if !tracking.Has(item, "level") {
+					level = 1
+				}
+				if !tracking.Has(item, "quality") {
+					quality = 4
+				}
+			}
+			interiorID := uint64(0)
+			interiorField := tracking.Field(item, "interior_item")
+			if item.Has(interiorField) {
+				interiorID = tracking.Uint(item.Get(interiorField).Message(), "id")
+			}
+			items = append(items, GCInventoryItem{ID: tracking.Uint(item, "id"), OriginalID: tracking.Uint(item, "original_id"), DefIndex: uint32(tracking.Uint(item, "def_index")), Quantity: quantity, Quality: quality, Inventory: uint32(tracking.Uint(item, "inventory")), CustomName: tracking.String(item, "custom_name"), Attributes: attributes, AttributeBytes: attributeBytes, EquippedStates: equipped, InteriorItemID: interiorID, Level: level, Flags: uint32(tracking.Uint(item, "flags")), Origin: uint32(tracking.Uint(item, "origin")), Style: uint32(tracking.Uint(item, "style")), CustomDesc: tracking.String(item, "custom_desc")})
 		}
-		wear := float64(math.Float32frombits(value))
-		return &wear
+		return items, true, nil
 	}
-	return nil
-}
-
-func encodeGamesPlayedPacket(appID uint32) (*steammsg.Packet, error) {
-	if appID == 0 {
-		return nil, fmt.Errorf("app id is required")
-	}
-	header := steammsg.NewProtoHeader(steamlang.EMsg_ClientGamesPlayed)
-	msg := &steampb.CMsgClientGamesPlayed{
-		GamesPlayed: []*steampb.CMsgClientGamesPlayed_GamePlayed{
-			{
-				GameId:        proto.Uint64(steamAppGameID(appID)),
-				GameExtraInfo: proto.String("Counter-Strike 2"),
-			},
-		},
-	}
-	return steammsg.EncodePacket(header, msg, nil)
-}
-
-func steamAppGameID(appID uint32) uint64 {
-	gameID := steam.GameId(0)
-	gameID.SetAppId(appID)
-	gameID.SetAppType(steam.GameType_App)
-	return uint64(gameID)
+	return nil, false, nil
 }
