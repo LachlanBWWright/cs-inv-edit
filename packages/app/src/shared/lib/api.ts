@@ -15,6 +15,20 @@ import type { AppBackendClient } from "./backend.js";
 import type { ResultAsync } from "neverthrow";
 import type { AppError } from "./result-http.js";
 
+export type OperationBackend = Pick<
+  AppBackendClient,
+  | "applyNameTag"
+  | "removeNameTag"
+  | "deleteItem"
+  | "applyStatTrakSwap"
+  | "applyStrangePart"
+  | "useItem"
+  | "useMultipleItems"
+  | "applyToolToItem"
+  | "applyToolToBaseItem"
+  | "giftItem"
+>;
+
 export interface OperationApi {
   applyNameTag(
     input: SetItemNameRequest,
@@ -42,7 +56,7 @@ export interface OperationApi {
   giftItem(input: GiftItemRequest): ResultAsync<OperationReceipt, AppError>;
 }
 
-export function createOperationApi(backend: AppBackendClient): OperationApi {
+export function createOperationApi(backend: OperationBackend): OperationApi {
   return {
     applyNameTag: (input) => backend.applyNameTag(input),
     removeNameTag: (input) => backend.removeNameTag(input),

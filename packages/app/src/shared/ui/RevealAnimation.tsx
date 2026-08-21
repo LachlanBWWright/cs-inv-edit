@@ -9,13 +9,14 @@ import {
 import { Portal } from "solid-js/web";
 import type { RevealAnimationMode } from "@cs-inv-edit/contracts";
 import { ResultAsync, fromThrowable } from "neverthrow";
-import type { ReturnEstimate } from "../../features/commerce/roi-utils.js";
-import { ReturnEstimateCard } from "../../features/commerce/ReturnEstimateCard.js";
 import { ModalCloseRow } from "./ModalBackdrop.js";
 import { useEscapeDismiss } from "./modal-dismiss.js";
 import { transformTranslateX } from "./reveal-animation-layout.js";
 import { ModeContent } from "./reveal-animation-content.js";
-import { generateRevealMiss, randomRevealCandidate } from "./reveal-animation-random.js";
+import {
+  generateRevealMiss,
+  randomRevealCandidate,
+} from "./reveal-animation-random.js";
 import {
   generateLandingDuration,
   generateLandingJitter,
@@ -38,10 +39,7 @@ export {
   waitingVelocity,
 } from "./reveal-animation-timing.js";
 
-const crateOpenSoundUrl = new URL(
-  "../../assets/audio/csgo-ui-crate-open.wav",
-  import.meta.url,
-).href;
+const crateOpenSoundUrl = new URL("../../assets/audio/csgo-ui-crate-open.wav", import.meta.url).href;
 const crateScrollSoundUrl = new URL(
   "../../assets/audio/csgo-ui-crate-item-scroll.wav",
   import.meta.url,
@@ -72,11 +70,6 @@ export interface RevealAnimationProps {
   result: RevealItem;
   ready?: boolean;
   onComplete: () => void;
-  returnEstimate?: ReturnEstimate;
-  returnEstimateLoading?: boolean;
-  returnEstimateCostLabel?: string;
-  returnEstimateUnitCost?: number;
-  returnEstimateNote?: string;
 }
 
 const audioPools = new Map<
@@ -139,7 +132,6 @@ const readRenderedReelOffset = fromThrowable(
   () => waitingLoopStartOffsetPx,
 );
 
-
 export function RevealAnimation(props: RevealAnimationProps) {
   const isOpen = createMemo(() => props.open);
   const [count, setCount] = createSignal(3);
@@ -154,6 +146,8 @@ export function RevealAnimation(props: RevealAnimationProps) {
     startOffset: 88,
   });
   let reelElement: HTMLDivElement | undefined;
+  const setReelElement = (element: HTMLDivElement) =>
+    void (reelElement = element);
   let waitingStartedAt = 0;
   let currentWaitingVelocity = waitingVelocity(0);
   let landingPlan:
@@ -268,7 +262,8 @@ export function RevealAnimation(props: RevealAnimationProps) {
         const duration = Math.max(
           1,
           Math.round(
-            (landingDistance / currentWaitingVelocity) /
+            landingDistance /
+              currentWaitingVelocity /
               linearDecelerationDistanceRatio,
           ),
         );
@@ -379,7 +374,8 @@ export function RevealAnimation(props: RevealAnimationProps) {
               <ModalCloseRow
                 label="Close animation"
                 buttonClass="border-slate-600 bg-slate-950"
-                onClose={props.onComplete} />
+                onClose={props.onComplete}
+              />
             </Show>
             <Show when={props.mode !== "slot-machine"}>
               <p class="reveal-eyebrow">{props.title}</p>
@@ -390,23 +386,10 @@ export function RevealAnimation(props: RevealAnimationProps) {
               rolling={rolling()}
               waiting={waiting()}
               reel={reel()}
-              reelRef={(element) => {
-                reelElement = element;
-              }}
+              reelRef={setReelElement}
               travel={travel()}
               {...props}
             />
-            <Show when={props.returnEstimate || props.returnEstimateLoading}>
-              <div class="mx-auto mt-3 w-[530px] max-w-full text-left">
-                <ReturnEstimateCard
-                  estimate={props.returnEstimate}
-                  loading={props.returnEstimateLoading}
-                  costLabel={props.returnEstimateCostLabel}
-                  unitCost={props.returnEstimateUnitCost}
-                  note={props.returnEstimateNote}
-                />
-              </div>
-            </Show>
           </div>
         </div>
       </Show>

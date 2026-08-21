@@ -38,6 +38,7 @@ type inventoryPage struct {
 	MoreItems    flexibleBool           `json:"more_items"`
 	LastAssetID  string                 `json:"last_assetid"`
 	Assets       []inventoryAsset       `json:"assets"`
+	Properties   []inventoryProperties  `json:"asset_properties"`
 	Descriptions []inventoryDescription `json:"descriptions"`
 }
 
@@ -45,6 +46,24 @@ type inventoryAsset struct {
 	AssetID    string `json:"assetid"`
 	ClassID    string `json:"classid"`
 	InstanceID string `json:"instanceid"`
+}
+
+type inventoryProperties struct {
+	AssetID    string                  `json:"assetid"`
+	Properties []inventoryPropertyItem `json:"asset_properties"`
+}
+
+type inventoryPropertyItem struct {
+	PropertyID  uint32 `json:"propertyid"`
+	StringValue string `json:"string_value"`
+}
+
+func inventoryPropertiesByAsset(values []inventoryProperties) map[string][]inventoryPropertyItem {
+	properties := make(map[string][]inventoryPropertyItem, len(values))
+	for _, value := range values {
+		properties[value.AssetID] = value.Properties
+	}
+	return properties
 }
 
 type inventoryDescription struct {
@@ -72,16 +91,23 @@ func inventoryInspectURL(actions []inventoryAction) string {
 	for _, action := range actions {
 		link := strings.TrimSpace(action.Link)
 		lower := strings.ToLower(link)
-		if strings.HasPrefix(lower, "steam://rungame/730/") && strings.Contains(lower, "/+csgo_econ_action_preview%20") {
+		if (strings.HasPrefix(lower, "steam://run/730/") || strings.HasPrefix(lower, "steam://rungame/730/")) && strings.Contains(lower, "/+csgo_econ_action_preview%20") {
 			return link
 		}
 	}
 	return ""
 }
 
-func expandInventoryInspectURL(link, steamID, assetID string) string {
+func expandInventoryInspectURL(link, steamID, assetID string, properties []inventoryPropertyItem) string {
 	link = strings.ReplaceAll(link, "%owner_steamid%", steamID)
 	link = strings.ReplaceAll(link, "%assetid%", assetID)
+	for _, property := range properties {
+		placeholder := fmt.Sprintf("%%propid:%d%%", property.PropertyID)
+		link = strings.ReplaceAll(link, placeholder, property.StringValue)
+	}
+	if strings.Contains(link, "%propid:") {
+		return ""
+	}
 	return link
 }
 

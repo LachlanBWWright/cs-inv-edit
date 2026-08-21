@@ -34,7 +34,6 @@ enum EGCItemCustomizationNotification {
   k_EGCItemCustomizationNotification_UnlockCrate = 1007;
   k_EGCItemCustomizationNotification_XRayItemReveal = 1008;
   k_EGCItemCustomizationNotification_XRayItemClaim = 1009;
-  k_EGCItemCustomizationNotification_ExtractSticker = 1054;
   k_EGCItemCustomizationNotification_EncapsulateSticker = 1055;
 }
 

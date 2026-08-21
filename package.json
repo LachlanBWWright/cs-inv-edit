@@ -1,7 +1,7 @@
 {
   "name": "cs-inv-edit",
   "private": true,
-  "packageManager": "pnpm@10.26.2",
+  "packageManager": "pnpm@11.21.0",
   "type": "module",
   "scripts": {
     "dev:desktop": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop dev",
@@ -14,7 +14,11 @@
     "test:backend": "go test ./backend/...",
     "test:frontend": "vitest run",
     "test": "./scripts/test.sh",
+    "storybook": "pnpm --filter @cs-inv-edit/app storybook",
+    "storybook:build": "pnpm --filter @cs-inv-edit/app build:storybook",
+    "storybook:screenshot": "pnpm --filter @cs-inv-edit/app storybook:screenshot",
     "lint": "pnpm -r --if-present lint",
+    "static-check": "./scripts/static-check.sh",
     "format": "prettier --write .",
     "generate:api": "./scripts/generate-api-contracts.sh",
     "check:api-codegen": "./scripts/check-api-codegen.sh",
@@ -34,6 +38,7 @@
     "@eslint/compat": "^2.1.0",
     "@eslint/js": "^10.0.1",
     "@hey-api/openapi-ts": "0.99.0",
+    "@types/node": "^24.13.3",
     "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.64.0",
     "electron-builder": "^26.15.3",
@@ -41,6 +46,7 @@
     "eslint-plugin-neverthrow": "^1.1.4",
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",
+    "vite": "^7.3.6",
     "vitest": "^4.1.10"
   },
   "dependencies": {

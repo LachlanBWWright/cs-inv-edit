@@ -211,7 +211,9 @@ export const zInventoryItem = z.object({
   imageUrl: z.string().optional(),
   inspectUrl: z
     .string()
-    .regex(/^steam:\/\/rungame\/730\/[^\/]*\/\\+csgo_econ_action_preview%20/)
+    .regex(
+      /^steam:\/\/(?:run|rungame)\/730\/[^\/]*\/\+csgo_econ_action_preview%20/,
+    )
     .optional(),
   kind: z.enum([
     "weapon_skin",
@@ -794,7 +796,6 @@ export const zFeatureFlags = z.object({
   showStorageUnitItems: z.boolean().default(false),
   enableProtocolConsole: z.boolean().optional().default(true),
   enableTradeups: z.boolean(),
-  enableStickerExtract: z.boolean(),
   enableNameTags: z.boolean(),
   enableItemDeletion: z.boolean(),
   enableStatTrakSwap: z.boolean(),
@@ -1451,13 +1452,6 @@ export const zExecuteTradeUpBody = zJsonObject2;
  * Operation receipt.
  */
 export const zExecuteTradeUpResponse = zOperationReceipt;
-
-export const zExtractStickerBody = zJsonObject2;
-
-/**
- * Operation receipt.
- */
-export const zExtractStickerResponse = zOperationReceipt;
 
 export const zApplyNameTagBody = zSetItemName;
 

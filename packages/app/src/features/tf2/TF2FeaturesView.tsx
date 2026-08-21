@@ -1,24 +1,17 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onMount,
-  Show,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, onMount } from "solid-js";
 import type { OperationReceipt } from "@cs-inv-edit/contracts";
-import { ItemPreviewMedia } from "../inventory/ItemPreviewMedia.js";
 import { SegmentedControl } from "../../shared/ui/SegmentedControl.js";
 
 import {
   tf2Classes as classes,
   tf2Slots as slots,
-  tf2SlotGroupNames as slotGroupNames,
   supportsTF2Selection as supportsSelection,
   tf2ItemGroup as itemGroup,
   type TF2Item,
 } from "./tf2-loadout-model.js";
 import type { TF2FeaturesViewProps } from "./tf2-features-view-props.js";
+import { TF2ItemBrowser } from "./tf2-item-browser.js";
+import { TF2LoadoutSidebar } from "./tf2-loadout-sidebar.js";
 
 export function TF2FeaturesView(props: TF2FeaturesViewProps) {
   const [classId, setClassId] = createSignal(1);
@@ -37,7 +30,13 @@ export function TF2FeaturesView(props: TF2FeaturesViewProps) {
     () => classes.find((entry) => entry.id === classId()) ?? classes[0],
   );
   const selectedSlot = createMemo(
-    () => slots.find((entry) => entry.id === slotId()) ?? slots[0],
+    () =>
+      slots.find((entry) => entry.id === slotId()) ?? {
+        id: 0,
+        name: "Primary",
+        keys: ["primary"],
+        group: "Weapons" as const,
+      },
   );
   const equippedForSlot = (id: number) => {
     const authoritative = props.features?.presetItems.find(
@@ -168,237 +167,45 @@ export function TF2FeaturesView(props: TF2FeaturesViewProps) {
         ]}
       />
       <div class="grid flex-1 items-start gap-4 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1fr)]">
-        <section
-          class={`${
-            mobileView() === "items" ? "block" : "hidden"
-          } lg:order-2 lg:block`}
-        >
-          <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-950 pb-3">
-            <div>
-              <h2 class="font-semibold text-slate-100">
-                {selectedSlot().name}
-              </h2>
-              <p class="text-xs text-slate-500">
-                {compatibleItems().length} compatible owned items
-                {equippedItem() ? ` · ${equippedItem()?.name} equipped` : ""}
-              </p>
-            </div>
-            <input
-              class="h-9 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 sm:w-64"
-              placeholder="Filter items"
-              value={query()}
-              onInput={(event) => setQuery(event.currentTarget.value)}
-            />
-          </div>
-          <Show
-            when={!props.loading && inventoryReady()}
-            fallback={
-              <p class="py-12 text-center text-sm text-slate-500">
-                Loading your TF2 inventory…
-              </p>
-            }
-          >
-            <Show
-              when={compatibleItems().length}
-              fallback={
-                <div class="py-12 text-center">
-                  <p class="text-sm text-slate-500">
-                    No owned items match this class and slot.
-                  </p>
-                  <Show
-                    when={!props.snapshot || props.snapshot.status !== "ready"}
-                  >
-                    <button
-                      class="mt-3 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300"
-                      onClick={props.onRefresh}
-                    >
-                      Load TF2 inventory
-                    </button>
-                  </Show>
-                </div>
-              }
-            >
-              <div class="space-y-5 pt-4">
-                <For each={compatibleGroups()}>
-                  {(group) => (
-                    <section>
-                      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        {group.name}
-                      </h3>
-                      <div
-                        class="grid gap-3"
-                        style={{
-                          "grid-template-columns": `repeat(auto-fill, minmax(${cardMinimumWidth()}px, 1fr))`,
-                        }}
-                      >
-                        <For each={group.items}>
-                          {(item) => (
-                            <button
-                              style={{
-                                height: `${cardHeight()}px`,
-                                contain: "layout paint style",
-                              }}
-                              class={`inventory-item-card group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-slate-950 p-3 text-left transition focus:outline-none ${equippedItem()?.assetId === item.assetId ? "border-slate-400 bg-slate-900" : "border-slate-800 hover:border-slate-600"}`}
-                              onClick={() => void selectItem(item)}
-                            >
-                              <ItemPreviewMedia
-                                name={item.name}
-                                imageUrl={item.imageUrl}
-                                variant="economy-card"
-                              />
-                              <Show when={props.compactMode !== "icons"}>
-                                <p class="mt-2 line-clamp-2 text-sm font-medium text-slate-100">
-                                  {item.name}
-                                </p>
-                              </Show>
-                              <Show
-                                when={
-                                  equippedItem()?.assetId === item.assetId &&
-                                  props.compactMode !== "icons"
-                                }
-                              >
-                                <p class="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                  Equipped
-                                </p>
-                              </Show>
-                            </button>
-                          )}
-                        </For>
-                      </div>
-                    </section>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </Show>
-        </section>
+        <TF2ItemBrowser
+          inventoryReady={inventoryReady()}
+          loading={props.loading}
+          snapshotStatus={props.snapshot?.status}
+          query={query()}
+          selectedSlot={selectedSlot()}
+          compatibleItems={compatibleItems()}
+          compatibleGroups={compatibleGroups()}
+          equippedItem={equippedItem()}
+          cardMinimumWidth={cardMinimumWidth()}
+          cardHeight={cardHeight()}
+          compactMode={props.compactMode}
+          onRefresh={props.onRefresh}
+          onQueryChange={setQuery}
+          onSelect={(item) => void selectItem(item)}
+          mobileVisible={mobileView() === "items"}
+          containerClass="lg:order-2 lg:block"
+        />
 
-        <aside
-          class={`rounded-2xl border border-slate-800 bg-slate-950 p-4 ${
-            mobileView() === "loadout" ? "block" : "hidden"
-          } lg:sticky lg:top-20 lg:order-1 lg:block lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto`}
-        >
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <h2 class="text-xl font-semibold text-slate-100">
-                {selectedClass().name}
-              </h2>
-              <p class="text-xs text-slate-500">
-                Loadout preset {presetId() + 1}
-              </p>
-            </div>
-            <div class="flex gap-1">
-              <For each={[0, 1, 2, 3]}>
-                {(preset) => (
-                  <button
-                    class={`h-9 min-w-9 rounded-lg border px-3 text-sm ${presetId() === preset ? "border-slate-500 bg-slate-700 text-white" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}
-                    onClick={() => void selectPreset(preset)}
-                  >
-                    {preset + 1}
-                  </button>
-                )}
-              </For>
-            </div>
-          </div>
-          <div class="mt-4 grid grid-cols-9 gap-1">
-            <For each={classes}>
-              {(entry) => (
-                <button
-                  class={`aspect-square min-w-0 overflow-hidden rounded-lg p-1 ${classId() === entry.id ? "bg-slate-700 ring-1 ring-inset ring-slate-400" : "opacity-70 hover:bg-slate-800 hover:opacity-100"}`}
-                  aria-label={entry.name}
-                  title={entry.name}
-                  onClick={() => {
-                    setClassId(entry.id);
-                    setSlotId(0);
-                  }}
-                >
-                  <img
-                    class="h-full w-full object-contain"
-                    src={entry.icon}
-                    alt=""
-                  />
-                </button>
-              )}
-            </For>
-          </div>
-          <div class="mt-5 space-y-4">
-            <For each={slotGroupNames}>
-              {(groupName) => (
-                <Show
-                  when={applicableSlots().some(
-                    (slot) => slot.group === groupName,
-                  )}
-                >
-                  <section>
-                    <h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                      {groupName}
-                    </h3>
-                    <div class="grid grid-cols-2 gap-2">
-                      <For
-                        each={applicableSlots().filter(
-                          (slot) => slot.group === groupName,
-                        )}
-                      >
-                        {(slot) => {
-                          const equipped = () => equippedForSlot(slot.id);
-                          return (
-                            <button
-                              class={`min-h-20 rounded-lg border p-2 text-left ${slotId() === slot.id ? "border-slate-400 bg-slate-800" : "border-slate-800 bg-slate-950 hover:border-slate-700"}`}
-                              onClick={() => {
-                                setSlotId(slot.id);
-                                setMobileView("items");
-                              }}
-                            >
-                              <span class="block text-xs font-semibold text-slate-400">
-                                {slot.name}
-                              </span>
-                              <Show
-                                when={equipped()}
-                                fallback={
-                                  <span class="mt-2 block text-xs text-slate-600">
-                                    Empty
-                                  </span>
-                                }
-                              >
-                                {(item) => (
-                                  <span class="mt-2 flex items-center gap-2">
-                                    <span class="h-9 w-9 shrink-0">
-                                      <ItemPreviewMedia
-                                        name={item().name}
-                                        imageUrl={item().imageUrl}
-                                        variant="loadout-slot"
-                                      />
-                                    </span>
-                                    <span class="line-clamp-2 text-xs text-slate-200">
-                                      {item().name}
-                                    </span>
-                                  </span>
-                                )}
-                              </Show>
-                            </button>
-                          );
-                        }}
-                      </For>
-                    </div>
-                  </section>
-                </Show>
-              )}
-            </For>
-          </div>
-          <Show when={receipt()}>
-            {(value) => (
-              <div class="mt-4 border-t border-slate-800 pt-3 text-sm">
-                <span class="font-medium text-slate-200">{value().state}</span>
-                <span class="ml-2 text-slate-400">{value().message}</span>
-              </div>
-            )}
-          </Show>
-          <Show when={props.features?.status === "waiting"}>
-            <p class="mt-4 text-xs text-slate-500">
-              Waiting for the TF2 Game Coordinator to publish loadout state.
-            </p>
-          </Show>
-        </aside>
+        <TF2LoadoutSidebar
+          selectedClass={selectedClass()}
+          presetId={presetId()}
+          classId={classId()}
+          slotId={slotId()}
+          receipt={receipt()}
+          featuresStatus={props.features?.status}
+          applicableSlots={applicableSlots()}
+          onSelectPreset={(preset) => void selectPreset(preset)}
+          onSelectClass={(nextClassId) => {
+            setClassId(nextClassId);
+            setSlotId(0);
+          }}
+          onSelectSlot={(nextSlotId) => {
+            setSlotId(nextSlotId);
+            setMobileView("items");
+          }}
+          equippedForSlot={equippedForSlot}
+          mobileVisible={mobileView() === "loadout"}
+        />
       </div>
     </div>
   );

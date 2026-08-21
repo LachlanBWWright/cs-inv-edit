@@ -19,7 +19,6 @@ const settings: SettingsData = {
     enableInventoryDebug: false,
     showStorageUnitItems: false,
     enableTradeups: false,
-    enableStickerExtract: false,
     enableNameTags: false,
     enableItemDeletion: false,
     enableStatTrakSwap: false,

@@ -18,6 +18,8 @@ type SidebarAccountControlsProps = Pick<
   | "inventory"
   | "accounts"
   | "settings"
+  | "compactMode"
+  | "setCompactMode"
   | "onAddAccount"
   | "onSignInAccount"
   | "onSignOutAccount"
@@ -38,8 +40,69 @@ type SidebarAccountControlsProps = Pick<
   };
 };
 
+function accountInitials(props: SidebarAccountControlsProps) {
+  return (
+    props.connection?.accountName ||
+    props.connection?.steamId ||
+    "A"
+  ).slice(0, 2);
+}
+
+function AccountButton(
+  props: SidebarAccountControlsProps & {
+    state: SidebarAccountControlsProps["state"];
+  },
+) {
+  const state = props.state;
+  return (
+    <button
+      class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200"
+      aria-label={
+        props.connection?.accountName
+          ? `Account: ${props.connection.accountName}`
+          : "Account"
+      }
+      aria-haspopup="dialog"
+      aria-expanded={state.accountOpen()}
+      onClick={() => {
+        state.setAccountOpen((value) => !value);
+        state.setSettingsOpen(false);
+        state.setKindMenuOpen(false);
+        state.setCompactMenuOpen(false);
+      }}
+    >
+      <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900">
+        <Show
+          when={props.connection?.avatarUrl}
+          fallback={
+            <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+              {accountInitials(props)}
+            </span>
+          }
+        >
+          <img
+            class="h-full w-full object-cover"
+            src={props.connection?.avatarUrl}
+            alt="Account avatar"
+            loading="lazy"
+          />
+        </Show>
+      </div>
+      <span class="hidden max-w-30 truncate text-sm font-medium text-slate-100 lg:inline">
+        {props.connection?.accountName ||
+          props.connection?.steamId ||
+          "Account"}
+      </span>
+    </button>
+  );
+}
+
 export function SidebarAccountControls(props: SidebarAccountControlsProps) {
   const state = props.state;
+  const openSettings = () => {
+    state.setAccountOpen(false);
+    state.setSettingsOpen(true);
+  };
   return (
     <div class="ml-auto flex items-center gap-2">
       <Show
@@ -81,49 +144,7 @@ export function SidebarAccountControls(props: SidebarAccountControlsProps) {
           }
         }}
       >
-        <button
-          class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200"
-          aria-label={
-            props.connection?.accountName
-              ? `Account: ${props.connection.accountName}`
-              : "Account"
-          }
-          aria-haspopup="dialog"
-          aria-expanded={state.accountOpen()}
-          onClick={() => {
-            state.setAccountOpen((value) => !value);
-            state.setSettingsOpen(false);
-            state.setKindMenuOpen(false);
-            state.setCompactMenuOpen(false);
-          }}
-        >
-          <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-900">
-            <Show
-              when={props.connection?.avatarUrl}
-              fallback={
-                <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  {(
-                    props.connection?.accountName ||
-                    props.connection?.steamId ||
-                    "A"
-                  ).slice(0, 2)}
-                </span>
-              }
-            >
-              <img
-                class="h-full w-full object-cover"
-                src={props.connection?.avatarUrl}
-                alt="Account avatar"
-                loading="lazy"
-              />
-            </Show>
-          </div>
-          <span class="hidden max-w-30 truncate text-sm font-medium text-slate-100 lg:inline">
-            {props.connection?.accountName ||
-              props.connection?.steamId ||
-              "Account"}
-          </span>
-        </button>
+        <AccountButton {...props} state={state} />
         <Show when={state.accountOpen()}>
           <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-800/80 bg-slate-950 p-3 shadow-2xl">
             <AccountSwitcher
@@ -135,18 +156,17 @@ export function SidebarAccountControls(props: SidebarAccountControlsProps) {
               onDeleteAccount={props.onDeleteAccount}
               onRefreshInventory={props.onRefreshInventory}
               onOpenAccount={props.onOpenAccount}
-              onOpenSettings={() => {
-                state.setAccountOpen(false);
-                state.setSettingsOpen(true);
-              }}
+              onOpenSettings={openSettings}
             />
           </div>
         </Show>
         <Show when={state.settingsOpen()}>
-          <div class="absolute right-0 top-full z-30 mt-2 w-[min(82vw,760px)] rounded-3xl border border-slate-800/80 bg-slate-950 p-3 shadow-2xl">
+          <div class="absolute right-0 top-full z-30 mt-2 max-h-[calc(100dvh-4.75rem)] w-[min(82vw,760px)] overflow-y-auto overscroll-contain rounded-3xl border border-slate-800/80 bg-slate-950 p-3 shadow-2xl">
             <SettingsView
               settings={props.settings}
               inventory={props.inventory}
+              compactMode={props.compactMode}
+              onCompactModeChange={props.setCompactMode}
               onRefresh={() => props.onRefreshInventory()}
               onSave={props.onSaveSettings}
             />

@@ -1,6 +1,18 @@
 import { For } from "solid-js";
 import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { itemKindLabel } from "./inventory-view-utils.js";
+import { isOption } from "../../shared/lib/options.js";
+
+const filterableInventoryKinds = [
+  "weapon_skin",
+  "sticker_item",
+  "container",
+  "storage_unit",
+  "tool_item",
+  "cs2_econ_item",
+  "unknown",
+] as const satisfies readonly InventoryItemDto["kind"][];
+const inventoryKinds = ["all", ...filterableInventoryKinds] as const;
 
 export interface InventoryFiltersProps {
   class?: string;
@@ -59,26 +71,14 @@ export function InventoryFilters(props: InventoryFiltersProps) {
           aria-label="Item type"
           class={selectClass}
           value={props.kindFilter}
-          onInput={(event) =>
-            props.onKindFilterChange(
-              event.currentTarget.value as "all" | InventoryItemDto["kind"],
-            )
-          }
+          onInput={(event) => {
+            const value = event.currentTarget.value;
+            if (isOption(value, inventoryKinds))
+              props.onKindFilterChange(value);
+          }}
         >
           <option value="all">All types</option>
-          <For
-            each={
-              [
-                "weapon_skin",
-                "sticker_item",
-                "container",
-                "storage_unit",
-                "tool_item",
-                "cs2_econ_item",
-                "unknown",
-              ] as const
-            }
-          >
+          <For each={filterableInventoryKinds}>
             {(kind) => <option value={kind}>{itemKindLabel(kind)}</option>}
           </For>
         </select>
@@ -94,13 +94,15 @@ export function InventoryFilters(props: InventoryFiltersProps) {
               onInput={(event) => filter.onChange(event.currentTarget.value)}
             >
               <option value="all">{filter.allLabel}</option>
-              <For each={filter.options}>
-                {(option) => <option value={option}>{option}</option>}
-              </For>
+              <For each={filter.options}>{renderFilterOption}</For>
             </select>
           </label>
         )}
       </For>
     </div>
   );
+}
+
+function renderFilterOption(option: string) {
+  return <option value={option}>{option}</option>;
 }

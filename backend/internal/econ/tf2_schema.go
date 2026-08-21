@@ -42,62 +42,7 @@ type TF2Definition struct {
 	LoadoutSlots      map[string]string
 	PrefabChain       []string
 	ContainerItems    []TF2RelatedItem
-}
-
-func ApplyTF2QuestLocalization(definitions map[uint32]TF2Definition, englishText string) error {
-	root, err := parseKeyValues(englishText)
-	if err != nil {
-		return fmt.Errorf("parse TF2 quest localization: %w", err)
-	}
-	tokens := parseTokens(root)
-	for defIndex, definition := range definitions {
-		prefix := fmt.Sprintf("quest%d", defIndex)
-		if name := tokens[strings.ToLower(prefix+"name0")]; name != "" {
-			definition.Name = name
-		}
-		if description := tokens[strings.ToLower(prefix+"desc0")]; description != "" {
-			definition.Description = description
-		}
-		objectives := make([]string, 0)
-		for index := 0; index < 64; index++ {
-			objective := tokens[strings.ToLower(fmt.Sprintf("%sobjectivedesc%d", prefix, index))]
-			if objective != "" {
-				objectives = append(objectives, strings.ReplaceAll(objective, "%s1", ""))
-			}
-		}
-		definition.QuestObjectives = objectives
-		definitions[defIndex] = definition
-	}
-	return nil
-}
-
-type TF2RelatedItem struct {
-	DefIndex uint32
-	Name     string
-	Rarity   string
-	PoolKind domain.TF2PoolKind
-	ImageURL string
-}
-
-type TF2AttributeDefinition struct {
-	DefIndex          uint32
-	Name              string
-	AttributeClass    string
-	AttributeType     string
-	DescriptionFormat string
-	EffectType        string
-	StoredAsInteger   bool
-	Hidden            bool
-	ValueNames        map[uint32]string
-}
-
-type TF2DecodedAttribute struct {
-	DefIndex       uint32
-	Name           string
-	Value          string
-	EffectType     string
-	Hidden         bool
-	AttributeClass string
+	TradeUpItems      []TF2RelatedItem
 }
 
 func ParseTF2AttributeDefinitions(itemsText string) (map[uint32]TF2AttributeDefinition, error) {
@@ -427,9 +372,35 @@ func applyTF2Collections(definitions map[uint32]TF2Definition, itemsGame kvObjec
 			}
 		}
 	}
+	applyTF2TradeUpItems(definitions)
 }
 
-func localizeFromTokens(tokens map[string]string, token string) string {
-	token = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(token), "#"))
-	return tokens[token]
+func applyTF2TradeUpItems(definitions map[uint32]TF2Definition) {
+	nextRarity := map[string]string{
+		"civilian": "freelance", "freelance": "mercenary",
+		"mercenary": "commando", "commando": "assassin", "assassin": "elite",
+		"common": "uncommon", "uncommon": "rare", "rare": "mythical",
+		"mythical": "legendary", "legendary": "ancient",
+	}
+	byCollectionRarity := make(map[string][]TF2RelatedItem)
+	for _, definition := range definitions {
+		key := definition.Collection + "\x00" + strings.ToLower(definition.Rarity)
+		if definition.Collection != "" {
+			byCollectionRarity[key] = append(byCollectionRarity[key], TF2RelatedItem{
+				DefIndex: definition.DefIndex, Name: definition.Name,
+				Rarity: definition.Rarity, PoolKind: domain.TF2PoolKindPrimary,
+			})
+		}
+	}
+	for index, definition := range definitions {
+		next := nextRarity[strings.ToLower(definition.Rarity)]
+		if next == "" || definition.Collection == "" {
+			continue
+		}
+		definition.TradeUpItems = append(
+			[]TF2RelatedItem(nil),
+			byCollectionRarity[definition.Collection+"\x00"+next]...,
+		)
+		definitions[index] = definition
+	}
 }

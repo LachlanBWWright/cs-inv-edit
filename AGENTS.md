@@ -1,5 +1,6 @@
 # Repository Guidance
 
+- Run `pnpm --silent static-check` after code changes. It checks linting, TypeScript types, file line counts, and indentation while keeping agent context usage low: it prints only `pass` on success and details only for checks that fail.
 - Treat https://github.com/SteamTracking/Protobufs as the authoritative source for Steam and CS2 protobuf definitions, message IDs, and field numbers. Prefer the `csgo/` and `steam/` proto files there over npm package wrappers, stale generated code, examples, or inferred payload shapes.
 - For CS2-current protobufs and GC enums, use the `proto/vendor/gametracking-cs2` submodule before browsing GitHub. Its files may retain legacy names such as `csgo`, `cstrike15`, and `ECsgoGCMsg`; verify by repository path and commit recency rather than renaming them locally.
 - Use `proto/vendor/gametracking-cs2/Protobufs/base_gcmessages.proto` for shared GC economy messages such as `CMsgUseItem`, `CMsgOpenCrate`, `CMsgApplyStatTrakSwap`, `CMsgApplyStrangePart`, and `CSOEconItem`. Do not infer binary layouts when a message exists there.

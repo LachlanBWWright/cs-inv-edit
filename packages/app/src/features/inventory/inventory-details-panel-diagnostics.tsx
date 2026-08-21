@@ -14,6 +14,7 @@ export interface DiagnosticsPanelProps {
 function DebugBlock(props: {
   debug: NonNullable<NonNullable<InventoryItemDto["debug"]>>;
 }) {
+  const attributes = () => props.debug.attributes;
   return (
     <div class="space-y-1 border-t border-slate-800 pt-2">
       <p>GC ID: {props.debug.gcId}</p>
@@ -30,8 +31,8 @@ function DebugBlock(props: {
       <p>
         Market fallback used: {props.debug.marketDescriptionUsed ? "yes" : "no"}
       </p>
-      <Show when={props.debug.attributes}>
-        <p>Attributes: {JSON.stringify(props.debug.attributes)}</p>
+      <Show when={attributes()}>
+        <p>Attributes: {JSON.stringify(attributes())}</p>
       </Show>
     </div>
   );
@@ -296,6 +297,27 @@ function formatDecodedDiagnosticEntry(
   return { displayVal: rawVal };
 }
 
+function DiagnosticEntry(props: { entry: { label: string; value: string } }) {
+  const decoded = createMemo(() =>
+    formatDecodedDiagnosticEntry(props.entry.label, props.entry.value),
+  );
+  return (
+    <div class="flex flex-col rounded-lg bg-slate-900 p-2">
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {props.entry.label}
+      </span>
+      <span class="mt-0.5 font-mono text-emerald-300 font-medium break-all">
+        {decoded().displayVal}
+      </span>
+      <Show when={decoded().rawVal}>
+        <span class="mt-0.5 font-mono text-[10px] text-slate-500 break-all">
+          {decoded().rawVal}
+        </span>
+      </Show>
+    </div>
+  );
+}
+
 function DiagnosticCard(props: { diagnostic: string }) {
   const parsed = createMemo(() => parseDiagnosticLine(props.diagnostic));
   return (
@@ -308,26 +330,7 @@ function DiagnosticCard(props: { diagnostic: string }) {
       </summary>
       <div class="mt-2 grid gap-1.5 sm:grid-cols-2">
         <For each={parsed().entries}>
-          {(entry) => {
-            const decoded = createMemo(() =>
-              formatDecodedDiagnosticEntry(entry.label, entry.value),
-            );
-            return (
-              <div class="flex flex-col rounded-lg bg-slate-900 p-2">
-                <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  {entry.label}
-                </span>
-                <span class="mt-0.5 font-mono text-emerald-300 font-medium break-all">
-                  {decoded().displayVal}
-                </span>
-                <Show when={decoded().rawVal}>
-                  <span class="mt-0.5 font-mono text-[10px] text-slate-500 break-all">
-                    {decoded().rawVal}
-                  </span>
-                </Show>
-              </div>
-            );
-          }}
+          {(entry) => <DiagnosticEntry entry={entry} />}
         </For>
       </div>
     </details>
@@ -368,13 +371,16 @@ export interface ContentsDialogProps {
   selected: InventoryItemDto;
   items: RelatedItemDto[];
   dialogContext: RelatedItemPreviewContext | undefined;
-  context: import("../../shared/ui-types.js").RelatedItemPreviewContext | undefined;
+  context:
+    import("../../shared/ui-types.js").RelatedItemPreviewContext | undefined;
   onClose: () => void;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
 }
 
 export function ContentsDialog(props: ContentsDialogProps) {
   const odds = containerItemOdds(props.items ?? []);
+  const itemProbability = (item: RelatedItemDto) =>
+    props.context === "container" ? odds.get(item) : undefined;
   return (
     <div class="rounded-xl border border-cyan-900/60 bg-cyan-950 p-3 text-xs leading-relaxed text-slate-400">
       <div class="grid gap-2 sm:grid-cols-2">
@@ -383,9 +389,7 @@ export function ContentsDialog(props: ContentsDialogProps) {
             <RelatedItemPreview
               item={item}
               context={props.dialogContext}
-              probability={
-                props.context === "container" ? odds.get(item) : undefined
-              }
+              probability={itemProbability(item)}
               onRequestMarketPreview={props.onMarketPreview}
             />
           )}

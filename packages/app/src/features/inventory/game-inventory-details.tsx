@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import {
   ItemMarketBadges,
   marketPriceLabel,
@@ -6,388 +6,339 @@ import {
 } from "./ItemMarketBadges.js";
 import {
   ItemImage,
-  marketURL,
+  marketUrl,
   SteamItemDiagnostics,
   TF2ItemDiagnostics,
 } from "./game-inventory-elements.js";
 import { VendorPricePreview } from "../commerce/VendorPricePreview.js";
 import { GameInventoryTF2Actions } from "./game-inventory-tf2-actions.js";
+import type { EconomyInventoryItemDto } from "@cs-inv-edit/contracts";
 import type { GameInventoryViewProps } from "./GameInventoryView.js";
 import type { createGameInventoryModel } from "./game-inventory-model.js";
 import { GameInventoryCommerceActions } from "./GameInventoryCommerceActions.js";
 import { TF2ClassIcons } from "../tf2/TF2ClassIcons.js";
 
-export function GameInventoryDetails(input: {
-  props: GameInventoryViewProps;
+function DetailField(props: {
+  label: string;
+  children: JSX.Element | string | number | null | undefined;
+}) {
+  return (
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-slate-500">
+        {props.label}
+      </dt>
+      <dd class="mt-1 text-slate-200">{props.children}</dd>
+    </div>
+  );
+}
+
+type InventoryDetailsItem = NonNullable<
+  ReturnType<typeof createGameInventoryModel>["selected"] extends () => infer T
+    ? T
+    : never
+>;
+
+function InventoryDetailHeader(props: {
+  item: InventoryDetailsItem;
+  marketPrices: ReadonlyMap<string, number>;
+}) {
+  return (
+    <div class="relative overflow-hidden">
+      <ItemMarketBadges
+        item={props.item}
+        priceMinor={props.marketPrices.get(props.item.marketName ?? "")}
+      />
+      <ItemImage item={props.item} large />
+    </div>
+  );
+}
+
+function OptionalDetailField(props: {
+  label: string;
+  value: string | undefined;
+}) {
+  return (
+    <Show when={props.value} keyed>
+      {(value) => <DetailField label={props.label}>{value}</DetailField>}
+    </Show>
+  );
+}
+
+function MarketPriceField(props: {
+  item: InventoryDetailsItem;
+  price?: number;
+}) {
+  const label = () => marketPriceLabel(props.item, props.price);
+  return (
+    <Show when={label()} keyed>
+      {(price) => (
+        <DetailField label="Steam Market price">
+          <Show
+            when={props.item.marketName}
+            fallback={<span class="text-slate-100">{price}</span>}
+          >
+            <a
+              class="text-sky-300 underline decoration-sky-500/50 underline-offset-4 hover:text-sky-200"
+              href={marketUrl(props.item)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {price}
+            </a>
+          </Show>
+        </DetailField>
+      )}
+    </Show>
+  );
+}
+
+function UsableClassesField(props: { classes: string[] }) {
+  return (
+    <Show when={props.classes.length > 0}>
+      <DetailField label="Usable classes">
+        <TF2ClassIcons classes={props.classes} />
+      </DetailField>
+    </Show>
+  );
+}
+
+function TF2MarketSummary(props: {
+  sellListings: number;
+  price: string | undefined;
+}) {
+  return (
+    <div class="py-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        TF2 GC market summary
+      </p>
+      <p class="mt-1 text-sm text-slate-200">
+        {props.sellListings.toLocaleString()} sell listings · {props.price}
+      </p>
+      <p class="mt-1 text-xs text-slate-500">
+        Coordinator summary, not a live order book.
+      </p>
+    </div>
+  );
+}
+
+function DynamicPropertyRows(props: { properties: Record<string, string> }) {
+  return (
+    <For each={Object.entries(props.properties)}>
+      {([key, value]) => (
+        <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
+          <dt class="break-all text-slate-500">{key}</dt>
+          <dd class="break-all text-right text-slate-200">{value}</dd>
+        </div>
+      )}
+    </For>
+  );
+}
+
+export function InventoryDetailBody(props: {
+  item: InventoryDetailsItem;
+  marketPrices: ReadonlyMap<string, number>;
+  selectedPriceScan: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedPriceScan"];
+  selectedPriceScanLoading: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedPriceScanLoading"];
+  selectedTF2Details: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedTF2Details"];
+  selectedServiceDetails: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedServiceDetails"];
+  selectedTF2Market: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedTF2Market"];
+  selectedTF2MarketPrice: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedTF2MarketPrice"];
+  selectedTF2Item: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedTF2Item"];
+  selectedSteamItem: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedSteamItem"];
+  selectedInventoryUrl: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedInventoryUrl"];
+  selectedSaleUrl: ReturnType<
+    typeof createGameInventoryModel
+  >["selectedSaleUrl"];
+  viewProps: GameInventoryViewProps;
   model: ReturnType<typeof createGameInventoryModel>;
 }) {
-  const props = input.props;
-  const {
-    marketPrices,
-    selectedPriceScan,
-    selectedPriceScanLoading,
-    selected,
-    selectedTF2Details,
-    selectedTF2Item,
-    selectedSteamItem,
-    selectedServiceDetails,
-    selectedSaleURL,
-    selectedInventoryURL,
-    selectedTF2Market,
-    selectedTF2MarketPrice,
-  } = input.model;
+  const tf2Details = () => props.selectedTF2Details();
+  const serviceDetails = () => props.selectedServiceDetails();
+  const tf2Item = () => props.selectedTF2Item();
+  const steamItem = () => props.selectedSteamItem();
+  const dynamicProperties = () => serviceDetails()?.dynamicProperties ?? {};
+  const hasDynamicProperties = () =>
+    Object.keys(dynamicProperties()).length > 0;
+  const usableTF2Classes = () =>
+    props.item.details.game === "tf2"
+      ? (props.item.details.usableClasses ?? [])
+      : [];
+  const dotaDetails = () =>
+    props.item.details.game === "dota2" ? props.item.details : undefined;
+
   return (
-    <aside class="h-full min-h-0 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950 p-4">
-      <Show
-        when={selected()}
-        fallback={
-          <p class="text-sm text-slate-400">Select an item to inspect it.</p>
-        }
-      >
-        {(item) => (
+    <div class="space-y-4">
+      <InventoryDetailHeader
+        item={props.item}
+        marketPrices={props.marketPrices}
+      />
+      <div>
+        <h2 class="text-xl font-semibold text-slate-50">{props.item.name}</h2>
+        <Show when={props.item.details.customName}>
+          <p class="mt-1 text-sm font-medium text-cyan-200">
+            Name Tag: “{props.item.details.customName}”
+          </p>
+        </Show>
+        <Show when={props.item.type}>
+          <p class="mt-1 text-sm text-slate-400">{props.item.type}</p>
+        </Show>
+      </div>
+      <section class="divide-y divide-slate-800 border-y border-slate-800/80">
+        <dl class="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 py-4 text-sm text-slate-300">
+          <Show when={props.item.rarity}>
+            <DetailField label="Rarity">{props.item.rarity}</DetailField>
+          </Show>
+          <Show when={props.item.quality}>
+            <DetailField label="Quality">{props.item.quality}</DetailField>
+          </Show>
+          <MarketPriceField
+            item={props.item}
+            price={props.marketPrices.get(props.item.marketName ?? "")}
+          />
+          <DetailField label="Trade state">
+            {tradeStateDescription(props.item)}
+          </DetailField>
+          <DetailField label="Asset identity">
+            <span class="mt-1 break-all font-mono text-xs text-slate-300">
+              {props.item.assetId}
+            </span>
+          </DetailField>
+          <DetailField label="Level and style">
+            Level {props.item.details.level} · Style {props.item.details.style}
+          </DetailField>
+          <OptionalDetailField
+            label="Equip slot"
+            value={tf2Details()?.equipSlot}
+          />
+          <UsableClassesField classes={usableTF2Classes()} />
+          <OptionalDetailField
+            label="TF2 item kind"
+            value={props.selectedTF2Details()?.itemKind}
+          />
+          <OptionalDetailField
+            label="Collection"
+            value={tf2Details()?.collection}
+          />
+          <OptionalDetailField
+            label="Equip regions"
+            value={tf2Details()?.equipRegions?.join(", ")}
+          />
+          <OptionalDetailField label="Hero" value={dotaDetails()?.hero} />
+          <OptionalDetailField label="Slot" value={dotaDetails()?.slot} />
+          <OptionalDetailField
+            label="Definition ID"
+            value={serviceDetails()?.serviceDefinitionId}
+          />
+          <OptionalDetailField
+            label="Service state"
+            value={serviceDetails()?.serviceState}
+          />
+          <OptionalDetailField
+            label="Origin"
+            value={serviceDetails()?.serviceOrigin}
+          />
+          <OptionalDetailField
+            label="Acquired"
+            value={serviceDetails()?.acquiredAt}
+          />
+        </dl>
+        <VendorPricePreview
+          appId={props.item.appId}
+          marketName={props.item.marketName}
+          marketable={props.item.marketable}
+          result={props.selectedPriceScan()}
+          loading={props.selectedPriceScanLoading()}
+          appearance="plain"
+        />
+        <Show when={props.selectedTF2Market()}>
+          {(market) => (
+            <TF2MarketSummary
+              sellListings={market().sellListings}
+              price={props.selectedTF2MarketPrice()}
+            />
+          )}
+        </Show>
+      </section>
+      <Show when={props.item.details.equippedStates?.length}>
+        <p class="text-xs text-slate-400">
+          Equipped states:{" "}
+          {props.item.details.equippedStates
+            ?.map((state) => `class ${state.class}, slot ${state.slot}`)
+            .join(" · ")}
+        </p>
+      </Show>
+      <Show when={props.item.details.interiorItemId}>
+        <p class="text-xs text-slate-400">
+          Contained economy item:{" "}
+          <span class="font-mono">{props.item.details.interiorItemId}</span>
+        </p>
+      </Show>
+      <Show when={props.selectedTF2Details()?.description}>
+        <p class="text-sm text-slate-400">
+          {props.selectedTF2Details()?.description}
+        </p>
+      </Show>
+      <GameInventoryTF2Actions
+        props={props.viewProps}
+        model={props.model}
+        item={() => props.item as EconomyInventoryItemDto}
+      />
+      <Show when={tf2Item()}>
+        {(tf2Item) => (
           <div>
-            <div class="relative overflow-hidden">
-              <ItemMarketBadges
-                item={item()}
-                priceMinor={marketPrices().get(item().marketName ?? "")}
-              />
-              <ItemImage item={item()} large />
-            </div>
-            <h2 class="mt-3 text-xl font-semibold text-slate-50">
-              {item().name}
-            </h2>
-            <Show when={item().details.customName}>
-              <p class="mt-1 text-sm font-medium text-cyan-200">
-                Name Tag: “{item().details.customName}”
-              </p>
-            </Show>
-            <Show when={item().type}>
-              <p class="mt-1 text-sm text-slate-400">{item().type}</p>
-            </Show>
-            <dl class="mt-4 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 rounded-2xl border border-slate-800/80 bg-slate-900 p-3 text-sm text-slate-300">
-              <Show when={item().rarity}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Rarity
-                  </dt>
-                  <dd class="mt-1 text-slate-200">{item().rarity}</dd>
-                </div>
-              </Show>
-              <Show when={item().quality}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Quality
-                  </dt>
-                  <dd class="mt-1 text-slate-200">{item().quality}</dd>
-                </div>
-              </Show>
-              <Show
-                when={marketPriceLabel(
-                  item(),
-                  marketPrices().get(item().marketName ?? ""),
-                )}
-              >
-                {(price) => (
-                  <div>
-                    <dt class="text-xs uppercase tracking-wide text-slate-500">
-                      Steam Market price
-                    </dt>
-                    <dd class="mt-1 font-medium">
-                      <Show
-                        when={item().marketName}
-                        fallback={<span class="text-slate-100">{price()}</span>}
-                      >
-                        <a
-                          class="text-sky-300 underline decoration-sky-500/50 underline-offset-4 hover:text-sky-200"
-                          href={marketURL(item())}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {price()}
-                        </a>
-                      </Show>
-                    </dd>
-                  </div>
-                )}
-              </Show>
-              <div>
-                <dt class="text-xs uppercase tracking-wide text-slate-500">
-                  Trade state
-                </dt>
-                <dd class="mt-1 text-slate-200">
-                  {tradeStateDescription(item())}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs uppercase tracking-wide text-slate-500">
-                  Asset identity
-                </dt>
-                <dd class="mt-1 break-all font-mono text-xs text-slate-300">
-                  {item().assetId}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs uppercase tracking-wide text-slate-500">
-                  Level and style
-                </dt>
-                <dd class="mt-1 text-slate-200">
-                  Level {item().details.level} · Style {item().details.style}
-                </dd>
-              </div>
-              <Show
-                when={
-                  item().game === "tf2" &&
-                  item().details.game === "tf2" &&
-                  item().details.equipSlot
-                }
-              >
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Equip slot
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {item().details.game === "tf2"
-                      ? item().details.equipSlot
-                      : ""}
-                  </dd>
-                </div>
-              </Show>
-              <Show
-                when={
-                  item().game === "tf2" &&
-                  item().details.game === "tf2" &&
-                  item().details.usableClasses?.length
-                }
-              >
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Usable classes
-                  </dt>
-                  <dd>
-                    <TF2ClassIcons
-                      classes={
-                        item().details.game === "tf2"
-                          ? (item().details.usableClasses ?? [])
-                          : []
-                      }
-                    />
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedTF2Details()?.itemKind}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    TF2 item kind
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {selectedTF2Details()?.itemKind}
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedTF2Details()?.collection}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Collection
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {selectedTF2Details()?.collection}
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedTF2Details()?.equipRegions?.length}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Equip regions
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {selectedTF2Details()?.equipRegions?.join(", ")}
-                  </dd>
-                </div>
-              </Show>
-              <Show
-                when={
-                  item().game === "dota2" &&
-                  item().details.game === "dota2" &&
-                  item().details.hero
-                }
-              >
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Hero
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {item().details.game === "dota2" ? item().details.hero : ""}
-                  </dd>
-                </div>
-              </Show>
-              <Show
-                when={
-                  item().game === "dota2" &&
-                  item().details.game === "dota2" &&
-                  item().details.slot
-                }
-              >
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Slot
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {item().details.game === "dota2" ? item().details.slot : ""}
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedServiceDetails()?.serviceDefinitionId}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Definition ID
-                  </dt>
-                  <dd class="mt-1 break-all font-mono text-xs text-slate-200">
-                    {selectedServiceDetails()?.serviceDefinitionId}
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedServiceDetails()?.serviceState}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Service state
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {selectedServiceDetails()?.serviceState}
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedServiceDetails()?.serviceOrigin}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Origin
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {selectedServiceDetails()?.serviceOrigin}
-                  </dd>
-                </div>
-              </Show>
-              <Show when={selectedServiceDetails()?.acquiredAt}>
-                <div>
-                  <dt class="text-xs uppercase tracking-wide text-slate-500">
-                    Acquired
-                  </dt>
-                  <dd class="mt-1 text-slate-200">
-                    {selectedServiceDetails()?.acquiredAt}
-                  </dd>
-                </div>
-              </Show>
-            </dl>
-            <div class="mt-4">
-              <VendorPricePreview
-                appId={item().appId}
-                marketName={item().marketName}
-                marketable={item().marketable}
-                result={selectedPriceScan()}
-                loading={selectedPriceScanLoading()}
-              />
-            </div>
-            <Show when={selectedTF2Market()}>
-              {(market) => (
-                <div class="mt-3 rounded-lg border border-slate-800 bg-slate-950 p-3">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    TF2 GC market summary
-                  </p>
-                  <p class="mt-1 text-sm text-slate-200">
-                    {market().sellListings.toLocaleString()} sell listings ·{" "}
-                    {selectedTF2MarketPrice()}
-                  </p>
-                  <p class="mt-1 text-xs text-slate-500">
-                    Coordinator summary, not a live order book.
-                  </p>
-                </div>
-              )}
-            </Show>
-            <Show when={item().details.equippedStates?.length}>
-              <p class="mt-3 text-xs text-slate-400">
-                Equipped states:{" "}
-                {item()
-                  .details.equippedStates?.map(
-                    (state) => `class ${state.class}, slot ${state.slot}`,
-                  )
-                  .join(" · ")}
-              </p>
-            </Show>
-            <Show when={item().details.interiorItemId}>
-              <p class="mt-2 text-xs text-slate-400">
-                Contained economy item:{" "}
-                <span class="font-mono">{item().details.interiorItemId}</span>
-              </p>
-            </Show>
-            <Show when={selectedTF2Details()?.description}>
-              <p class="mt-3 text-sm text-slate-400">
-                {selectedTF2Details()?.description}
-              </p>
-            </Show>
-            <GameInventoryTF2Actions
-              props={props}
-              model={input.model}
-              item={item}
-            />
-            <Show when={selectedTF2Item()}>
-              {(tf2Item) => (
-                <div class="mt-4">
-                  <TF2ItemDiagnostics item={tf2Item()} />
-                </div>
-              )}
-            </Show>
-            <Show when={selectedSteamItem()}>
-              {(steamItem) => (
-                <div class="mt-4">
-                  <SteamItemDiagnostics
-                    item={steamItem()}
-                    priceScan={selectedPriceScan()}
-                    priceScanLoading={selectedPriceScanLoading()}
-                  />
-                </div>
-              )}
-            </Show>
-            <Show
-              when={
-                selectedServiceDetails() &&
-                Object.keys(selectedServiceDetails()?.dynamicProperties ?? {})
-                  .length > 0
-              }
-            >
-              <details class="mt-4 rounded-2xl border border-slate-800/80 p-3 text-sm text-slate-400">
-                <summary class="cursor-pointer font-medium text-slate-200">
-                  Dynamic properties
-                </summary>
-                <dl class="mt-3 space-y-2 font-mono text-xs">
-                  <For
-                    each={Object.entries(
-                      selectedServiceDetails()?.dynamicProperties ?? {},
-                    )}
-                  >
-                    {([key, value]) => (
-                      <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
-                        <dt class="break-all text-slate-500">{key}</dt>
-                        <dd class="break-all text-right text-slate-200">
-                          {value}
-                        </dd>
-                      </div>
-                    )}
-                  </For>
-                </dl>
-              </details>
-            </Show>
-            <GameInventoryCommerceActions
-              inventoryUrl={selectedInventoryURL()}
-              saleUrl={selectedSaleURL()}
-              inspectUrl={item().inspectUrl}
-            />
-            <Show when={item().descriptions?.length}>
-              <div class="mt-4 space-y-2 border-t border-slate-800 pt-4 text-sm text-slate-400">
-                <For each={item().descriptions}>{(line) => <p>{line}</p>}</For>
-              </div>
-            </Show>
+            <TF2ItemDiagnostics item={tf2Item()} />
           </div>
         )}
       </Show>
-    </aside>
+      <Show when={steamItem()}>
+        {(steamItem) => (
+          <div>
+            <SteamItemDiagnostics
+              item={steamItem()}
+              priceScan={props.selectedPriceScan()}
+              priceScanLoading={props.selectedPriceScanLoading()}
+            />
+          </div>
+        )}
+      </Show>
+      <Show when={hasDynamicProperties()}>
+        <details class="border-y border-slate-800/80 py-4 text-sm text-slate-400">
+          <summary class="cursor-pointer font-medium text-slate-200">
+            Dynamic properties
+          </summary>
+          <dl class="mt-3 space-y-2 font-mono text-xs">
+            <DynamicPropertyRows properties={dynamicProperties()} />
+          </dl>
+        </details>
+      </Show>
+      <GameInventoryCommerceActions
+        inventoryUrl={props.selectedInventoryUrl()}
+        saleUrl={props.selectedSaleUrl()}
+        inspectUrl={props.item.inspectUrl}
+      />
+      <Show when={props.item.descriptions?.length}>
+        <div class="space-y-2 border-t border-slate-800 pt-4 text-sm text-slate-400">
+          <For each={props.item.descriptions}>{(line) => <p>{line}</p>}</For>
+        </div>
+      </Show>
+    </div>
   );
 }

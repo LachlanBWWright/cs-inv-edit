@@ -3,7 +3,6 @@ package gametracking
 import (
 	_ "embed"
 	"fmt"
-	"strings"
 	"sync"
 
 	"cs-inv-edit/backend/internal/proto/tracking"
@@ -180,71 +179,6 @@ func DecodeMessageJSON(name string, body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode %s: %w", name, err)
 	}
 	return protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: false}.Marshal(message)
-}
-
-func MessageNameForEMsg(emsg uint32) (string, bool) {
-	files, err := files()
-	if err != nil {
-		return "", false
-	}
-	// The shared GC system enum retains "GC" in these EMsg identifiers, but
-	// the corresponding gcsdk message types do not. Keep these authoritative
-	// upstream exceptions explicit instead of guessing a nonexistent name.
-	baseGCMessageNames := map[uint32]string{
-		21:   "CMsgSOSingleObject",
-		22:   "CMsgSOSingleObject",
-		23:   "CMsgSOSingleObject",
-		24:   "CMsgSOCacheSubscribed",
-		25:   "CMsgSOCacheUnsubscribed",
-		26:   "CMsgSOMultipleObjects",
-		27:   "CMsgSOCacheSubscriptionCheck",
-		28:   "CMsgSOCacheSubscriptionRefresh",
-		1094: "CMsgCasketItem",
-		2536: "CMsgCasketItem",
-		4004: "CMsgClientWelcome",
-		4006: "CMsgClientHello",
-		4007: "CMsgServerHello",
-	}
-	if candidate, ok := baseGCMessageNames[emsg]; ok {
-		if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
-			if _, isMessage := descriptor.(protoreflect.MessageDescriptor); isMessage {
-				return candidate, true
-			}
-		}
-	}
-	found := ""
-	files.RangeFiles(func(file protoreflect.FileDescriptor) bool {
-		enums := file.Enums()
-		for i := 0; i < enums.Len(); i++ {
-			value := enums.Get(i).Values().ByNumber(protoreflect.EnumNumber(emsg))
-			if value == nil {
-				continue
-			}
-			valueName := string(value.Name())
-			if !strings.HasPrefix(valueName, "k_EMsg") && !strings.HasPrefix(valueName, "k_ESOMsg") {
-				continue
-			}
-			raw := strings.TrimPrefix(strings.TrimPrefix(valueName, "k_EMsg"), "k_ESOMsg")
-			candidates := []string{
-				"CMsg" + raw,
-				"CMsg" + strings.TrimPrefix(raw, "GC"),
-				"CMsgSO" + raw,
-				"CMsgSO" + strings.TrimPrefix(raw, "_"),
-				"CMsgSOCache" + raw,
-				"CMsgSOCache" + strings.TrimPrefix(raw, "_"),
-			}
-			for _, candidate := range candidates {
-				if descriptor, descriptorErr := files.FindDescriptorByName(protoreflect.FullName(candidate)); descriptorErr == nil {
-					if _, ok := descriptor.(protoreflect.MessageDescriptor); ok {
-						found = candidate
-						return false
-					}
-				}
-			}
-		}
-		return true
-	})
-	return found, found != ""
 }
 
 func MarshalStoreGetUserData(version uint32, currency int32) ([]byte, error) {

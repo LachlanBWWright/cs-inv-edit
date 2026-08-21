@@ -13,7 +13,7 @@ import { formatFloat } from "./item-instance-utils.js";
 import type { ReturnEstimate } from "../commerce/roi-utils.js";
 import { ReturnEstimateCard } from "../commerce/ReturnEstimateCard.js";
 
-function steamMarketURL(marketName: string) {
+function steamMarketUrl(marketName: string) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
 }
 
@@ -71,7 +71,7 @@ function TradeUpOutcomeCard(props: { outcome: RelatedItemDto }) {
       <Show when={props.outcome.marketName}>
         <a
           class="mt-3 inline-block text-xs font-medium text-sky-300 hover:text-sky-200"
-          href={steamMarketURL(props.outcome.marketName!)}
+          href={steamMarketUrl(props.outcome.marketName!)}
           target="_blank"
           rel="noreferrer"
         >
@@ -132,6 +132,9 @@ export function TradeUpOutcomes(props: TradeUpOutcomesProps) {
 export interface ActionBarProps {
   selected: InventoryItemDto;
   pending: boolean;
+  storageContentsLoading: boolean;
+  storageMutationsEnabled: boolean;
+  storageUnavailableReason?: string;
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
   compatibleContainerKey: InventoryItemDto | undefined;
@@ -195,6 +198,16 @@ function ContainerKeyControl(
   );
 }
 
+function ContainerButtonLabel(props: {
+  kind: "contents" | "open";
+  contentsCount?: number;
+  requiresKey?: boolean;
+}) {
+  if (props.kind === "contents")
+    return <>View contents ({props.contentsCount})</>;
+  return <>{props.requiresKey ? "Choose key" : "Open"}</>;
+}
+
 export function ActionBar(props: ActionBarProps) {
   const showOpenContainer = () =>
     !isActiveTerminal(props.selected) &&
@@ -223,7 +236,10 @@ export function ActionBar(props: ActionBarProps) {
                 class="w-full"
                 onClick={() => props.onShowContents()}
               >
-                View contents ({props.selected.containerItems?.length})
+                <ContainerButtonLabel
+                  kind="contents"
+                  contentsCount={props.selected.containerItems?.length}
+                />
               </Button>
             </Show>
             <Show when={showOpenContainer()}>
@@ -232,7 +248,10 @@ export function ActionBar(props: ActionBarProps) {
                 onClick={() => void props.onOpenContainer()}
                 disabled={props.pending}
               >
-                {requiresKeySelection() ? "Choose key" : "Open"}
+                <ContainerButtonLabel
+                  kind="open"
+                  requiresKey={requiresKeySelection()}
+                />
               </Button>
             </Show>
           </div>
@@ -248,9 +267,18 @@ export function ActionBar(props: ActionBarProps) {
             size="lg"
             class="w-full rounded-xl py-3"
             onClick={() => void props.onViewStorageContents()}
-            disabled={props.pending}
+            disabled={props.pending || !props.storageMutationsEnabled}
           >
-            View contents ({props.selected.storageCount ?? 0})
+            <Show
+              when={props.storageContentsLoading}
+              fallback={`View contents (${props.selected.storageCount ?? 0})`}
+            >
+              <span
+                class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-cyan-800 border-t-cyan-200"
+                aria-hidden="true"
+              />
+              <span aria-live="polite">Loading contents…</span>
+            </Show>
           </Button>
           <Button
             variant="action"
@@ -259,10 +287,16 @@ export function ActionBar(props: ActionBarProps) {
             onClick={() => props.onBeginMoveIntoStorage(props.selected)}
             disabled={
               props.pending || (props.selected.storageCount ?? 0) >= 1000
+              || !props.storageMutationsEnabled
             }
           >
             Move items into unit
           </Button>
+          <Show when={props.storageUnavailableReason}>
+            {(reason) => (
+              <p class="text-sm text-amber-300 sm:col-span-2">{reason()}</p>
+            )}
+          </Show>
         </div>
       </Show>
       <Show when={props.canUseNameTagOn}>

@@ -47,11 +47,51 @@ export function ItemManagementView(props: ItemManagementViewProps) {
     setPending(false);
   };
 
-  const parseMultipleIDs = (): string[] =>
+  const parseMultipleIds = (): string[] =>
     multiUseRaw()
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
+  const updateUseItemId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setUseItemInput((current) => ({
+      ...current,
+      itemId: event.currentTarget.value.trim(),
+    }));
+  };
+  const updateTargetSteamId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setUseItemInput((current) => ({
+      ...current,
+      targetSteamId: event.currentTarget.value.trim(),
+    }));
+  };
+  const updateGiftItemId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setGiftInput((current) => ({
+      ...current,
+      itemId: event.currentTarget.value.trim(),
+    }));
+  };
+  const updateGiftReceiver: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setGiftInput((current) => ({
+      ...current,
+      receiverAccountId: Number(event.currentTarget.value) || 0,
+    }));
+  };
+  const updateGiftMessage: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setGiftInput((current) => ({
+      ...current,
+      giftMessage: event.currentTarget.value,
+    }));
+  };
 
   return (
     <div class="space-y-5">
@@ -97,23 +137,13 @@ export function ItemManagementView(props: ItemManagementViewProps) {
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Item ID"
             value={useItemInput().itemId}
-            onInput={(event) =>
-              setUseItemInput((current) => ({
-                ...current,
-                itemId: event.currentTarget.value.trim(),
-              }))
-            }
+            onInput={updateUseItemId}
           />
           <input
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Target Steam ID (optional)"
             value={useItemInput().targetSteamId ?? ""}
-            onInput={(event) =>
-              setUseItemInput((current) => ({
-                ...current,
-                targetSteamId: event.currentTarget.value.trim(),
-              }))
-            }
+            onInput={updateTargetSteamId}
           />
         </OperationFormCard>
 
@@ -122,7 +152,7 @@ export function ItemManagementView(props: ItemManagementViewProps) {
           actionLabel="Use multiple"
           pending={pending()}
           onExecute={() =>
-            run(() => props.onUseMultipleItems({ itemIds: parseMultipleIDs() }))
+            run(() => props.onUseMultipleItems({ itemIds: parseMultipleIds() }))
           }
         >
           <input
@@ -143,35 +173,20 @@ export function ItemManagementView(props: ItemManagementViewProps) {
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Item ID"
             value={giftInput().itemId}
-            onInput={(event) =>
-              setGiftInput((current) => ({
-                ...current,
-                itemId: event.currentTarget.value.trim(),
-              }))
-            }
+            onInput={updateGiftItemId}
           />
           <input
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Receiver account ID"
             type="number"
             value={giftInput().receiverAccountId}
-            onInput={(event) =>
-              setGiftInput((current) => ({
-                ...current,
-                receiverAccountId: Number(event.currentTarget.value) || 0,
-              }))
-            }
+            onInput={updateGiftReceiver}
           />
           <input
             class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
             placeholder="Gift message (optional)"
             value={giftInput().giftMessage ?? ""}
-            onInput={(event) =>
-              setGiftInput((current) => ({
-                ...current,
-                giftMessage: event.currentTarget.value,
-              }))
-            }
+            onInput={updateGiftMessage}
           />
         </OperationFormCard>
       </div>

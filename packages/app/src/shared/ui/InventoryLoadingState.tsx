@@ -14,6 +14,9 @@ export interface InventoryLoadingStateProps {
 export const VERBOSE_LOADING_LOGS = false;
 
 const skeletonCards = Array.from({ length: 12 }, (_, index) => index);
+const inventorySkeletonGridStyle = {
+  "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))",
+};
 
 export function InventoryLoadingState(props: InventoryLoadingStateProps) {
   createEffect(() => {
@@ -42,12 +45,13 @@ export function InventoryLoadingState(props: InventoryLoadingStateProps) {
         <div class="h-10 w-32 rounded-lg bg-slate-900" />
       </div>
       <div
-        class={`grid flex-1 gap-4 ${catalog() ? "md:grid-cols-2 2xl:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6"}`}
+        class={`grid flex-1 items-start ${catalog() ? "gap-4 md:grid-cols-2 2xl:grid-cols-3" : "gap-3"}`}
+        style={catalog() ? undefined : inventorySkeletonGridStyle}
         aria-hidden="true"
       >
         <For each={skeletonCards}>
           {() => (
-            <div class="flex min-h-48 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40">
+            <div class="flex h-[280px] flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40">
               <div class={`${catalog() ? "h-36" : "aspect-[4/3]"} bg-slate-800`} />
               <div class="flex flex-1 flex-col gap-3 p-4">
                 <div class="h-4 w-4/5 rounded bg-slate-700" />

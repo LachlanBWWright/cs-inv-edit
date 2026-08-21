@@ -9,6 +9,13 @@ export function ArmoryContentsDialog(props: {
   onClose: () => void;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
 }) {
+  const renderItem = (item: RelatedItemDto) => (
+    <RelatedItemPreview
+      item={item}
+      context="collection"
+      onRequestMarketPreview={props.onMarketPreview}
+    />
+  );
   return (
     <Dialog
       open={!!props.offer}
@@ -28,13 +35,7 @@ export function ArmoryContentsDialog(props: {
       >
         <div class="grid gap-2 sm:grid-cols-2">
           <For each={sortRelatedItemsByRarity(props.offer?.items ?? [])}>
-            {(item) => (
-              <RelatedItemPreview
-                item={item}
-                context="collection"
-                onRequestMarketPreview={props.onMarketPreview}
-              />
-            )}
+            {renderItem}
           </For>
         </div>
       </Show>

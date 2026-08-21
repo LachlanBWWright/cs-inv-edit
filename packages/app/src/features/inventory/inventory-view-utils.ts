@@ -116,7 +116,7 @@ function splitInventoryName(item: InventoryItemDto) {
   const fullName = item.marketName || item.name;
   const [typePart, ...nameParts] = fullName.split("|");
   const rawName = (
-    nameParts.length > 0 ? nameParts.join("|") : typePart
+    nameParts.length > 0 ? nameParts.join("|") : (typePart ?? fullName)
   ).trim();
   const qualifierMatch = rawName.match(/\s+\(([^)]+)\)$/);
   return {

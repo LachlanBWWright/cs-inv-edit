@@ -1,6 +1,7 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import type { ArmorySnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import { writeStoredJson } from "../../shared/lib/storage.js";
 import { enabledModeOrDefault } from "./view.js";
 import {
   createArmoryRefresher,
@@ -9,9 +10,7 @@ import {
 import { createShellController } from "./controller.js";
 import { createToastController } from "../notifications/controller.js";
 import { createSteamInventoryServiceController } from "../steam-inventory-service/controller.js";
-
 import type { AppProps } from "./app-props.js";
-export type { AppProps } from "./app-props.js";
 
 import {
   accountStorageKey,
@@ -19,7 +18,6 @@ import {
   modeFromUrl,
   screenFromUrl,
   writeLoginToUrl,
-  writeModeToUrl,
 } from "./app-controller-url.js";
 import { createAppResources } from "./app-resources.js";
 import { createAccountController } from "../accounts/account-controller.js";
@@ -28,12 +26,9 @@ import { shouldShowAccountScreen } from "../accounts/account-route.js";
 import {
   installAutomaticGameInventoryRefresh,
   installConnectedAccountSync,
+  installShellNavigationSync,
 } from "./app-controller-effects.js";
-import {
-  createMarketPreviewRequester,
-  logSteamDiagnostics,
-} from "./app-market-preview.js";
-
+import { createMarketPreviewRequester } from "./app-market-preview.js";
 export function createAppController(props: AppProps) {
   const shell = createShellController(screenFromUrl());
   shell.setAccounts(loadSteamAccounts());
@@ -103,39 +98,7 @@ export function createAppController(props: AppProps) {
   });
   const requestMarketPreview = createMarketPreviewRequester(props.backend);
 
-  createEffect(() => logSteamDiagnostics("status", connection()));
-
-  createEffect(() => {
-    const currentSettings = settings();
-    if (!currentSettings) return;
-    const flags = currentSettings.featureFlags;
-    const current = shell.view();
-    if (
-      current !== "account" &&
-      enabledModeOrDefault(current, flags) !== current
-    ) {
-      shell.setSelectedItemId(undefined);
-      shell.setView("inventory");
-    }
-  });
-
-  createEffect(() => {
-    const current = shell.view();
-    if (current === "account") return;
-    writeModeToUrl(current).match(
-      () => undefined,
-      (error) =>
-        console.warn("[app] selected mode URL could not be updated", error),
-    );
-  });
-
-  let selectionScope = "";
-  createEffect(() => {
-    const nextScope = `${connection()?.steamId ?? "disconnected"}\u0000${shell.view()}`;
-    if (selectionScope && selectionScope !== nextScope)
-      shell.setSelectedItemId(undefined);
-    selectionScope = nextScope;
-  });
+  installShellNavigationSync({ shell, connection, settings });
 
   installAutomaticGameInventoryRefresh({
     backend: props.backend,
@@ -251,9 +214,9 @@ export function createAppController(props: AppProps) {
   });
 
   createEffect(() => {
-    window.localStorage.setItem(
-      accountStorageKey,
-      JSON.stringify(shell.accounts()),
+    writeStoredJson(accountStorageKey, shell.accounts()).match(
+      () => undefined,
+      (error) => console.warn(error.message, error.cause),
     );
   });
 
@@ -358,6 +321,7 @@ export function createAppController(props: AppProps) {
     toasts: toastController.toasts,
     accounts: shell.accounts,
     accountUsername: shell.accountUsername,
+    accountLoginOnly: shell.accountLoginOnly,
     inventoryRefreshActive,
     setInventoryRefreshActive,
     health,

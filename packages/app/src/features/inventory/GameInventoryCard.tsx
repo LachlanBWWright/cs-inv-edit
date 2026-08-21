@@ -13,6 +13,8 @@ export function GameInventoryCard(props: {
   priceMinor: number | undefined;
   onSelect: () => void;
 }) {
+  const typeAndQuality = () =>
+    [props.item.type, props.item.quality].filter(Boolean).join(" · ");
   return (
     <button
       type="button"
@@ -46,9 +48,7 @@ export function GameInventoryCard(props: {
           </Show>
           <Show when={props.item.type || props.item.quality}>
             <p class="mt-1 truncate text-sm text-slate-400">
-              {[props.item.type, props.item.quality]
-                .filter(Boolean)
-                .join(" · ")}
+              {typeAndQuality()}
             </p>
           </Show>
         </Show>

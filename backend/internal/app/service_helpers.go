@@ -25,7 +25,6 @@ func defaultSettings() domain.Settings {
 			ShowStorageUnitItems:   false,
 			EnableProtocolConsole:  true,
 			EnableTradeups:         false,
-			EnableStickerExtract:   false,
 			EnableNameTags:         false,
 			EnableItemDeletion:     false,
 			EnableStatTrakSwap:     false,

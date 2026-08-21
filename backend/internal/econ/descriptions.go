@@ -28,6 +28,7 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 			return nil, err
 		}
 		descriptions := make(map[string]InventoryDescription, len(page.Descriptions))
+		properties := inventoryPropertiesByAsset(page.Properties)
 		for _, desc := range page.Descriptions {
 			key := desc.ClassID + "_" + desc.InstanceID
 			descriptions[key] = InventoryDescription{
@@ -53,7 +54,7 @@ func (p *Provider) LoadInventoryDescriptions(ctx context.Context, steamID string
 				continue
 			}
 			desc.AssetID = asset.AssetID
-			desc.InspectURL = expandInventoryInspectURL(desc.InspectURL, steamID, asset.AssetID)
+			desc.InspectURL = expandInventoryInspectURL(desc.InspectURL, steamID, asset.AssetID, properties[asset.AssetID])
 			out[asset.AssetID] = desc
 			for _, name := range []string{desc.MarketHashName, desc.MarketName, desc.Name} {
 				for _, key := range inventoryDescriptionNameKeys(name) {
@@ -386,34 +387,4 @@ func containsStringFold(values []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func (p *Provider) fetchInventoryPage(ctx context.Context, steamID string, startAssetID string) (inventoryPage, error) {
-	values := url.Values{}
-	values.Set("l", "english")
-	values.Set("count", "5000")
-	if startAssetID != "" {
-		values.Set("start_assetid", startAssetID)
-	}
-	endpoint := fmt.Sprintf("https://steamcommunity.com/inventory/%s/730/2?%s", url.PathEscape(steamID), values.Encode())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return inventoryPage{}, err
-	}
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return inventoryPage{}, fmt.Errorf("fetch Steam inventory descriptions: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return inventoryPage{}, fmt.Errorf("fetch Steam inventory descriptions returned HTTP %d", resp.StatusCode)
-	}
-	var page inventoryPage
-	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-		return inventoryPage{}, fmt.Errorf("decode Steam inventory descriptions: %w", err)
-	}
-	if !page.Success.Bool() {
-		return inventoryPage{}, fmt.Errorf("Steam inventory descriptions response was not successful")
-	}
-	return page, nil
 }

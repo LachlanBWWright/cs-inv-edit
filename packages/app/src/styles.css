@@ -110,6 +110,10 @@ button:disabled,
   height: 10px;
 }
 
+::-webkit-scrollbar-button {
+  display: none;
+}
+
 ::-webkit-scrollbar-track {
   background: rgb(2 6 23);
 }

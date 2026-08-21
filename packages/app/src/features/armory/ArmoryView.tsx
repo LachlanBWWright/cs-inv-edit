@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type {
   ArmoryRedeemRequest,
   ArmorySnapshot,
@@ -27,7 +27,6 @@ import { ArmoryStatus } from "./ArmoryStatus.js";
 import {
   ARMORY_PURCHASE_TIMEOUT_MS,
   ARMORY_STAR_COST_MINOR,
-  OfferCard,
   armoryPurchaseRequiresConfirmation,
   armoryPurchaseUsesReveal,
   armoryRevealCandidates,
@@ -37,6 +36,7 @@ import {
   isContainerOffer,
   withArmoryPurchaseTimeout,
 } from "./armory-view-elements.js";
+import { ArmoryOfferList } from "./armory-offer-list.js";
 import {
   armoryOfferKey,
   filterArmoryOffers,
@@ -52,6 +52,16 @@ export {
   withArmoryPurchaseTimeout,
 } from "./armory-view-elements.js";
 export type { ArmoryRevealVariant } from "./armory-view-elements.js";
+type ArmoryReveal = {
+  result: RevealItem;
+  ready: boolean;
+  candidates: RevealItem[];
+  complete: () => void;
+  mode: NonNullable<SettingsData["animations"]>["armory"];
+  title: string;
+  immediate?: boolean;
+};
+
 export function ArmoryView(props: {
   armory?: ArmorySnapshot;
   settings?: SettingsData;
@@ -68,20 +78,13 @@ export function ArmoryView(props: {
   const [confirming, setConfirming] = createSignal<string>();
   const [busy, setBusy] = createSignal(false);
   const [purchaseError, setPurchaseError] = createSignal<string>();
-  const [reveal, setReveal] = createSignal<{
-    result: RevealItem;
-    ready: boolean;
-    candidates: RevealItem[];
-    complete: () => void;
-    mode: NonNullable<SettingsData["animations"]>["armory"];
-    title: string;
-    immediate?: boolean;
-  }>();
+  const [reveal, setReveal] = createSignal<ArmoryReveal>();
+  const awaitReveal = (next: Omit<ArmoryReveal, "ready" | "complete">) =>
+    new Promise<void>((resolve) =>
+      setReveal({ ...next, ready: true, complete: resolve }),
+    );
   const [contentsOffer, setContentsOffer] =
     createSignal<ArmorySnapshot["offers"][number]>();
-  const [returnEstimate, setReturnEstimate] = createSignal<ReturnEstimate>();
-  const [returnEstimateLoading, setReturnEstimateLoading] = createSignal(false);
-  const [returnUnitCost, setReturnUnitCost] = createSignal<number>();
   const [quantities, setQuantities] = createSignal<Record<string, number>>({});
   const [offerEstimates, setOfferEstimates] = createSignal<
     Record<string, ReturnEstimate>
@@ -163,9 +166,6 @@ export function ArmoryView(props: {
     if (!state || state.status !== "ready") return;
     clearPreviewResultTimer();
     setBusy(true);
-    setReturnEstimate(undefined);
-    setReturnEstimateLoading(false);
-    setReturnUnitCost(undefined);
     setPurchaseError(undefined);
     const uiDeadline = globalThis.setTimeout(() => {
       const currentReveal = reveal();
@@ -213,16 +213,12 @@ export function ArmoryView(props: {
         if (usesReveal) {
           const openedItem = receipt.result?.openedItem;
           if (receipt.state === "completed" && openedItem) {
-            await new Promise<void>((resolve) =>
-              setReveal({
-                result: armoryRevealResult(openedItem),
-                ready: true,
-                candidates,
-                complete: resolve,
-                mode,
-                title: "Armory purchase",
-              }),
-            );
+            await awaitReveal({
+              result: armoryRevealResult(openedItem),
+              candidates,
+              mode,
+              title: "Armory purchase",
+            });
           } else {
             setReveal(undefined);
           }
@@ -262,31 +258,6 @@ export function ArmoryView(props: {
       immediate: mode === "none",
       title,
     });
-    const marketNames = [
-      ...new Set(
-        candidates
-          .map((candidate) => candidate.marketName)
-          .filter((name): name is string => !!name),
-      ),
-    ];
-    setReturnEstimate(undefined);
-    setReturnUnitCost(offer.expectedCost);
-    setReturnEstimateLoading(marketNames.length > 0);
-    if (marketNames.length > 0)
-      void scanPriceMap(marketNames, props.onScanPrices).then((prices) => {
-        const odds = containerItemOdds(offer.items ?? []);
-        setReturnEstimate(
-          expectedReturn(
-            (offer.items ?? []).map((item) => ({
-              marketName: item.marketName,
-              probability: odds.get(item) ?? 0,
-            })),
-            prices,
-            offer.expectedCost * ARMORY_STAR_COST_MINOR,
-          ),
-        );
-        setReturnEstimateLoading(false);
-      });
     previewResultTimer = window.setTimeout(() => {
       const result = generateRevealMiss(
         randomRevealCandidate(candidates, fallback),
@@ -310,11 +281,6 @@ export function ArmoryView(props: {
         title={reveal()?.title ?? "Armory preview"}
         candidates={reveal()?.candidates ?? []}
         result={reveal()?.result ?? { name: "Armory reward" }}
-        returnEstimate={returnEstimate()}
-        returnEstimateLoading={returnEstimateLoading()}
-        returnEstimateCostLabel="Stars at USD 0.40 each"
-        returnEstimateUnitCost={returnUnitCost()}
-        returnEstimateNote="Expected value uses current market prices and treats each Armory star as costing USD 0.40; Steam fees are excluded."
         onComplete={() => {
           const current = reveal();
           setReveal(undefined);
@@ -327,59 +293,32 @@ export function ArmoryView(props: {
           purchaseError={purchaseError()}
           diagnostics={diagnostics()}
         />
-        <div class="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          <For each={offers()}>
-            {(offer) => {
-              const affordable = () =>
-                offer.expectedCost * quantity(offer) <=
-                (props.armory?.balance ?? 0);
-              const disabledReason = () =>
-                !redemptionEnabled()
-                  ? "Armory redemption is disabled. Enable it in Settings → Feature flags to buy this reward."
-                  : !ready()
-                    ? "Refresh the Armory and wait for a current GC balance before buying."
-                    : !affordable()
-                      ? `You need ${offer.expectedCost * quantity(offer) - (props.armory?.balance ?? 0)} more stars for this purchase.`
-                      : undefined;
-              const purchaseQuantity = quantity(offer);
-              const requiresConfirmation = armoryPurchaseRequiresConfirmation(
-                purchaseQuantity,
-                offer.expectedCost,
-              );
-              return (
-                <OfferCard
-                  offer={offer}
-                  quantity={purchaseQuantity}
-                  estimate={offerEstimates()[armoryOfferKey(offer)]}
-                  estimateLoading={offerEstimatesLoading()}
-                  canBuy={redemptionEnabled() && ready() && affordable()}
-                  buyDisabledReason={disabledReason()}
-                  busy={busy()}
-                  balance={props.armory?.balance ?? 0}
-                  onOpenContents={() => setContentsOffer(offer)}
-                  onPreviewOpen={() => previewOpen(offer)}
-                  onSetQuantity={(value) =>
-                    setQuantity(
-                      offer,
-                      value,
-                      Math.floor(
-                        (props.armory?.balance ?? 0) / offer.expectedCost,
-                      ),
-                    )
-                  }
-                  onConfirm={() => {
-                    if (requiresConfirmation)
-                      setConfirming(armoryOfferKey(offer));
-                    else void redeem(offer);
-                  }}
-                  onRedeem={() => void redeem(offer)}
-                  onCancel={() => setConfirming(undefined)}
-                  confirming={confirming() === armoryOfferKey(offer)}
-                />
-              );
-            }}
-          </For>
-        </div>
+        <ArmoryOfferList
+          offers={offers()}
+          armory={props.armory}
+          settings={props.settings}
+          offerEstimates={offerEstimates()}
+          offerEstimatesLoading={offerEstimatesLoading()}
+          busy={busy()}
+          confirming={confirming()}
+          redemptionEnabled={redemptionEnabled()}
+          ready={ready()}
+          quantity={quantity}
+          setQuantity={setQuantity}
+          onOpenContents={setContentsOffer}
+          onPreviewOpen={previewOpen}
+          onConfirm={(offer) => {
+            const purchaseQuantity = quantity(offer);
+            const requiresConfirmation = armoryPurchaseRequiresConfirmation(
+              purchaseQuantity,
+              offer.expectedCost,
+            );
+            if (requiresConfirmation) setConfirming(armoryOfferKey(offer));
+            else void redeem(offer);
+          }}
+          onRedeem={(offer) => void redeem(offer)}
+          onCancel={() => setConfirming(undefined)}
+        />
         <Show when={ready() && offers().length === 0}>
           <Alert>
             No universal Armory offers were found in the current live CS2 item

@@ -9,13 +9,21 @@ import type { UIActionOutcome } from "../../shared/lib/ui-action-outcome.js";
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
   initialUsername?: string;
-  onConnect: (input: { username?: string; password?: string }) => Promise<UIActionOutcome>;
+  loginOnly?: boolean;
+  onConnect: (input: {
+    username?: string;
+    password?: string;
+  }) => Promise<UIActionOutcome>;
   onStartSteamQR: () => Promise<UIActionOutcome>;
   onSubmitSteamGuard: (input: { code: string }) => Promise<UIActionOutcome>;
   onDisconnect: () => Promise<UIActionOutcome>;
 }
 
 export function AccountView(props: AccountViewProps) {
+  const connectionState = () =>
+    props.loginOnly && props.connection?.state === "connected"
+      ? undefined
+      : props.connection?.state;
   const [username, setUsername] = createSignal(props.initialUsername ?? "");
   const [password, setPassword] = createSignal("");
   const [passwordVisible, setPasswordVisible] = createSignal(false);
@@ -74,7 +82,7 @@ export function AccountView(props: AccountViewProps) {
   });
 
   createEffect(() => {
-    const state = props.connection?.state;
+    const state = connectionState();
     if (
       state === "connected" ||
       state === "session_conflict" ||
@@ -170,7 +178,7 @@ export function AccountView(props: AccountViewProps) {
     <AccountViewLayout
       status={status()}
       loading={loading()}
-      connectionState={props.connection?.state}
+      connectionState={connectionState()}
       connectionDetail={props.connection?.detail}
       accountName={props.connection?.accountName}
       username={username()}
@@ -179,6 +187,7 @@ export function AccountView(props: AccountViewProps) {
       guardCode={guardCode()}
       qrImage={qrImage()}
       qrLoadingText={qrLoadingText()}
+      loginOnly={props.loginOnly}
       onUsernameChange={setUsername}
       onPasswordChange={setPassword}
       onPasswordToggle={() => setPasswordVisible((visible) => !visible)}

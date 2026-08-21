@@ -3,75 +3,13 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
 	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
-	"cs-inv-edit/backend/internal/transport"
 )
-
-func (s *Service) RefreshInventory() operations.Receipt {
-	receipt := s.newReceipt("inventory.refresh")
-	s.mu.Lock()
-	if s.connection.State != domain.ConnectionStateConnected && s.connection.State != domain.ConnectionStateSessionConflict {
-		s.inventory.Status = domain.SnapshotStatusRequiresConnection
-		s.inventory.RefreshedAt = now()
-		receipt.State = "requires_connection"
-		receipt.Message = "connect a Steam account to load inventory"
-		s.operations = append(s.operations, receipt)
-		s.events = append(s.events, operations.NewEvent(receipt, receipt.State, receipt.Message))
-		s.lastOperation = receipt
-		s.mu.Unlock()
-		return receipt
-	}
-	s.inventory.Status = domain.SnapshotStatusLoading
-	s.inventory.Message = "loading CS2 inventory from Steam Game Coordinator"
-	s.inventory.Error = ""
-	s.inventory.Diagnostics = nil
-	s.inventory.RefreshedAt = now()
-	requestKey, accountCtx, _ := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
-	s.mu.Unlock()
-
-	snapshot, err := s.fetchInventory(accountCtx, s.setInventoryLoadingStage)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	currentKey, _, currentKeyErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
-	if currentKeyErr != nil || currentKey != requestKey {
-		receipt.State = "completed"
-		receipt.Message = "inventory refresh superseded by an account change"
-		s.operations = append(s.operations, receipt)
-		s.events = append(s.events, operations.NewEvent(receipt, receipt.State, receipt.Message))
-		s.lastOperation = receipt
-		return receipt
-	}
-	if err != nil {
-		s.inventory = inventoryError(err.Error(), transport.DiagnosticsFromError(err))
-		receipt.State = "failed"
-		receipt.Message = err.Error()
-		if transport.IsSteamSessionConflict(err) {
-			s.connection.State = domain.ConnectionStateSessionConflict
-			s.connection.Detail = "This Steam account is active in another Steam or CS2 session. Close CS2 or sign out there, then retry the inventory sync."
-			s.connection.Diagnostics = transport.DiagnosticsFromError(err)
-		}
-	} else {
-		s.inventory = snapshot
-		if s.connection.State == domain.ConnectionStateSessionConflict {
-			s.connection.State = domain.ConnectionStateConnected
-			s.connection.Detail = "Steam and CS2 Game Coordinator session recovered"
-			s.connection.Diagnostics = nil
-		}
-		receipt.State = "completed"
-		receipt.Message = "inventory refreshed"
-	}
-	s.operations = append(s.operations, receipt)
-	s.events = append(s.events, operations.NewEvent(receipt, receipt.State, receipt.Message))
-	s.lastOperation = receipt
-	return receipt
-}
 
 func (s *Service) SubmitOperation(opType string, input map[string]any) operations.Receipt {
 	operation := operations.Type(opType)
@@ -114,96 +52,35 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			s.mu.Lock()
 			oldFlags := s.settings.FeatureFlags
 			flags := oldFlags
-			if value, ok := next["enableStorageMutations"].(bool); ok {
-				flags.EnableStorageMutations = value
-			}
-			if value, ok := next["enableContainerOpening"].(bool); ok {
-				flags.EnableContainerOpening = value
-			}
-			if value, ok := next["enableInventoryDebug"].(bool); ok {
-				flags.EnableInventoryDebug = value
-			}
-			if value, ok := next["showStorageUnitItems"].(bool); ok {
-				flags.ShowStorageUnitItems = value
-			}
-			if value, ok := next["enableProtocolConsole"].(bool); ok {
-				flags.EnableProtocolConsole = value
-			}
-			if value, ok := next["enableTradeups"].(bool); ok {
-				flags.EnableTradeups = value
-			}
-			if value, ok := next["enableStickerExtract"].(bool); ok {
-				flags.EnableStickerExtract = value
-			}
-			if value, ok := next["enableNameTags"].(bool); ok {
-				flags.EnableNameTags = value
-			}
-			if value, ok := next["enableItemDeletion"].(bool); ok {
-				flags.EnableItemDeletion = value
-			}
-			if value, ok := next["enableStatTrakSwap"].(bool); ok {
-				flags.EnableStatTrakSwap = value
-			}
-			if value, ok := next["enableStrangeParts"].(bool); ok {
-				flags.EnableStrangeParts = value
-			}
-			if value, ok := next["enableItemUse"].(bool); ok {
-				flags.EnableItemUse = value
-			}
-			if value, ok := next["enableToolApplication"].(bool); ok {
-				flags.EnableToolApplication = value
-			}
-			if value, ok := next["enableGifting"].(bool); ok {
-				flags.EnableGifting = value
-			}
-			if value, ok := next["enableArmoryRead"].(bool); ok {
-				flags.EnableArmoryRead = value
-			}
-			if value, ok := next["enableArmoryRedemption"].(bool); ok {
-				flags.EnableArmoryRedemption = value
-			}
-			if value, ok := next["enableStoreRead"].(bool); ok {
-				flags.EnableStoreRead = value
-			}
-			if value, ok := next["enableStorePurchases"].(bool); ok {
-				flags.EnableStorePurchases = value
-			}
-			if value, ok := next["enableFullCs2Store"].(bool); ok {
-				flags.EnableFullCS2Store = value
-			}
-			if value, ok := next["enableTf2Inventory"].(bool); ok {
-				flags.EnableTF2Inventory = value
-			}
-			if value, ok := next["enableTf2Store"].(bool); ok {
-				flags.EnableTF2Store = value
-			}
-			if value, ok := next["enableTf2Loadouts"].(bool); ok {
-				flags.EnableTF2Loadouts = value
-			}
-			if value, ok := next["enableCs2Loadouts"].(bool); ok {
-				flags.EnableCS2Loadouts = value
-			}
-			if value, ok := next["enableTf2ItemUse"].(bool); ok {
-				flags.EnableTF2ItemUse = value
-			}
-			if value, ok := next["enableTf2Tools"].(bool); ok {
-				flags.EnableTF2Tools = value
-			}
-			if value, ok := next["enableTf2Crafting"].(bool); ok {
-				flags.EnableTF2Crafting = value
-			}
-			if value, ok := next["enableTf2Unboxing"].(bool); ok {
-				flags.EnableTF2Unboxing = value
-			}
-			if value, ok := next["enableTf2Customization"].(bool); ok {
-				flags.EnableTF2Customization = value
-			}
-			if value, ok := next["enableDota2Inventory"].(bool); ok {
-				flags.EnableDota2Inventory = value
-			}
-			if value, ok := next["enableSteamInventory"].(bool); ok {
-				flags.EnableSteamInventory = value
-			}
+			optionalBoolSetting(next, "enableStorageMutations", &flags.EnableStorageMutations)
+			optionalBoolSetting(next, "enableContainerOpening", &flags.EnableContainerOpening)
+			optionalBoolSetting(next, "enableInventoryDebug", &flags.EnableInventoryDebug)
+			optionalBoolSetting(next, "showStorageUnitItems", &flags.ShowStorageUnitItems)
+			optionalBoolSetting(next, "enableProtocolConsole", &flags.EnableProtocolConsole)
+			optionalBoolSetting(next, "enableTradeups", &flags.EnableTradeups)
+			optionalBoolSetting(next, "enableNameTags", &flags.EnableNameTags)
+			optionalBoolSetting(next, "enableItemDeletion", &flags.EnableItemDeletion)
+			optionalBoolSetting(next, "enableStatTrakSwap", &flags.EnableStatTrakSwap)
+			optionalBoolSetting(next, "enableStrangeParts", &flags.EnableStrangeParts)
+			optionalBoolSetting(next, "enableItemUse", &flags.EnableItemUse)
+			optionalBoolSetting(next, "enableToolApplication", &flags.EnableToolApplication)
+			optionalBoolSetting(next, "enableGifting", &flags.EnableGifting)
+			optionalBoolSetting(next, "enableArmoryRead", &flags.EnableArmoryRead)
+			optionalBoolSetting(next, "enableArmoryRedemption", &flags.EnableArmoryRedemption)
+			optionalBoolSetting(next, "enableStoreRead", &flags.EnableStoreRead)
+			optionalBoolSetting(next, "enableStorePurchases", &flags.EnableStorePurchases)
+			optionalBoolSetting(next, "enableFullCs2Store", &flags.EnableFullCS2Store)
+			optionalBoolSetting(next, "enableTf2Inventory", &flags.EnableTF2Inventory)
+			optionalBoolSetting(next, "enableTf2Store", &flags.EnableTF2Store)
+			optionalBoolSetting(next, "enableTf2Loadouts", &flags.EnableTF2Loadouts)
+			optionalBoolSetting(next, "enableCs2Loadouts", &flags.EnableCS2Loadouts)
+			optionalBoolSetting(next, "enableTf2ItemUse", &flags.EnableTF2ItemUse)
+			optionalBoolSetting(next, "enableTf2Tools", &flags.EnableTF2Tools)
+			optionalBoolSetting(next, "enableTf2Crafting", &flags.EnableTF2Crafting)
+			optionalBoolSetting(next, "enableTf2Unboxing", &flags.EnableTF2Unboxing)
+			optionalBoolSetting(next, "enableTf2Customization", &flags.EnableTF2Customization)
+			optionalBoolSetting(next, "enableDota2Inventory", &flags.EnableDota2Inventory)
+			optionalBoolSetting(next, "enableSteamInventory", &flags.EnableSteamInventory)
 			s.settings.FeatureFlags = flags
 			s.gcClient.SetProtocolTracing(flags.EnableProtocolConsole)
 			if !flags.EnableTF2Inventory {
@@ -356,6 +233,9 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
+	if operation == operations.TypeTradeupsExecute {
+		return s.submitTradeUp(receipt, input)
+	}
 
 	state := operations.StateQueued
 	message := "queued"
@@ -382,7 +262,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			state = "blocked_by_feature_flag"
 			message = "storage mutations require feature flag"
 		}
-	} else if operation == operations.TypeTradeupsExecute || operation == operations.TypeTradeupsPreview {
+	} else if operation == operations.TypeTradeupsPreview {
 		recognizedMutation = true
 		if !s.settings.FeatureFlags.EnableTradeups {
 			state = "blocked_by_feature_flag"
@@ -390,15 +270,6 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		} else if s.settings.ValidationMode {
 			state = "requires_validation"
 			message = "live validation required"
-		}
-	} else if operation == operations.TypeStickersExtract {
-		recognizedMutation = true
-		if !s.settings.FeatureFlags.EnableStickerExtract {
-			state = "blocked_by_feature_flag"
-			message = "sticker extract disabled"
-		} else if s.settings.ValidationMode {
-			state = "requires_validation"
-			message = "sticker workflow requires live validation"
 		}
 	} else if operation == operations.TypeNametagsApply || operation == operations.TypeNametagsRemove {
 		recognizedMutation = true
@@ -505,94 +376,4 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	s.lastOperation = receipt
 	s.mu.Unlock()
 	return receipt
-}
-
-func revealAnimationInput(value any) (string, bool) {
-	mode, ok := value.(string)
-	if !ok {
-		return "", false
-	}
-	switch mode {
-	case "none", "countdown", "slot-machine":
-		return mode, true
-	default:
-		return "", false
-	}
-}
-
-func tradeUpAnimationInput(value any) (string, bool) {
-	mode, ok := value.(string)
-	if !ok {
-		return "", false
-	}
-	switch mode {
-	case "none", "countdown", "slot-machine", "contract-none", "contract-countdown", "contract-slot-machine":
-		return mode, true
-	default:
-		return "", false
-	}
-}
-
-func (s *Service) Operations() []operations.Receipt {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]operations.Receipt, len(s.operations))
-	copy(out, s.operations)
-	return out
-}
-
-func (s *Service) Events() []operations.Event {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]operations.Event, len(s.events))
-	copy(out, s.events)
-	return out
-}
-
-func (s *Service) Settings() domain.Settings {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return cloneSettings(s.settings)
-}
-
-func (s *Service) UpdateSettings(next domain.Settings) domain.Settings {
-	if next.ArmoryPurchasePacingSeconds < 1 {
-		next.ArmoryPurchasePacingSeconds = 1
-	}
-	if next.ArmoryPurchasePacingSeconds > 60 {
-		next.ArmoryPurchasePacingSeconds = 60
-	}
-	s.mu.Lock()
-	oldFlags := s.settings.FeatureFlags
-	s.settings = next
-	if !next.FeatureFlags.EnableTF2Inventory {
-		s.clearGameInventoriesLocked("tf2")
-	}
-	if !next.FeatureFlags.EnableDota2Inventory {
-		s.clearGameInventoriesLocked("dota2")
-	}
-	if !next.FeatureFlags.EnableSteamInventory {
-		s.clearGameInventoriesLocked("steam")
-	}
-	connected := s.connection.State == domain.ConnectionStateConnected
-	s.mu.Unlock()
-	if connected && ((oldFlags.EnableTF2Inventory && !next.FeatureFlags.EnableTF2Inventory) || (oldFlags.EnableDota2Inventory && !next.FeatureFlags.EnableDota2Inventory)) {
-		if err := s.gcClient.SetGamesPlayed(context.Background(), enabledPresenceApps(next.FeatureFlags)); err != nil {
-			log.Printf("[multi-game] failed to stop disabled game GC presence: %v", err)
-		}
-	}
-	receipt := s.newReceipt("settings")
-	s.addEvent(receipt, "completed", "settings updated")
-	return s.Settings()
-}
-
-func enabledPresenceApps(flags domain.FeatureFlags) []uint32 {
-	apps := []uint32{protocol.AppIDCS2}
-	if flags.EnableTF2Inventory {
-		apps = append(apps, 440)
-	}
-	if flags.EnableDota2Inventory {
-		apps = append(apps, 570)
-	}
-	return apps
 }

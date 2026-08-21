@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { swapScreenshotURL } from "../cs2/cs2-screenshot.js";
+import { swapScreenshotUrl } from "../cs2/cs2-screenshot.js";
 import { ActionLink } from "../../shared/ui/ActionLink.js";
 
 export function GameInventoryCommerceActions(props: {
@@ -7,7 +7,7 @@ export function GameInventoryCommerceActions(props: {
   saleUrl?: string;
   inspectUrl?: string;
 }) {
-  const screenshotUrl = () => swapScreenshotURL(props.inspectUrl);
+  const screenshotUrl = () => swapScreenshotUrl(props.inspectUrl);
   return (
     <Show
       when={

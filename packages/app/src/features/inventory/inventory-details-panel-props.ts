@@ -55,6 +55,9 @@ export interface InventoryDetailsPanelProps {
   selectedPriceScanLoading?: boolean;
   tradeUpReturnEstimate?: ReturnEstimate;
   tradeUpReturnLoading?: boolean;
+  storageContentsLoading?: boolean;
+  storageMutationsEnabled: boolean;
+  storageUnavailableReason?: string;
   onOpenCollection?: (
     title: string,
     items: RelatedItemDto[],

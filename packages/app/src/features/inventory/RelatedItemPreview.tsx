@@ -4,8 +4,8 @@ import { rarityBorderClass } from "./inventory-view-utils.js";
 import {
   formatProbability,
   isWeaponFinish,
-  steamMarketSearchURL,
-  steamMarketURL,
+  steamMarketSearchUrl,
+  steamMarketUrl,
 } from "./related-item-preview-utils.js";
 import { WearRangeBar } from "../../shared/ui/WearRangeBar.js";
 import { Button } from "../../shared/ui/Button.js";
@@ -13,6 +13,59 @@ import { Button } from "../../shared/ui/Button.js";
 import type { RelatedItemPreviewContext } from "../../shared/ui-types.js";
 
 export type { RelatedItemPreviewContext } from "../../shared/ui-types.js";
+
+function PreviewInitials(props: { label: string }) {
+  return (
+    <div class="mx-auto flex h-12 w-16 items-center justify-center rounded bg-slate-950 text-xs font-semibold text-slate-600">
+      {props.label.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+function PreviewMetrics(props: { item: RelatedItemDto }) {
+  return (
+    <dl class="grid gap-2 sm:grid-cols-2">
+      <Show when={props.item.price}>
+        <div>
+          <dt class="uppercase tracking-wide text-slate-500">Market price</dt>
+          <dd class="mt-1 font-medium text-slate-200">{props.item.price}</dd>
+        </div>
+      </Show>
+      <Show when={isWeaponFinish(props.item)}>
+        <div>
+          <dt class="uppercase tracking-wide text-slate-500">Float caps</dt>
+          <dd class="mt-1 font-mono text-slate-200">
+            {(props.item.wearMin ?? 0).toFixed(6)}–
+            {(props.item.wearMax ?? 1).toFixed(6)}
+          </dd>
+        </div>
+      </Show>
+      <Show when={props.item.paintWear !== undefined}>
+        <div>
+          <dt class="uppercase tracking-wide text-slate-500">
+            Predicted float
+          </dt>
+          <dd class="mt-1 font-mono text-slate-200">
+            {props.item.paintWear?.toFixed(8)}
+          </dd>
+        </div>
+      </Show>
+    </dl>
+  );
+}
+
+function MarketSearchLink(props: { marketName: string }) {
+  return (
+    <a
+      class="mt-3 inline-block font-medium text-sky-300 underline decoration-sky-500/50 underline-offset-4 hover:text-sky-200"
+      href={steamMarketSearchUrl(props.marketName)}
+      target="_blank"
+      rel="noreferrer"
+    >
+      Search Steam Market ↗
+    </a>
+  );
+}
 
 export function RelatedItemPreview(props: {
   item: RelatedItemDto;
@@ -57,11 +110,7 @@ export function RelatedItemPreview(props: {
         <div class="w-24 shrink-0">
           <Show
             when={item().imageUrl && !failed()}
-            fallback={
-              <div class="mx-auto flex h-12 w-16 items-center justify-center rounded bg-slate-950 text-xs font-semibold text-slate-600">
-                {label().slice(0, 2).toUpperCase()}
-              </div>
-            }
+            fallback={<PreviewInitials label={label()} />}
           >
             <img
               class="mx-auto h-12 w-16 rounded bg-slate-950 object-contain"
@@ -96,35 +145,7 @@ export function RelatedItemPreview(props: {
         </span>
       </summary>
       <div class="border-t border-slate-800/80 px-3 pb-3 pt-3 text-xs text-slate-400">
-        <dl class="grid gap-2 sm:grid-cols-2">
-          <Show when={item().price}>
-            <div>
-              <dt class="uppercase tracking-wide text-slate-500">
-                Market price
-              </dt>
-              <dd class="mt-1 font-medium text-slate-200">{item().price}</dd>
-            </div>
-          </Show>
-          <Show when={isWeaponFinish(item())}>
-            <div>
-              <dt class="uppercase tracking-wide text-slate-500">Float caps</dt>
-              <dd class="mt-1 font-mono text-slate-200">
-                {(item().wearMin ?? 0).toFixed(6)}–
-                {(item().wearMax ?? 1).toFixed(6)}
-              </dd>
-            </div>
-          </Show>
-          <Show when={props.item.paintWear !== undefined}>
-            <div>
-              <dt class="uppercase tracking-wide text-slate-500">
-                Predicted float
-              </dt>
-              <dd class="mt-1 font-mono text-slate-200">
-                {props.item.paintWear?.toFixed(8)}
-              </dd>
-            </div>
-          </Show>
-        </dl>
+        <PreviewMetrics item={item()} />
         <Show
           when={props.context === "container" && isWeaponFinish(props.item)}
         >
@@ -136,21 +157,14 @@ export function RelatedItemPreview(props: {
         <Show
           when={item().listingName}
           fallback={
-            <Show when={item().marketName}>
-              <a
-                class="mt-3 inline-block font-medium text-sky-300 underline decoration-sky-500/50 underline-offset-4 hover:text-sky-200"
-                href={steamMarketSearchURL(item().marketName!)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Search Steam Market ↗
-              </a>
+            <Show when={item().marketName} keyed>
+              {(marketName) => <MarketSearchLink marketName={marketName} />}
             </Show>
           }
         >
           <a
             class="mt-3 inline-block font-medium text-sky-300 underline decoration-sky-500/50 underline-offset-4 hover:text-sky-200"
-            href={steamMarketURL(item().listingName!)}
+            href={steamMarketUrl(item().listingName!)}
             target="_blank"
             rel="noreferrer"
           >
@@ -168,10 +182,7 @@ export function RelatedItemPreview(props: {
           </p>
         </Show>
         <Show when={item().kind === "item_collection"}>
-          <Button
-            class="mt-3"
-            onClick={() => props.onOpenCollection?.(item())}
-          >
+          <Button class="mt-3" onClick={() => props.onOpenCollection?.(item())}>
             View collection
             {item().items?.length ? ` (${item().items!.length})` : ""}
           </Button>

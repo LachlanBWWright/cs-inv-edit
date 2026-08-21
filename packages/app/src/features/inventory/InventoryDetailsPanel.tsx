@@ -9,11 +9,13 @@ import type {
   InventoryItemDto,
   PriceScanResult,
   RelatedItemDto,
+  RevealAnimationMode,
 } from "@cs-inv-edit/contracts";
 import { type RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
 import { itemDisplayName } from "./inventory-view-utils.js";
 import { TradeUpContractReveal } from "../../shared/ui/TradeUpContractReveal.js";
+import { InventoryDetailsPanelContent } from "./inventory-details-panel-content.js";
 import {
   MOCK_RESULT_DELAY_MS,
   randomRevealCandidate,
@@ -26,10 +28,17 @@ import {
   type ReturnEstimate,
 } from "../commerce/roi-utils.js";
 import { tradeUpInputCount } from "../tools/trade-up-utils.js";
-import { SelectedItemContent } from "./inventory-selected-item-content.js";
 import { InventoryDetailsDialogs } from "./inventory-details-dialogs.js";
 import type { InventoryDetailsPanelProps } from "./inventory-details-panel-props.js";
-
+import {
+  expectedContainerItems,
+  finishTradeUpPreview,
+  type TradeUpPreview,
+} from "./inventory-details-panel-calculations.js";
+function baseRevealMode(mode: string): RevealAnimationMode {
+  if (mode === "none" || mode === "countdown") return mode;
+  return "slot-machine";
+}
 function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
   const [contentsDialog, setContentsDialog] = createSignal<{
     title: string;
@@ -46,15 +55,13 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
     createSignal<PriceScanResult>();
   const [selectedPriceScanLoading, setSelectedPriceScanLoading] =
     createSignal(false);
-  const [tradeUpPreview, setTradeUpPreview] = createSignal<{
-    result: RevealItem;
-    ready: boolean;
-    candidates: RevealItem[];
-  }>();
+  const [tradeUpPreview, setTradeUpPreview] = createSignal<TradeUpPreview>();
   const [tradeUpReturn, setTradeUpReturn] = createSignal<ReturnEstimate>();
   const [tradeUpReturnLoading, setTradeUpReturnLoading] = createSignal(false);
   const [containerReturn, setContainerReturn] = createSignal<ReturnEstimate>();
   const [containerReturnLoading, setContainerReturnLoading] =
+    createSignal(false);
+  const [storageContentsLoading, setStorageContentsLoading] =
     createSignal(false);
   let tradeUpPreviewTimer: number | undefined;
   let requestedMarketName = "";
@@ -67,6 +74,30 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
     tradeUpPreviewTimer = undefined;
   };
   onCleanup(clearTradeUpPreviewTimer);
+  const normalizeRevealPrice = (value: string | number | undefined) =>
+    value === undefined ? undefined : String(value);
+  const applyTradeUpPriceUpdates = (
+    current: { result: RevealItem; candidates: RevealItem[]; ready: boolean },
+    prices: Map<string, string | number>,
+  ) => ({
+    ...current,
+    result: {
+      ...current.result,
+      price: current.result.marketName
+        ? normalizeRevealPrice(
+            prices.get(current.result.marketName) ?? current.result.price,
+          )
+        : current.result.price,
+    },
+    candidates: current.candidates.map((candidate) => ({
+      ...candidate,
+      price: candidate.marketName
+        ? normalizeRevealPrice(
+            prices.get(candidate.marketName) ?? candidate.price,
+          )
+        : candidate.price,
+    })),
+  });
 
   const previewTradeUp = (item: InventoryItemDto) => {
     const candidates = (item.tradeUpItems ?? []).map((outcome): RevealItem => ({
@@ -113,41 +144,13 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
           }),
         );
         setTradeUpPreview((current) =>
-          current
-            ? {
-                ...current,
-                result: {
-                  ...current.result,
-                  price: current.result.marketName
-                    ? (prices.get(current.result.marketName) ??
-                      current.result.price)
-                    : current.result.price,
-                },
-                candidates: current.candidates.map((candidate) => ({
-                  ...candidate,
-                  price: candidate.marketName
-                    ? (prices.get(candidate.marketName) ?? candidate.price)
-                    : candidate.price,
-                })),
-              }
-            : current,
+          current ? applyTradeUpPriceUpdates(current, prices) : current,
         );
       });
     }
     if (immediate) return;
     tradeUpPreviewTimer = window.setTimeout(() => {
-      setTradeUpPreview((current) =>
-        current
-          ? {
-              ...current,
-              result: randomRevealCandidate(
-                current.candidates,
-                current.candidates[0] ?? fallback,
-              ),
-              ready: true,
-            }
-          : current,
-      );
+      setTradeUpPreview((current) => finishTradeUpPreview(current, fallback));
       tradeUpPreviewTimer = undefined;
     }, MOCK_RESULT_DELAY_MS);
   };
@@ -239,7 +242,6 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
       }
     });
   });
-
   const contentsOdds = () => containerItemOdds(contentsDialog()?.items ?? []);
   const contentsDescription =
     "Opening odds, prices, and generated wear outcomes";
@@ -261,6 +263,9 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
     },
     get tradeUpReturnLoading() {
       return tradeUpReturnLoading();
+    },
+    get storageContentsLoading() {
+      return storageContentsLoading();
     },
     onPreviewTradeUp: previewTradeUp,
     onOpenCollection: (
@@ -303,10 +308,7 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
           const keyCost = keyName ? (selectedPrices.get(keyName) ?? 0) : 0;
           setContainerReturn(
             expectedReturn(
-              items.map((item) => ({
-                marketName: item.marketName,
-                probability: odds.get(item) ?? 0,
-              })),
+              expectedContainerItems(items, odds),
               selectedPrices,
               containerCost + keyCost || undefined,
             ),
@@ -317,7 +319,9 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
     onViewStorageContents: async () => {
       const selected = props.selectedItem;
       if (!selected || selected.kind !== "storage_unit") return;
+      setStorageContentsLoading(true);
       await props.onLoadStorageContents(selected.id);
+      setStorageContentsLoading(false);
     },
   } satisfies Partial<InventoryDetailsPanelProps>);
 
@@ -334,10 +338,9 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
             immediate={
               (props.settings?.animations?.tradeUp ?? "slot-machine") === "none"
             }
-            mode={
-              (props.settings?.animations?.tradeUp ?? "slot-machine") as
-                "none" | "countdown" | "slot-machine"
-            }
+            mode={baseRevealMode(
+              props.settings?.animations?.tradeUp ?? "slot-machine",
+            )}
             title="Hypothetical trade-up"
             candidates={tradeUpPreview()?.candidates ?? []}
             result={tradeUpPreview()?.result ?? { name: "Trade-up result" }}
@@ -360,22 +363,10 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
           }}
         />
       </Show>
-      <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950 p-4">
-        <div class="min-h-0 flex-1 overflow-y-auto">
-          <Show
-            keyed
-            when={props.selectedItem}
-            fallback={<p class="text-sm text-slate-400">No item selected.</p>}
-          >
-            {(selected) => (
-              <SelectedItemContent
-                selected={selected}
-                panelProps={detailsPanelProps}
-              />
-            )}
-          </Show>
-        </div>
-      </div>
+      <InventoryDetailsPanelContent
+        selectedItem={props.selectedItem}
+        detailsPanelProps={detailsPanelProps}
+      />
       <InventoryDetailsDialogs
         contentsDialog={contentsDialog}
         setContentsDialog={setContentsDialog}

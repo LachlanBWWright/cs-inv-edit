@@ -78,14 +78,16 @@ function errorMessageFromResponse(response: Response, body: string): string {
     return fallback;
   }
   return Result.fromThrowable(
-    () => JSON.parse(trimmed) as { error?: unknown; message?: unknown },
+    (): unknown => JSON.parse(trimmed),
     () => undefined,
   )().match(
     (parsed) => {
+      if (typeof parsed !== "object" || parsed === null)
+        return `${fallback}: ${trimmed}`;
       const message =
-        typeof parsed.error === "string"
+        "error" in parsed && typeof parsed.error === "string"
           ? parsed.error
-          : typeof parsed.message === "string"
+          : "message" in parsed && typeof parsed.message === "string"
             ? parsed.message
             : "";
       return message === ""

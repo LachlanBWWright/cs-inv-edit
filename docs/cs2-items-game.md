@@ -103,14 +103,34 @@ The upstream paths still use legacy names such as `csgo`, `cstrike15`, and `ECsg
 
 The UI's **Preview in game** action is retained from the matched owned asset's
 live Steam inventory-description `actions[].link`. Owner and asset placeholders
-are expanded with the authenticated SteamID and GC-matched asset ID. The app
-does not construct inspect links when Steam omits that action. 3. Fetch latest `items_game.txt`. 4. Fetch latest `csgo_english.txt`. 5. Parse Valve KeyValues. 6. Merge item prefabs into concrete item definitions. 7. Resolve localization tokens. 8. Join by `def_index`. 9. If the GC item has paint kit attribute `6`, join it to `paint_kits`. 10. Join the resulting `[paint_kit]weapon` key to `item_sets` for collection membership and contents. 11. For containers, recursively resolve `loot_list_name` through `client_loot_lists`; this is descriptive metadata and does not predict an opening result. Resolve required opening keys from the container's prefab-merged `associated_items` / `associated_item` defindexes; an absent association identifies a keyless container.
+are expanded with the authenticated SteamID and GC-matched asset ID. Current
+masked CS2 links use `%propid:6%`, resolved from the same response's
+`asset_properties` data requested with `norender=1`. The app does not construct
+inspect links when Steam omits the action or certificate. 3. Fetch latest `items_game.txt`. 4. Fetch latest `csgo_english.txt`. 5. Parse Valve KeyValues. 6. Merge item prefabs into concrete item definitions. 7. Resolve localization tokens. 8. Join by `def_index`. 9. If the GC item has paint kit attribute `6`, join it to `paint_kits`. 10. Join the resulting `[paint_kit]weapon` key to `item_sets` for collection membership and contents. 11. For containers, recursively resolve `loot_list_name` through `client_loot_lists`; this is descriptive metadata and does not predict an opening result. Resolve required opening keys from the container's prefab-merged `associated_items` / `associated_item` defindexes; an absent association identifies a keyless container.
 
 For case-backed collection previews, rarity is taken from the case's tiered
 `client_loot_lists` (for example, the `_rare`, `_mythical`, `_legendary`, and
 `_ancient` child lists). A paint kit can be reused by another collection at a
 different grade, so the global `paint_kits_rarity` value is only the fallback
 when no unambiguous collection-specific loot-list tier exists.
+
+Valve's public `items_game.txt` references many knife and glove pools by a
+symbolic `item_sets[].unusuals` name without expanding that pool in
+`client_loot_lists`. During metadata refresh the app joins those missing pool
+members from the live, game-derived CSGO-API crate index:
+
+```text
+https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/crates.json
+```
+
+Only rare-special pool membership and its container association come from this
+overlay. Defindexes, paint-kit IDs, base item definitions, localized names,
+wear caps, collection membership, and regular loot tiers must all resolve back
+to the live Valve schema; unmatched overlay entries are omitted. The
+`item_sets[].unusuals.unique` and `.strange` keys remain authoritative for
+regular versus StatTrak trade-up eligibility. This covers ordinary cases as
+well as terminal collections such as Dead Hand, whose glove pool is referenced
+but not enumerated by the public Valve file.
 
 ## Important Attribute IDs
 

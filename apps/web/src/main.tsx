@@ -28,7 +28,7 @@ import type {
 } from "@cs-inv-edit/contracts";
 import { backendSchemas, localAgentPaths } from "@cs-inv-edit/contracts";
 import "@cs-inv-edit/app/styles.css";
-import { createWasmBackendClient } from "./wasmBackend.js";
+import { createWasmBackendClient } from "./wasm-backend.js";
 
 const backendBase = "http://127.0.0.1:7331";
 const backendMode = new URLSearchParams(window.location.search).get("backend");

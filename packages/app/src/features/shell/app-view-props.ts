@@ -38,6 +38,7 @@ export interface AppViewProps {
   connection: ConnectionStatus | undefined;
   accounts: SteamAccountProfile[];
   accountUsername: string;
+  accountLoginOnly: boolean;
   inventory: InventorySnapshot | undefined;
   inventoryLoading: boolean;
   steamInventory: GameInventorySnapshot | undefined;
@@ -115,7 +116,7 @@ export interface AppViewProps {
   onOpenContainer: (
     input: OpenContainerRequest,
     suppressToast?: boolean,
-  ) => Promise<unknown>;
+  ) => Promise<OperationReceipt>;
   onLoadTerminalOffer: (terminalId: string) => Promise<OperationReceipt>;
   onLoadStorageContents: (casketId: string) => Promise<OperationReceipt>;
   onMoveFromStorage: (input: {
@@ -125,6 +126,9 @@ export interface AppViewProps {
   onMoveIntoStorage: (input: {
     casketId: string;
     itemId: string;
+  }) => Promise<OperationReceipt>;
+  onExecuteTradeUp: (input: {
+    itemIds: string[];
   }) => Promise<OperationReceipt>;
   onSaveSettings: (next: SettingsData) => Promise<UIActionOutcome>;
 }

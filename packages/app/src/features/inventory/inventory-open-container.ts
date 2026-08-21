@@ -1,16 +1,17 @@
 import type { Accessor, Setter } from "solid-js";
 import type { InventoryItemDto } from "@cs-inv-edit/contracts";
-import { containerItemOdds } from "./related-item-preview-utils.js";
-import {
-  expectedReturn,
-  scanPriceMap,
-  type ReturnEstimate,
-} from "../commerce/roi-utils.js";
 import type { RevealItem } from "../../shared/ui/RevealAnimation.js";
 import { itemDisplayName } from "./inventory-view-utils.js";
 import { isOpenableContainer, isTerminal } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import type { InventoryViewProps } from "./InventoryView.js";
+
+type ContainerReveal = {
+  result: RevealItem;
+  ready: boolean;
+  candidates: RevealItem[];
+  complete: () => void;
+};
 
 interface OpenContainerContext {
   props: InventoryViewProps;
@@ -20,17 +21,63 @@ interface OpenContainerContext {
   connected: Accessor<boolean>;
   setContainerStatusMessage: Setter<string>;
   setPending: Setter<boolean>;
-  setContainerReturn: Setter<ReturnEstimate | undefined>;
-  setContainerReturnLoading: Setter<boolean>;
-  setReveal: Setter<
-    | {
-        result: RevealItem;
-        ready: boolean;
-        candidates: RevealItem[];
-        complete: () => void;
-      }
-    | undefined
-  >;
+  setReveal: Setter<ContainerReveal | undefined>;
+}
+
+type ReceiptResultPayload = {
+  openedItem?: InventoryItemDto;
+  terminalOffer?: NonNullable<InventoryItemDto["terminalOffers"]>[number];
+  offer?: NonNullable<InventoryItemDto["terminalOffers"]>[number]["item"];
+  terminalItemId?: string;
+};
+
+function resolveReceiptResultPayload(
+  receipt: import("@cs-inv-edit/contracts").OperationReceipt,
+): ReceiptResultPayload | undefined {
+  const payload = receipt.result;
+  if (!payload) return undefined;
+  return {
+    openedItem: payload.openedItem,
+    terminalOffer: payload.terminalOffer,
+    offer: payload.offer,
+    terminalItemId: payload.terminalItemId,
+  };
+}
+
+function createRevealResult(
+  openedItem: InventoryItemDto | undefined,
+  resolvedTerminalOffer:
+    NonNullable<InventoryItemDto["terminalOffers"]>[number]["item"] | undefined,
+): RevealItem | undefined {
+  if (resolvedTerminalOffer) {
+    return {
+      name: resolvedTerminalOffer.marketName || resolvedTerminalOffer.name,
+      marketName: resolvedTerminalOffer.marketName,
+      price: resolvedTerminalOffer.price,
+      imageUrl: resolvedTerminalOffer.imageUrl,
+      rarity: resolvedTerminalOffer.rarity,
+      kind: resolvedTerminalOffer.kind,
+      wear: resolvedTerminalOffer.paintWear,
+      wearMin: resolvedTerminalOffer.wearMin,
+      wearMax: resolvedTerminalOffer.wearMax,
+    };
+  }
+  if (!openedItem) {
+    return undefined;
+  }
+  return {
+    name: itemDisplayName(openedItem),
+    marketName: openedItem.marketName,
+    price: openedItem.marketPrice,
+    imageUrl: openedItem.imageUrl,
+    rarity: openedItem.rarity,
+    kind: openedItem.kind,
+    wear: openedItem.paintWear,
+    wearMin: openedItem.paintWearMin,
+    wearMax: openedItem.paintWearMax,
+    isStatTrak: openedItem.isStatTrak,
+    isSouvenir: openedItem.isSouvenir,
+  };
 }
 
 export function containerOpeningUsesReveal(
@@ -48,10 +95,12 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
     connected,
     setContainerStatusMessage,
     setPending,
-    setContainerReturn,
-    setContainerReturnLoading,
     setReveal,
   } = context;
+  const awaitReveal = (result: RevealItem, candidates: RevealItem[]) =>
+    new Promise<void>((resolve) =>
+      setReveal({ result, ready: true, candidates, complete: resolve }),
+    );
   return async (terminalSelection?: {
     pointsRemaining?: number;
     volatileLimit?: number;
@@ -105,39 +154,6 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
     const animationMode = terminal
       ? (props.settings?.animations?.terminal ?? "slot-machine")
       : (props.settings?.animations?.container ?? "slot-machine");
-    setContainerReturn(undefined);
-    const priceNames = [
-      ...new Set(
-        [
-          ...(item.containerItems ?? []).map(
-            (candidate) => candidate.marketName,
-          ),
-          item.marketName,
-          compatibleContainerKey()?.marketName,
-        ].filter((name): name is string => !!name),
-      ),
-    ];
-    setContainerReturnLoading(priceNames.length > 0);
-    if (priceNames.length > 0)
-      void scanPriceMap(priceNames, props.marketActions.scanPrices).then(
-        (prices) => {
-          const odds = containerItemOdds(item.containerItems ?? []);
-          const cost =
-            (prices.get(item.marketName ?? "") ?? 0) +
-            (prices.get(compatibleContainerKey()?.marketName ?? "") ?? 0);
-          setContainerReturn(
-            expectedReturn(
-              (item.containerItems ?? []).map((candidate) => ({
-                marketName: candidate.marketName,
-                probability: odds.get(candidate) ?? 0,
-              })),
-              prices,
-              cost || undefined,
-            ),
-          );
-          setContainerReturnLoading(false);
-        },
-      );
     if (containerOpeningUsesReveal(animationMode))
       setReveal({
         result: candidates[0] ?? { name: "Awaiting item…" },
@@ -160,114 +176,30 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
     ).match(
       async (receipt) => {
         if (
-          typeof receipt === "object" &&
-          receipt &&
-          "state" in receipt &&
           receipt.state !== "completed" &&
           receipt.state !== "awaiting_gc_confirmation"
         ) {
           const message =
-            "message" in receipt && typeof receipt.message === "string"
-              ? receipt.message
-              : "Container open request was not accepted.";
-          const responseBody =
-            "result" in receipt &&
-            typeof receipt.result === "object" &&
-            receipt.result &&
-            "responseBodyHex" in receipt.result &&
-            typeof receipt.result.responseBodyHex === "string"
-              ? ` Response body: ${receipt.result.responseBodyHex}`
-              : "";
+            receipt.message ?? "Container open request was not accepted.";
+          const responseBody = receipt.result?.responseBodyHex
+            ? ` Response body: ${receipt.result.responseBodyHex}`
+            : "";
           setContainerStatusMessage(`${message}${responseBody}`);
         } else {
-          const openedItem =
-            typeof receipt === "object" &&
-            receipt &&
-            "result" in receipt &&
-            typeof receipt.result === "object" &&
-            receipt.result &&
-            "openedItem" in receipt.result
-              ? (receipt.result.openedItem as InventoryItemDto | undefined)
-              : undefined;
-          const terminalOffer =
-            typeof receipt === "object" &&
-            receipt &&
-            "result" in receipt &&
-            typeof receipt.result === "object" &&
-            receipt.result &&
-            "terminalOffer" in receipt.result
-              ? (receipt.result.terminalOffer as
-                  | NonNullable<InventoryItemDto["terminalOffers"]>[number]
-                  | undefined)
-              : undefined;
+          const payload = resolveReceiptResultPayload(receipt);
+          const openedItem = payload?.openedItem;
           const resolvedTerminalOffer =
-            typeof receipt === "object" &&
-            receipt &&
-            "result" in receipt &&
-            typeof receipt.result === "object" &&
-            receipt.result &&
-            "offer" in receipt.result
-              ? (receipt.result.offer as
-                  | NonNullable<
-                      InventoryItemDto["terminalOffers"]
-                    >[number]["item"]
-                  | undefined)
-              : terminalOffer?.item;
-          const resolvedTerminalItemId =
-            typeof receipt === "object" &&
-            receipt &&
-            "result" in receipt &&
-            typeof receipt.result === "object" &&
-            receipt.result &&
-            "terminalItemId" in receipt.result &&
-            typeof receipt.result.terminalItemId === "string"
-              ? receipt.result.terminalItemId
-              : undefined;
+            payload?.offer ?? payload?.terminalOffer?.item;
+          const resolvedTerminalItemId = payload?.terminalItemId;
           const message = openedItem
             ? `Received ${itemDisplayName(openedItem)}.`
-            : typeof receipt === "object" &&
-                receipt &&
-                "message" in receipt &&
-                typeof receipt.message === "string"
+            : receipt.message
               ? receipt.message
               : "Container opened and inventory was reconciled.";
-          if (openedItem || resolvedTerminalOffer) {
-            const result = resolvedTerminalOffer
-              ? {
-                  name:
-                    resolvedTerminalOffer.marketName ||
-                    resolvedTerminalOffer.name,
-                  marketName: resolvedTerminalOffer.marketName,
-                  price: resolvedTerminalOffer.price,
-                  imageUrl: resolvedTerminalOffer.imageUrl,
-                  rarity: resolvedTerminalOffer.rarity,
-                  kind: resolvedTerminalOffer.kind,
-                  wear: resolvedTerminalOffer.paintWear,
-                  wearMin: resolvedTerminalOffer.wearMin,
-                  wearMax: resolvedTerminalOffer.wearMax,
-                }
-              : {
-                  name: itemDisplayName(openedItem!),
-                  marketName: openedItem!.marketName,
-                  price: openedItem!.marketPrice,
-                  imageUrl: openedItem!.imageUrl,
-                  rarity: openedItem!.rarity,
-                  kind: openedItem!.kind,
-                  wear: openedItem!.paintWear,
-                  wearMin: openedItem!.paintWearMin,
-                  wearMax: openedItem!.paintWearMax,
-                  isStatTrak: openedItem!.isStatTrak,
-                  isSouvenir: openedItem!.isSouvenir,
-                };
+          const result = createRevealResult(openedItem, resolvedTerminalOffer);
+          if (result) {
             if (containerOpeningUsesReveal(animationMode)) {
-              await new Promise<void>((resolve) =>
-                setReveal({
-                  result,
-                  ready: true,
-                  candidates,
-                  complete: resolve,
-                }),
-              );
+              await awaitReveal(result, candidates);
             }
           } else {
             setReveal(undefined);

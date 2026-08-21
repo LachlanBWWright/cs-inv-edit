@@ -73,6 +73,31 @@ func TestSchemaResolvesCollectionsAndContainerContents(t *testing.T) {
 	}
 }
 
+func TestTopCollectionTierWithoutRareSpecialsCannotTradeUp(t *testing.T) {
+	schema := &Schema{
+		items: map[uint32]itemDefinition{
+			7: {Name: "weapon_ak47", ItemName: "#ak", ItemClass: "weapon_ak47"},
+		},
+		paintKits: map[uint32]paintKitDefinition{
+			101: {Name: "top_finish", Description: "#finish", Rarity: "legendary"},
+		},
+		tokens: map[string]string{"ak": "AK-47", "finish": "Top Finish"},
+		collections: map[string]collectionDefinition{
+			"set_no_special": {
+				Name:     "No Special Collection",
+				Items:    []string{"[top_finish]weapon_ak47"},
+				Rarities: map[string]string{"[top_finish]weapon_ak47": "ancient"},
+			},
+		},
+		collectionByItem: map[string]string{"[top_finish]weapon_ak47": "set_no_special"},
+	}
+
+	metadata := schema.Metadata(7, 101, nil)
+	if len(metadata.TradeUpItems) != 0 {
+		t.Fatalf("top-tier trade-up outcomes = %#v, want none", metadata.TradeUpItems)
+	}
+}
+
 func TestAppliedItemImagesUsesSteamDescriptionImages(t *testing.T) {
 	images := appliedItemImages([]inventoryDescriptionLine{{Value: `<center><img src="https://steamcdn.example/apps/730/icons/econ/stickers/kawaii.png"><br>Sticker: Kawaii Killer</center>`}})
 	if len(images) != 1 || images[0] != "https://steamcdn.example/apps/730/icons/econ/stickers/kawaii.png" {

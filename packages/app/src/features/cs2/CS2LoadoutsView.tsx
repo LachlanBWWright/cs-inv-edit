@@ -15,9 +15,85 @@ import type {
   OperationReceipt,
 } from "@cs-inv-edit/contracts";
 import { ItemPreviewMedia } from "../inventory/ItemPreviewMedia.js";
+import { CS2LoadoutItemGrid } from "./cs2-loadout-item-grid.js";
 import { SegmentedControl } from "../../shared/ui/SegmentedControl.js";
 
 type EquipSlot = CS2FeatureSnapshot["equipSlots"][number];
+
+function LoadoutTeamPicker(props: {
+  teams: number[];
+  selected: number;
+  onSelect: (team: number) => void;
+}) {
+  return (
+    <div class="flex shrink-0 flex-wrap gap-2">
+      <For each={props.teams}>
+        {(team) => (
+          <button
+            class={`rounded-lg border px-3 py-2 text-sm ${props.selected === team ? "border-cyan-400/40 bg-cyan-950 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+            onClick={() => props.onSelect(team)}
+          >
+            {teamName(team)}
+          </button>
+        )}
+      </For>
+    </div>
+  );
+}
+
+function LoadoutSlotButton(props: {
+  slot: EquipSlot;
+  selectedSlotId: number | undefined;
+  equipped: InventoryItemDto | undefined;
+  onSelect: (slot: EquipSlot) => void;
+  slotName: (slot: EquipSlot) => string;
+}) {
+  return (
+    <button
+      class={`flex min-h-20 items-center gap-3 rounded-lg border p-2 text-left ${props.selectedSlotId === props.slot.slotId ? "border-cyan-400/40 bg-cyan-950" : "border-slate-800 bg-slate-950 hover:border-slate-700"}`}
+      onClick={() => props.onSelect(props.slot)}
+    >
+      <div class="h-14 w-16 shrink-0 overflow-hidden rounded bg-slate-900">
+        <Show when={props.equipped}>
+          {(item) => (
+            <ItemPreviewMedia
+              name={item().name}
+              imageUrl={item().imageUrl}
+              variant="loadout-slot"
+            />
+          )}
+        </Show>
+      </div>
+      <span class="min-w-0">
+        <span class="block truncate text-sm font-medium text-slate-100">
+          {props.slotName(props.slot)}
+        </span>
+        <span class="block text-xs text-slate-500">
+          Slot {props.slot.slotId}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function LoadoutEmptyState(props: { initializing: boolean }) {
+  return (
+    <div class="grid min-h-48 place-items-center px-4 text-center">
+      <div>
+        <p class="text-sm font-medium text-slate-200">
+          {props.initializing
+            ? "Loading CS2 Game Coordinator loadout…"
+            : "No equipped slots were published"}
+        </p>
+        <p class="mt-1 text-xs text-slate-500">
+          {props.initializing
+            ? "Slots will appear automatically when the authoritative inventory is ready."
+            : "Waiting for the Game Coordinator to publish the current team loadout…"}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const teamName = (classId: number) =>
   classId === 2
@@ -25,6 +101,72 @@ const teamName = (classId: number) =>
     : classId === 3
       ? "Counter-Terrorists"
       : `Team ${classId}`;
+
+function LoadoutItemPanel(props: {
+  mobileView: "items" | "slots";
+  compatibleItems: InventoryItemDto[];
+  featureFlags: FeatureFlags | undefined;
+  loadingItemId: string;
+  isEquipped: (item: InventoryItemDto) => boolean;
+  onEquip: (item: InventoryItemDto) => void;
+  selectedSlotName: string;
+}) {
+  return (
+    <section
+      class={`${props.mobileView === "items" ? "block" : "hidden"} lg:order-2 lg:block`}
+    >
+      <CS2LoadoutItemGrid
+        items={props.compatibleItems}
+        enabled={props.featureFlags?.enableCs2Loadouts === true}
+        loadingId={props.loadingItemId}
+        isEquipped={props.isEquipped}
+        onEquip={(item) => props.onEquip(item)}
+      />
+      <Show when={!props.compatibleItems.length}>
+        <p class="py-12 text-center text-sm text-slate-500">
+          No compatible owned items were found for this slot.
+        </p>
+      </Show>
+    </section>
+  );
+}
+
+function LoadoutSlotPanel(props: {
+  mobileView: "items" | "slots";
+  className: string;
+  teamSlots: EquipSlot[];
+  selectedSlotId: number | undefined;
+  itemForSlot: (slot: EquipSlot) => InventoryItemDto | undefined;
+  slotName: (slot: EquipSlot) => string;
+  onSelectSlot: (slot: EquipSlot) => void;
+  initializing: boolean;
+}) {
+  return (
+    <aside
+      class={`rounded-xl border border-slate-800 bg-slate-900 p-3 ${props.mobileView === "slots" ? "block" : "hidden"} lg:sticky lg:top-20 lg:order-1 lg:block lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto`}
+    >
+      <h2 class="border-b border-slate-800 bg-slate-900 pb-3 text-sm font-semibold text-slate-200">
+        {props.className} slots
+      </h2>
+      <div class="mt-3 grid gap-2">
+        <For each={props.teamSlots}>
+          {(slot) => (
+            <LoadoutSlotButton
+              slot={slot}
+              selectedSlotId={props.selectedSlotId}
+              equipped={props.itemForSlot(slot)}
+              slotName={props.slotName}
+              onSelect={props.onSelectSlot}
+            />
+          )}
+        </For>
+      </div>
+      <Show when={!props.teamSlots.length}>
+        <LoadoutEmptyState initializing={props.initializing} />
+      </Show>
+    </aside>
+  );
+}
 
 export function CS2LoadoutsView(props: {
   features?: CS2FeatureSnapshot;
@@ -77,9 +219,9 @@ export function CS2LoadoutsView(props: {
 
   createEffect(() => {
     const availableTeams = teams();
-    if (availableTeams.length && !availableTeams.includes(classId())) {
-      setClassId(availableTeams[0]);
-    }
+    const firstTeam = availableTeams[0];
+    if (firstTeam !== undefined && !availableTeams.includes(classId()))
+      setClassId(firstTeam);
   });
   let requestedInitialRefresh = false;
   createEffect(() => {
@@ -98,12 +240,9 @@ export function CS2LoadoutsView(props: {
   });
   createEffect(() => {
     const availableSlots = teamSlots();
-    if (
-      availableSlots.length &&
-      !availableSlots.some((slot) => slot.slotId === slotId())
-    ) {
-      setSlotId(availableSlots[0].slotId);
-    }
+    const firstSlot = availableSlots[0];
+    if (firstSlot && !availableSlots.some((slot) => slot.slotId === slotId()))
+      setSlotId(firstSlot.slotId);
   });
 
   const equip = async (item: InventoryItemDto) => {
@@ -127,21 +266,14 @@ export function CS2LoadoutsView(props: {
 
   return (
     <section class="flex min-h-0 flex-1 flex-col gap-3">
-      <div class="flex shrink-0 flex-wrap gap-2">
-        <For each={teams()}>
-          {(team) => (
-            <button
-              class={`rounded-lg border px-3 py-2 text-sm ${classId() === team ? "border-cyan-400/40 bg-cyan-950 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
-              onClick={() => {
-                setClassId(team);
-                setSlotId(undefined);
-              }}
-            >
-              {teamName(team)}
-            </button>
-          )}
-        </For>
-      </div>
+      <LoadoutTeamPicker
+        teams={teams()}
+        selected={classId()}
+        onSelect={(team) => {
+          setClassId(team);
+          setSlotId(undefined);
+        }}
+      />
       <SegmentedControl
         class="shrink-0 lg:hidden"
         label="CS2 loadout view"
@@ -156,105 +288,28 @@ export function CS2LoadoutsView(props: {
         ]}
       />
       <div class="grid flex-1 items-start gap-4 lg:grid-cols-[minmax(320px,0.8fr)_minmax(0,1fr)]">
-        <section
-          class={`${mobileView() === "items" ? "block" : "hidden"} lg:order-2 lg:block`}
-        >
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            <For each={compatibleItems()}>
-              {(item) => (
-                <button
-                  disabled={
-                    props.featureFlags?.enableCs2Loadouts !== true ||
-                    !!loadingItemId() ||
-                    isEquipped(item)
-                  }
-                  class={`relative min-h-36 rounded-xl border p-3 text-left disabled:cursor-default ${isEquipped(item) ? "border-cyan-400/40 bg-cyan-950" : "border-slate-800 bg-slate-900 hover:border-slate-600"}`}
-                  onClick={() => void equip(item)}
-                >
-                  <ItemPreviewMedia
-                    name={item.name}
-                    imageUrl={item.imageUrl}
-                    variant="loadout-slot"
-                  />
-                  <p class="mt-2 line-clamp-2 text-sm font-medium text-slate-100">
-                    {item.name}
-                  </p>
-                  <p class="mt-1 text-xs text-slate-500">
-                    {loadingItemId() === item.id
-                      ? "Equipping…"
-                      : isEquipped(item)
-                        ? "Equipped"
-                        : "Equip"}
-                  </p>
-                </button>
-              )}
-            </For>
-          </div>
-          <Show when={!compatibleItems().length}>
-            <p class="py-12 text-center text-sm text-slate-500">
-              No compatible owned items were found for this slot.
-            </p>
-          </Show>
-        </section>
-        <aside
-          class={`rounded-xl border border-slate-800 bg-slate-900 p-3 ${mobileView() === "slots" ? "block" : "hidden"} lg:sticky lg:top-20 lg:order-1 lg:block lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto`}
-        >
-          <h2 class="border-b border-slate-800 bg-slate-900 pb-3 text-sm font-semibold text-slate-200">
-            {teamName(classId())} slots
-          </h2>
-          <div class="mt-3 grid gap-2">
-            <For each={teamSlots()}>
-              {(slot) => {
-                const equipped = () => itemForSlot(slot);
-                return (
-                  <button
-                    class={`flex min-h-20 items-center gap-3 rounded-lg border p-2 text-left ${selectedSlot()?.slotId === slot.slotId ? "border-cyan-400/40 bg-cyan-950" : "border-slate-800 bg-slate-950 hover:border-slate-700"}`}
-                    onClick={() => {
-                      setSlotId(slot.slotId);
-                      setMobileView("items");
-                    }}
-                  >
-                    <div class="h-14 w-16 shrink-0 overflow-hidden rounded bg-slate-900">
-                      <Show when={equipped()}>
-                        {(item) => (
-                          <ItemPreviewMedia
-                            name={item().name}
-                            imageUrl={item().imageUrl}
-                            variant="loadout-slot"
-                          />
-                        )}
-                      </Show>
-                    </div>
-                    <span class="min-w-0">
-                      <span class="block truncate text-sm font-medium text-slate-100">
-                        {slotName(slot)}
-                      </span>
-                      <span class="block text-xs text-slate-500">
-                        Slot {slot.slotId}
-                      </span>
-                    </span>
-                  </button>
-                );
-              }}
-            </For>
-          </div>
-          <Show when={!teamSlots().length}>
-            <div class="grid min-h-48 place-items-center px-4 text-center">
-              <div>
-                <p class="text-sm font-medium text-slate-200">
-                  {initializing()
-                    ? "Loading CS2 Game Coordinator loadout…"
-                    : "No equipped slots were published"}
-                </p>
-                <p class="mt-1 text-xs text-slate-500">
-                  {initializing()
-                    ? "Slots will appear automatically when the authoritative inventory is ready."
-                    : "Waiting for the Game Coordinator to publish the current team loadout…"}
-                </p>
-              </div>
-            </div>
-          </Show>
-        </aside>
+        <LoadoutItemPanel
+          mobileView={mobileView()}
+          compatibleItems={compatibleItems()}
+          featureFlags={props.featureFlags}
+          loadingItemId={loadingItemId()}
+          isEquipped={isEquipped}
+          onEquip={(item) => void equip(item)}
+          selectedSlotName={selectedSlotName()}
+        />
+        <LoadoutSlotPanel
+          mobileView={mobileView()}
+          className={teamName(classId())}
+          teamSlots={teamSlots()}
+          selectedSlotId={selectedSlot()?.slotId}
+          itemForSlot={itemForSlot}
+          slotName={slotName}
+          onSelectSlot={(nextSlot) => {
+            setSlotId(nextSlot.slotId);
+            setMobileView("items");
+          }}
+          initializing={initializing()}
+        />
       </div>
       <Show when={props.featureFlags?.enableCs2Loadouts !== true}>
         <p class="shrink-0 text-xs text-amber-400">

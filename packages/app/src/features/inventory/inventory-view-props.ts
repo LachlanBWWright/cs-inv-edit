@@ -43,11 +43,15 @@ export interface InventoryStorageActions {
   }) => Promise<OperationReceipt>;
 }
 
+export interface InventoryTradeUpActions {
+  execute: (input: { itemIds: string[] }) => Promise<OperationReceipt>;
+}
+
 export interface InventoryContainerActions {
   open: (
     input: OpenContainerRequest,
     suppressToast?: boolean,
-  ) => Promise<unknown>;
+  ) => Promise<OperationReceipt>;
   purchaseTerminal: (
     input: InitializeStorePurchaseRequest,
   ) => Promise<PurchaseSession>;
@@ -74,5 +78,6 @@ export interface InventoryViewProps {
   renameActions: InventoryRenameActions;
   containerActions: InventoryContainerActions;
   storageActions: InventoryStorageActions;
+  tradeUpActions: InventoryTradeUpActions;
   onRefresh: () => void;
 }

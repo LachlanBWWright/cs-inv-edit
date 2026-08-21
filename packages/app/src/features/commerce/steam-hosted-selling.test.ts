@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  steamHostedSaleURL,
-  steamInventoryAssetURL,
+  steamHostedSaleUrl,
+  steamInventoryAssetUrl,
 } from "./steam-hosted-selling.js";
 
-describe("steamInventoryAssetURL", () => {
+describe("steamInventoryAssetUrl", () => {
   it("targets an exact owned Steam inventory asset", () => {
     expect(
-      steamInventoryAssetURL("76561198000000000", {
+      steamInventoryAssetUrl("76561198000000000", {
         appId: 730,
         contextId: "2",
         assetId: "123456789",
@@ -19,14 +19,14 @@ describe("steamInventoryAssetURL", () => {
 
   it("rejects malformed identifiers", () => {
     expect(
-      steamInventoryAssetURL("not-a-steamid", {
+      steamInventoryAssetUrl("not-a-steamid", {
         appId: 730,
         contextId: "2",
         assetId: "123",
       }),
     ).toBeUndefined();
     expect(
-      steamInventoryAssetURL("76561198000000000", {
+      steamInventoryAssetUrl("76561198000000000", {
         appId: 730,
         contextId: "2/other",
         assetId: "123",
@@ -35,7 +35,7 @@ describe("steamInventoryAssetURL", () => {
   });
 });
 
-describe("steamHostedSaleURL", () => {
+describe("steamHostedSaleUrl", () => {
   const item = {
     steamId: "76561198000000000",
     appId: 730,
@@ -44,15 +44,15 @@ describe("steamHostedSaleURL", () => {
   };
 
   it("only enables the Steam-hosted handoff for marketable, uncontained items", () => {
-    expect(steamHostedSaleURL({ ...item, marketable: true })).toContain(
+    expect(steamHostedSaleUrl({ ...item, marketable: true })).toContain(
       "#730_2_123456789",
     );
-    expect(steamHostedSaleURL({ ...item, marketable: false })).toBeUndefined();
+    expect(steamHostedSaleUrl({ ...item, marketable: false })).toBeUndefined();
     expect(
-      steamHostedSaleURL({ ...item, marketable: true, contained: true }),
+      steamHostedSaleUrl({ ...item, marketable: true, contained: true }),
     ).toBeUndefined();
     expect(
-      steamHostedSaleURL({ ...item, steamId: undefined, marketable: true }),
+      steamHostedSaleUrl({ ...item, steamId: undefined, marketable: true }),
     ).toBeUndefined();
   });
 });

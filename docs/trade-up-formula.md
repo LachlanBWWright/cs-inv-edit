@@ -49,6 +49,10 @@ collection pool divide its probability evenly.
 
 For an identical-copy preview, only the input's eligible collection contributes
 outcomes. Souvenir inputs are previewed as normal outputs. Knife/glove previews
-are resolved by tracing the live `client_loot_lists` containing the Covert input
-to that case's rare-special list. Candidates are omitted when that relationship
-cannot be resolved instead of being invented.
+first trace the live collection and its `item_sets[].unusuals` quality mapping.
+Because Valve's public schema frequently names those rare-special pools without
+enumerating their members, the pool is expanded through the live game-derived
+crate index documented in [`cs2-items-game.md`](cs2-items-game.md). Every
+expanded candidate must join back to a live Valve base item and paint kit.
+Candidates are omitted when that relationship cannot be resolved instead of
+being invented.

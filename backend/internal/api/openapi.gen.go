@@ -862,7 +862,6 @@ type FeatureFlags struct {
 	EnableStatTrakSwap        bool  `json:"enableStatTrakSwap"`
 	EnableSteamInventory      bool  `json:"enableSteamInventory"`
 	EnableSteamTradeMutations *bool `json:"enableSteamTradeMutations,omitempty"`
-	EnableStickerExtract      bool  `json:"enableStickerExtract"`
 	EnableStorageMutations    bool  `json:"enableStorageMutations"`
 	EnableStorePurchases      *bool `json:"enableStorePurchases,omitempty"`
 	EnableStoreRead           *bool `json:"enableStoreRead,omitempty"`
@@ -1560,9 +1559,6 @@ type ConnectSteamJSONRequestBody = SteamCredentialsRequest
 
 // SubmitSteamGuardJSONRequestBody defines body for SubmitSteamGuard for application/json ContentType.
 type SubmitSteamGuardJSONRequestBody = SteamGuardRequest
-
-// ExtractStickerJSONRequestBody defines body for ExtractSticker for application/json ContentType.
-type ExtractStickerJSONRequestBody = JsonObject
 
 // LoadStorageJSONRequestBody defines body for LoadStorage for application/json ContentType.
 type LoadStorageJSONRequestBody = StorageLoadRequest
@@ -2690,9 +2686,6 @@ type ServerInterface interface {
 	// (GET /steam/status/ws)
 	WatchSteamStatus(w http.ResponseWriter, r *http.Request)
 
-	// (POST /stickers/extract)
-	ExtractSticker(w http.ResponseWriter, r *http.Request)
-
 	// (POST /storage/load)
 	LoadStorage(w http.ResponseWriter, r *http.Request)
 
@@ -3379,20 +3372,6 @@ func (siw *ServerInterfaceWrapper) WatchSteamStatus(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// ExtractSticker operation middleware
-func (siw *ServerInterfaceWrapper) ExtractSticker(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ExtractSticker(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // LoadStorage operation middleware
 func (siw *ServerInterfaceWrapper) LoadStorage(w http.ResponseWriter, r *http.Request) {
 
@@ -3907,7 +3886,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/containers/open", wrapper.OpenContainer)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tradeups/preview", wrapper.PreviewTradeUp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tradeups/execute", wrapper.ExecuteTradeUp)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/stickers/extract", wrapper.ExtractSticker)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/nametags/apply", wrapper.ApplyNameTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/nametags/remove", wrapper.RemoveNameTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/items/delete", wrapper.DeleteItem)

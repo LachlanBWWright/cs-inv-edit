@@ -6,7 +6,6 @@ const defaultFeatureFlags: FeatureFlags = {
   enableInventoryDebug: false,
   showStorageUnitItems: false,
   enableTradeups: false,
-  enableStickerExtract: false,
   enableNameTags: true,
   enableItemDeletion: false,
   enableStatTrakSwap: false,

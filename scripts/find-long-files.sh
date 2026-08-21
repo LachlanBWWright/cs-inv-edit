@@ -2,17 +2,27 @@
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exemptions_file="$root_dir/scripts/line-count-exemptions.txt"
+if [[ $# -gt 0 ]]; then
+  if [[ "$1" != "--exemptions" || $# -ne 2 ]]; then
+    printf 'usage: %s [--exemptions FILE]\n' "$0" >&2
+    exit 2
+  fi
+  exemptions_file="$2"
+fi
 
-python3 - "$root_dir" <<'PY'
+python3 - "$root_dir" "$exemptions_file" <<'PY'
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
+exemptions_path = Path(sys.argv[2])
 exclude_dirs = {
     ".git",
     "node_modules",
     "dist",
     "dist-electron",
+    "storybook-static",
     "coverage",
     "android",
     "vendor",
@@ -37,6 +47,18 @@ for path in root.rglob("*"):
     if lines > limit:
         matches.append((lines, path.relative_to(root).as_posix()))
 
-for lines, rel_path in sorted(matches, key=lambda match: (-match[0], match[1])):
+try:
+    exemptions = {
+        line.strip() for line in exemptions_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+except OSError as error:
+    print(f"unable to read exemptions file {exemptions_path}: {error}", file=sys.stderr)
+    sys.exit(2)
+
+violations = [match for match in matches if match[1] not in exemptions]
+for lines, rel_path in sorted(violations, key=lambda match: (-match[0], match[1])):
     print(f"{lines:>4} {rel_path}")
+if violations:
+    sys.exit(1)
 PY

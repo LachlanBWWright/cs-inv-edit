@@ -9,9 +9,51 @@ import type {
 import type { LocalAgentClient } from "../../shared/lib/backend.js";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import type { createShellController } from "./controller.js";
+import { enabledModeOrDefault } from "./view.js";
+import { writeModeToUrl } from "./app-controller-url.js";
+import { logSteamDiagnostics } from "./app-market-preview.js";
 
 type ShellController = ReturnType<typeof createShellController>;
 type Game = import("../../shared/ui-types.js").EconomyGame;
+
+export function installShellNavigationSync(input: {
+  shell: ShellController;
+  connection: Accessor<ConnectionStatus | undefined>;
+  settings: Accessor<SettingsData | undefined>;
+}) {
+  createEffect(() => logSteamDiagnostics("status", input.connection()));
+
+  createEffect(() => {
+    const currentSettings = input.settings();
+    if (!currentSettings) return;
+    const current = input.shell.view();
+    if (
+      current !== "account" &&
+      enabledModeOrDefault(current, currentSettings.featureFlags) !== current
+    ) {
+      input.shell.setSelectedItemId(undefined);
+      input.shell.setView("inventory");
+    }
+  });
+
+  createEffect(() => {
+    const current = input.shell.view();
+    if (current === "account") return;
+    writeModeToUrl(current).match(
+      () => undefined,
+      (error) =>
+        console.warn("[app] selected mode URL could not be updated", error),
+    );
+  });
+
+  let selectionScope = "";
+  createEffect(() => {
+    const nextScope = `${input.connection()?.steamId ?? "disconnected"}\u0000${input.shell.view()}`;
+    if (selectionScope && selectionScope !== nextScope)
+      input.shell.setSelectedItemId(undefined);
+    selectionScope = nextScope;
+  });
+}
 
 export function installAutomaticGameInventoryRefresh(input: {
   backend: LocalAgentClient;

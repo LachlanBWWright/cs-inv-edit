@@ -493,7 +493,6 @@ export type FeatureFlags = {
   showStorageUnitItems: boolean;
   enableProtocolConsole?: boolean;
   enableTradeups: boolean;
-  enableStickerExtract: boolean;
   enableNameTags: boolean;
   enableItemDeletion: boolean;
   enableStatTrakSwap: boolean;
@@ -1792,23 +1791,6 @@ export type ExecuteTradeUpResponses = {
 
 export type ExecuteTradeUpResponse =
   ExecuteTradeUpResponses[keyof ExecuteTradeUpResponses];
-
-export type ExtractStickerData = {
-  body?: JsonObject2;
-  path?: never;
-  query?: never;
-  url: "/stickers/extract";
-};
-
-export type ExtractStickerResponses = {
-  /**
-   * Operation receipt.
-   */
-  200: OperationReceipt;
-};
-
-export type ExtractStickerResponse =
-  ExtractStickerResponses[keyof ExtractStickerResponses];
 
 export type ApplyNameTagData = {
   body: SetItemName;

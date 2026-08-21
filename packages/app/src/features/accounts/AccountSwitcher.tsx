@@ -126,6 +126,14 @@ export function AccountSwitcher(props: AccountSwitcherProps) {
         Number(right.signedIn) - Number(left.signedIn) ||
         right.lastSignedInAt.localeCompare(left.lastSignedInAt),
     );
+  const renderAccount = (account: SteamAccountProfile) => (
+    <AccountRow
+      account={account}
+      onDeleteAccount={props.onDeleteAccount}
+      onSignInAccount={props.onSignInAccount}
+      onSignOutAccount={props.onSignOutAccount}
+    />
+  );
 
   return (
     <div class="w-full text-sm text-slate-200">
@@ -137,19 +145,17 @@ export function AccountSwitcher(props: AccountSwitcherProps) {
           </p>
         }
       >
-        <div class="max-h-72 divide-y divide-slate-800 overflow-y-auto border-b border-slate-800">
-          <For each={orderedAccounts()}>
-            {(account) => (
-              <AccountRow
-                account={account}
-                onDeleteAccount={props.onDeleteAccount}
-                onSignInAccount={props.onSignInAccount}
-                onSignOutAccount={props.onSignOutAccount}
-              />
-            )}
-          </For>
+        <div class="max-h-72 divide-y divide-slate-800 overflow-y-auto">
+          <For each={orderedAccounts()}>{renderAccount}</For>
         </div>
       </Show>
+      <button
+        class="my-3 w-full rounded-lg border border-dashed border-cyan-500/40 px-3 py-2 text-xs font-medium text-cyan-200 transition hover:bg-cyan-950"
+        onClick={props.onAddAccount}
+      >
+        + Add account
+      </button>
+      <div class="border-b border-slate-800" />
       <div class="flex items-center justify-between gap-2 px-1 pt-3 text-xs text-slate-500">
         <span>
           Inventory:{" "}
@@ -164,12 +170,6 @@ export function AccountSwitcher(props: AccountSwitcherProps) {
           Refresh
         </button>
       </div>
-      <button
-        class="mt-3 w-full rounded-lg border border-dashed border-cyan-500/40 px-3 py-2 text-xs font-medium text-cyan-200 transition hover:bg-cyan-950"
-        onClick={props.onAddAccount}
-      >
-        + Add account
-      </button>
       <button
         class="mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-cyan-200"
         onClick={props.onOpenSettings}

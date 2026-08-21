@@ -8,8 +8,8 @@ import {
   sortEconomyInventoryItems,
 } from "./game-inventory-utils.js";
 import {
-  steamHostedSaleURL,
-  steamInventoryAssetURL,
+  steamHostedSaleUrl,
+  steamInventoryAssetUrl,
 } from "../commerce/steam-hosted-selling.js";
 import {
   randomRevealCandidate,
@@ -169,16 +169,17 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
         imageUrl: entry.imageUrl,
       }),
     );
-    if (candidates.length === 0) return;
+    const firstCandidate = candidates[0];
+    if (!firstCandidate) return;
     setTF2ContainerPreview({
       candidates,
-      result: randomRevealCandidate(candidates, candidates[0]),
+      result: randomRevealCandidate(candidates, firstCandidate),
     });
   };
-  const selectedSaleURL = createMemo(() => {
+  const selectedSaleUrl = createMemo(() => {
     const item = selected();
     if (!item?.contextId) return undefined;
-    return steamHostedSaleURL({
+    return steamHostedSaleUrl({
       steamId: props.steamId,
       appId: item.appId,
       contextId: item.contextId,
@@ -186,7 +187,7 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
       marketable: item.marketable,
     });
   });
-  const selectedInventoryURL = createMemo(() => {
+  const selectedInventoryUrl = createMemo(() => {
     const item = selected();
     if (
       !props.steamId ||
@@ -194,7 +195,7 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
       (props.game !== "steam" && props.game !== "tf2")
     )
       return undefined;
-    return steamInventoryAssetURL(props.steamId, {
+    return steamInventoryAssetUrl(props.steamId, {
       appId: item.appId,
       contextId: item.contextId,
       assetId: item.assetId,
@@ -322,8 +323,8 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
     dismissActivity,
     tf2Activity,
     previewTF2Container,
-    selectedSaleURL,
-    selectedInventoryURL,
+    selectedSaleUrl,
+    selectedInventoryUrl,
     submitTF2Operation,
     resolveTF2Inspect,
     selectedTF2Market,

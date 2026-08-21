@@ -12,8 +12,225 @@ import { StoreContentsDialog } from "./store-contents-dialog.js";
 import { StoreHeader } from "./store-header.js";
 import { StoreOfferCard } from "./store-offer-card.js";
 import { filterStoreOffers, type CommerceSort } from "./commerce-view-utils.js";
+import {
+  CheckoutLink,
+  PurchaseActivityLine,
+  ProtocolTraceLines,
+  PurchaseFailureCode,
+  PurchaseRequestSummary,
+  SteamTransactionLine,
+} from "./store-purchase-dialog-elements.js";
 
 type StoreOffer = StoreSnapshot["offers"][number];
+
+function StoreOfferGrid(props: {
+  offers: StoreOffer[];
+  quantity: (offerId: string) => number;
+  onOpenContents: (offer: StoreOffer) => void;
+  onSetQuantity: (offerId: string, value: number) => void;
+  onBuy: (offer: StoreOffer) => void;
+  browseOnly?: boolean;
+}) {
+  return (
+    <div class="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <For each={props.offers}>
+        {(offer) => (
+          <StoreOfferCard
+            offer={offer}
+            quantity={props.quantity(offer.id)}
+            onOpenContents={() => props.onOpenContents(offer)}
+            onSetQuantity={(value) => props.onSetQuantity(offer.id, value)}
+            onBuy={() => props.onBuy(offer)}
+            browseOnly={props.browseOnly}
+          />
+        )}
+      </For>
+    </div>
+  );
+}
+
+function StorePurchaseDialog(props: {
+  open: boolean;
+  selected?: StoreOffer;
+  quantity: (offerId: string) => number;
+  busy: boolean;
+  purchaseEnabled: boolean;
+  purchaseDetail: string;
+  session?: PurchaseSession;
+  outgoingTrace: string[];
+  purchase: () => void;
+  selectedUsesCouponFallback: boolean;
+  gcAccepted: boolean;
+  steamAuthorizationReceived: boolean;
+  gameName: string;
+  onClose: () => void;
+  onSetQuantity: (offerId: string, value: number) => void;
+  onCopyTrace: () => void;
+}) {
+  const authorizationFailed = () =>
+    props.gcAccepted &&
+    !props.steamAuthorizationReceived &&
+    props.session?.status === "failed";
+  return (
+    <Dialog
+      open={props.open}
+      title="Confirm Steam purchase"
+      description="Prepare a Steam-hosted page where you can review and authorize the purchase."
+      onOpenChange={(open) => {
+        if (!open && !props.busy) props.onClose();
+      }}
+    >
+      <p class="text-sm text-slate-200">Item: {props.selected?.name}</p>
+      <label class="mt-4 block text-sm">
+        Quantity{" "}
+        <input
+          class="ml-2 w-20 rounded border border-slate-700 bg-slate-900 p-2"
+          type="number"
+          min="1"
+          max="20"
+          value={props.selected ? props.quantity(props.selected.id) : 1}
+          onInput={(event) => {
+            const offer = props.selected;
+            if (offer)
+              props.onSetQuantity(offer.id, Number(event.currentTarget.value));
+          }}
+        />
+      </label>
+      <p class="mt-4 font-semibold">
+        Total:{" "}
+        {props.selected
+          ? `${props.selected.currency} ${(((props.selected.saleAmountMinor ?? props.selected.amountMinor ?? 0) * props.quantity(props.selected.id)) / 100).toFixed(2)}`
+          : ""}
+      </p>
+      <p class="mt-2 text-xs text-slate-400">
+        Payment is completed securely through Steam. This app never collects
+        card details or auto-authorizes the transaction.
+      </p>
+      <Show when={props.busy}>
+        <div class="mt-3 rounded-lg border border-cyan-900/60 bg-cyan-950 p-3">
+          <p class="text-sm font-semibold text-cyan-200">
+            Preparing the Steam purchase link…
+          </p>
+          <p class="mt-1 text-xs leading-5 text-slate-300">
+            {props.purchaseDetail}
+          </p>
+          <p class="mt-2 text-xs text-slate-500">
+            This app does not submit or authorize payment. The Steam page opens
+            only after you click the resulting link.
+          </p>
+        </div>
+      </Show>
+      <Show when={props.session?.status === "failed"}>
+        <Alert variant="danger" class="mt-3">
+          <Show when={props.session?.errorCode}>
+            <PurchaseFailureCode session={props.session!} />
+          </Show>
+          <p>{props.session?.message}</p>
+        </Alert>
+      </Show>
+      <Show when={props.session?.status === "awaiting_user"}>
+        <Alert variant="success" class="mt-3">
+          <p>{props.session?.message}</p>
+          <div class="mt-2 text-xs text-slate-300">
+            <p>
+              Item: {props.session?.name} × {props.session?.quantity}
+            </p>
+            <p>Total: {props.session?.formattedAmount}</p>
+            <Show when={props.session?.transactionId}>
+              <SteamTransactionLine
+                transactionId={props.session!.transactionId!}
+              />
+            </Show>
+          </div>
+          <Show when={props.session?.checkoutUrl}>
+            {(checkoutUrl) => <CheckoutLink url={checkoutUrl()} />}
+          </Show>
+          <p class="mt-2 text-xs text-slate-400">
+            Nothing opens automatically. This link opens a new tab only when you
+            click it.
+          </p>
+        </Alert>
+      </Show>
+      <Show when={props.busy || (props.session?.diagnostics?.length ?? 0) > 0}>
+        <section class="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
+          <h3 class="text-sm font-semibold text-slate-200">
+            Purchase activity
+          </h3>
+          <div class="mt-3 space-y-2 text-sm text-slate-300">
+            <Show
+              when={!props.selectedUsesCouponFallback}
+              fallback={
+                <p>✓ Prepared Steam&apos;s browser checkout for this coupon.</p>
+              }
+            >
+              <PurchaseRequestSummary
+                selected={props.selected}
+                quantity={props.quantity}
+              />
+            </Show>
+            <Show when={props.busy}>
+              <PurchaseActivityLine kind="waiting" gameName={props.gameName} />
+            </Show>
+            <Show when={props.gcAccepted}>
+              <PurchaseActivityLine kind="accepted" gameName={props.gameName} />
+            </Show>
+            <Show when={authorizationFailed()}>
+              <PurchaseActivityLine
+                kind="authorization-failed"
+                gameName={props.gameName}
+              />
+            </Show>
+            <Show when={props.steamAuthorizationReceived}>
+              <PurchaseActivityLine
+                kind="authorized"
+                gameName={props.gameName}
+              />
+            </Show>
+          </div>
+          <details class="mt-3 border-t border-slate-800 pt-3">
+            <summary class="cursor-pointer text-xs font-medium text-slate-400">
+              Raw protocol data (message IDs, enum values and hexadecimal bytes)
+            </summary>
+            <div class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-black p-3 font-mono text-[11px] leading-5 text-slate-300">
+              <ProtocolTraceLines
+                lines={props.session?.diagnostics ?? props.outgoingTrace}
+              />
+            </div>
+            <Button
+              class="mt-3"
+              variant="secondary"
+              onClick={() => props.onCopyTrace()}
+            >
+              Copy raw trace
+            </Button>
+          </details>
+        </section>
+      </Show>
+      <Show when={!props.purchaseEnabled}>
+        <p class="mt-3 text-sm text-amber-300">
+          Unlock confirmation by enabling Store Purchases in Settings.
+        </p>
+      </Show>
+      <div class="mt-5 flex gap-2">
+        <Show when={props.session?.status !== "awaiting_user"}>
+          <Button
+            disabled={props.busy || !props.purchaseEnabled}
+            onClick={() => props.purchase()}
+          >
+            {props.busy ? "Preparing…" : "Prepare Steam link"}
+          </Button>
+        </Show>
+        <Button
+          variant="secondary"
+          disabled={props.busy}
+          onClick={() => props.onClose()}
+        >
+          {props.session?.status === "awaiting_user" ? "Close" : "Cancel"}
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
 
 export function StoreView(props: {
   store?: StoreSnapshot;
@@ -120,227 +337,44 @@ export function StoreView(props: {
           browseOnly={props.browseOnly}
           gameName={props.gameName}
         />
-        <div class="grid w-full gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          <For each={offers()}>
-            {(offer) => (
-              <StoreOfferCard
-                offer={offer}
-                quantity={quantity(offer.id)}
-                onOpenContents={() => setContentsOffer(offer)}
-                onSetQuantity={(value) => setQuantity(offer.id, value)}
-                onBuy={() => setSelected(offer)}
-                browseOnly={props.browseOnly}
-              />
-            )}
-          </For>
-        </div>
+        <StoreOfferGrid
+          offers={offers()}
+          quantity={quantity}
+          onOpenContents={setContentsOffer}
+          onSetQuantity={setQuantity}
+          onBuy={setSelected}
+          browseOnly={props.browseOnly}
+        />
         <Show when={props.store?.status === "ready" && !offers().length}>
           <Alert>No offers match the current search and filters.</Alert>
         </Show>
       </div>
 
-      <Dialog
+      <StorePurchaseDialog
         open={!!selected()}
-        title="Confirm Steam purchase"
-        description="Prepare a Steam-hosted page where you can review and authorize the purchase."
-        onOpenChange={(open) => {
-          if (!open && !busy()) {
-            setSelected(undefined);
-            setSession(undefined);
-          }
+        selected={selected()}
+        quantity={quantity}
+        busy={busy()}
+        purchaseEnabled={purchaseEnabled()}
+        purchaseDetail={purchaseDetail()}
+        session={session()}
+        outgoingTrace={outgoingTrace()}
+        purchase={() => void purchase()}
+        selectedUsesCouponFallback={selectedUsesCouponFallback()}
+        gcAccepted={gcAccepted()}
+        steamAuthorizationReceived={steamAuthorizationReceived()}
+        gameName={gameName()}
+        onClose={() => {
+          setSelected(undefined);
+          setSession(undefined);
         }}
-      >
-        <p class="text-sm text-slate-200">Item: {selected()?.name}</p>
-        <label class="mt-4 block text-sm">
-          Quantity{" "}
-          <input
-            class="ml-2 w-20 rounded border border-slate-700 bg-slate-900 p-2"
-            type="number"
-            min="1"
-            max="20"
-            value={selected() ? quantity(selected()!.id) : 1}
-            onInput={(event) => {
-              const offer = selected();
-              if (offer)
-                setQuantity(offer.id, Number(event.currentTarget.value));
-            }}
-          />
-        </label>
-        <p class="mt-4 font-semibold">
-          Total:{" "}
-          {selected()
-            ? `${selected()?.currency} ${(((selected()?.saleAmountMinor ?? selected()?.amountMinor ?? 0) * quantity(selected()!.id)) / 100).toFixed(2)}`
-            : ""}
-        </p>
-        <p class="mt-2 text-xs text-slate-400">
-          Payment is completed securely through Steam. This app never collects
-          card details or auto-authorizes the transaction.
-        </p>
-        <Show when={busy()}>
-          <div class="mt-3 rounded-lg border border-cyan-900/60 bg-cyan-950 p-3">
-            <p class="text-sm font-semibold text-cyan-200">
-              Preparing the Steam purchase link…
-            </p>
-            <p class="mt-1 text-xs leading-5 text-slate-300">
-              {purchaseDetail()}
-            </p>
-            <p class="mt-2 text-xs text-slate-500">
-              This app does not submit or authorize payment. The Steam page
-              opens only after you click the resulting link.
-            </p>
-          </div>
-        </Show>
-        <Show when={session()?.status === "failed"}>
-          <Alert variant="danger" class="mt-3">
-            <Show when={session()?.errorCode}>
-              <p class="mb-1 font-semibold">
-                {session()?.errorCode}{" "}
-                <Show when={session()?.errorResult !== undefined}>
-                  (GC purchase result {session()?.errorResult})
-                </Show>
-              </p>
-            </Show>
-            <p>{session()?.message}</p>
-          </Alert>
-        </Show>
-        <Show when={session()?.status === "awaiting_user"}>
-          <Alert variant="success" class="mt-3">
-            <p>{session()?.message}</p>
-            <div class="mt-2 text-xs text-slate-300">
-              <p>
-                Item: {session()?.name} × {session()?.quantity}
-              </p>
-              <p>Total: {session()?.formattedAmount}</p>
-              <Show when={session()?.transactionId}>
-                <p>
-                  Steam transaction:{" "}
-                  <span class="font-mono">{session()?.transactionId}</span>
-                </p>
-              </Show>
-            </div>
-            <Show when={session()?.checkoutUrl}>
-              {(checkoutUrl) => (
-                <a
-                  class="mt-3 inline-flex rounded-lg bg-cyan-400 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-300"
-                  href={checkoutUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Review and authorize on Steam
-                </a>
-              )}
-            </Show>
-            <p class="mt-2 text-xs text-slate-400">
-              Nothing opens automatically. This link opens a new tab only when
-              you click it.
-            </p>
-          </Alert>
-        </Show>
-        <Show when={busy() || (session()?.diagnostics?.length ?? 0) > 0}>
-          <section class="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
-            <h3 class="text-sm font-semibold text-slate-200">
-              Purchase activity
-            </h3>
-            <div class="mt-3 space-y-2 text-sm text-slate-300">
-              <Show
-                when={!selectedUsesCouponFallback()}
-                fallback={
-                  <p>
-                    ✓ Prepared Steam&apos;s browser checkout for this coupon.
-                  </p>
-                }
-              >
-                <p>
-                  ✓ Sent a request to purchase{" "}
-                  <strong>{selected()?.name}</strong> ×{" "}
-                  {selected() ? quantity(selected()!.id) : 1} for{" "}
-                  <strong>
-                    {selected()
-                      ? `${selected()!.currency} ${(((selected()!.saleAmountMinor ?? selected()!.amountMinor) * quantity(selected()!.id)) / 100).toFixed(2)}`
-                      : ""}
-                  </strong>
-                  .
-                </p>
-              </Show>
-              <Show when={busy()}>
-                <p class="text-cyan-300">
-                  … Waiting for the {gameName()} Game Coordinator.
-                </p>
-              </Show>
-              <Show when={gcAccepted()}>
-                <p class="text-emerald-300">
-                  ✓ The {gameName()} Game Coordinator accepted the purchase
-                  request and created an order.
-                </p>
-              </Show>
-              <Show
-                when={
-                  gcAccepted() &&
-                  !steamAuthorizationReceived() &&
-                  session()?.status === "failed"
-                }
-              >
-                <p class="text-red-300">
-                  ✕ Steam did not send the authorization message needed to
-                  create the confirmation link.
-                </p>
-              </Show>
-              <Show when={steamAuthorizationReceived()}>
-                <p class="text-emerald-300">
-                  ✓ Steam returned the authorization transaction.
-                </p>
-              </Show>
-            </div>
-            <details class="mt-3 border-t border-slate-800 pt-3">
-              <summary class="cursor-pointer text-xs font-medium text-slate-400">
-                Raw protocol data (message IDs, enum values and hexadecimal
-                bytes)
-              </summary>
-              <div class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-black p-3 font-mono text-[11px] leading-5 text-slate-300">
-                <For each={session()?.diagnostics ?? outgoingTrace()}>
-                  {(line) => <div>{line}</div>}
-                </For>
-              </div>
-              <Button
-                class="mt-3"
-                variant="secondary"
-                onClick={() =>
-                  void globalThis.navigator.clipboard.writeText(
-                    (session()?.diagnostics ?? outgoingTrace()).join("\n"),
-                  )
-                }
-              >
-                Copy raw trace
-              </Button>
-            </details>
-          </section>
-        </Show>
-        <Show when={!purchaseEnabled()}>
-          <p class="mt-3 text-sm text-amber-300">
-            Unlock confirmation by enabling Store Purchases in Settings.
-          </p>
-        </Show>
-        <div class="mt-5 flex gap-2">
-          <Show when={session()?.status !== "awaiting_user"}>
-            <Button
-              disabled={busy() || !purchaseEnabled()}
-              onClick={() => void purchase()}
-            >
-              {busy() ? "Preparing…" : "Prepare Steam link"}
-            </Button>
-          </Show>
-          <Button
-            variant="secondary"
-            disabled={busy()}
-            onClick={() => {
-              setSelected(undefined);
-              setSession(undefined);
-            }}
-          >
-            {session()?.status === "awaiting_user" ? "Close" : "Cancel"}
-          </Button>
-        </div>
-      </Dialog>
+        onSetQuantity={setQuantity}
+        onCopyTrace={() =>
+          void globalThis.navigator.clipboard.writeText(
+            (session()?.diagnostics ?? outgoingTrace()).join("\n"),
+          )
+        }
+      />
 
       <StoreContentsDialog
         offer={contentsOffer()}

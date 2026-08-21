@@ -118,14 +118,6 @@ func EncodeLoadCasketContents(casketID uint64) ([]byte, error) {
 	return EncodeCasketItem(casketID, casketID)
 }
 
-func EncodeExtractSticker(itemID uint64, slot uint32) ([]byte, error) {
-	request, err := EnumValue("EGCItemCustomizationNotification", "k_EGCItemCustomizationNotification_ExtractSticker")
-	if err != nil {
-		return nil, err
-	}
-	return encodeStickerCustomization(itemID, slot, request)
-}
-
 func EncodeSetItemName(input SetItemNameInput) ([]byte, error) {
 	if err := requireID("subject item id", input.SubjectItemID); err != nil {
 		return nil, err

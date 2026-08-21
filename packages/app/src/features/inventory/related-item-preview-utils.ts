@@ -166,11 +166,11 @@ export function isWeaponFinish(item: RelatedItemDto) {
   );
 }
 
-export function steamMarketURL(marketName: string) {
+export function steamMarketUrl(marketName: string) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
 }
 
-export function steamMarketSearchURL(marketName: string) {
+export function steamMarketSearchUrl(marketName: string) {
   return `https://steamcommunity.com/market/search?appid=730&q=${encodeURIComponent(marketName)}`;
 }
 

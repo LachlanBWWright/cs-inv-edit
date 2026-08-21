@@ -23,15 +23,17 @@ export function createAppViewState(props: AppViewProps) {
   const [marketPrices, setMarketPrices] = createSignal<
     ReadonlyMap<string, number>
   >(new Map());
+  const steamPrice = (item: {
+    quotes: Array<{ source: string; amountMinor?: number }>;
+  }) => item.quotes.find((quote) => quote.source === "steam")?.amountMinor ?? 0;
   const [economyTagFilter, setEconomyTagFilter] = createSignal("");
   const [economySort, setEconomySort] =
     createSignal<EconomyInventorySort>("name");
   const [tf2MatchGroup, setTF2MatchGroup] = createSignal(7);
   const [tf2ActivityFilter, setTF2ActivityFilter] =
     createSignal<TF2ActivityFilter>("all");
-  const [tf2ActivityLoading, setTF2ActivityLoading] = createSignal<
-    import("../../shared/ui-types.js").TF2ActivityLoading
-  >();
+  const [tf2ActivityLoading, setTF2ActivityLoading] =
+    createSignal<import("../../shared/ui-types.js").TF2ActivityLoading>();
   const [tf2ActivityError, setTF2ActivityError] = createSignal("");
   const [cs2ActivityFilter, setCS2ActivityFilter] =
     createSignal<CS2ActivityFilter>("all");
@@ -183,11 +185,7 @@ export function createAppViewState(props: AppViewProps) {
         const prices = new Map<string, number>();
         for (const result of results)
           for (const item of result?.items ?? [])
-            prices.set(
-              item.marketName,
-              item.quotes.find((quote) => quote.source === "steam")
-                ?.amountMinor ?? 0,
-            );
+            prices.set(item.marketName, steamPrice(item));
         setMarketPrices(prices);
       },
     );

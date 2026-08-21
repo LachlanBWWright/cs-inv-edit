@@ -35,6 +35,20 @@ describe("shouldShowAccountScreen", () => {
     ).toBe(true);
   });
 
+  it("keeps the current screen while a saved session reconnects", () => {
+    expect(
+      shouldShowAccountScreen({
+        currentView: "inventory",
+        connection: {
+          state: "connecting",
+          detail: "Restoring saved Steam session",
+        },
+        connectionLoading: false,
+        hasSignedInAccount: true,
+      }),
+    ).toBe(false);
+  });
+
   it("keeps application screens available while connected", () => {
     expect(
       shouldShowAccountScreen({

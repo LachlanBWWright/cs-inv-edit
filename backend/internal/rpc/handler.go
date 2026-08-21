@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 
@@ -131,8 +129,8 @@ func (h *Handler) GetTf2Features(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.service.TF2FeaturesWithMetadata(r.Context()))
 }
 
-func (h *Handler) GetCs2Features(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, h.service.CS2Features())
+func (h *Handler) GetCs2Features(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, h.service.CS2FeaturesWithMetadata(r.Context()))
 }
 func (h *Handler) ListSteamInventoryServiceGames(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -279,26 +277,6 @@ func (h *Handler) ConnectSteam(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) StartSteamQr(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.service.StartSteamQR())
 }
-func (h *Handler) steamStatusWebSocket(conn *websocket.Conn) {
-	defer conn.Close()
-	var previous any
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		status := h.service.ConnectionStatus()
-		if !reflect.DeepEqual(previous, status) {
-			if err := websocket.JSON.Send(conn, status); err != nil {
-				return
-			}
-			previous = status
-		}
-		select {
-		case <-conn.Request().Context().Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
 func (h *Handler) SubmitSteamGuard(w http.ResponseWriter, r *http.Request) {
 	body, err := parseBody(r)
 	if err != nil {
@@ -333,9 +311,6 @@ func (h *Handler) PreviewTradeUp(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) ExecuteTradeUp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "tradeups.execute"))
-}
-func (h *Handler) ExtractSticker(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, h.handleBodyOperation(r, "stickers.extract"))
 }
 func (h *Handler) ApplyNameTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.handleBodyOperation(r, "nametags.apply"))
@@ -415,56 +390,4 @@ func (h *Handler) handleBodyOperation(r *http.Request, opType string) any {
 		return map[string]any{"error": err.Error()}
 	}
 	return h.service.SubmitOperation(opType, body)
-}
-
-func parseBody(r *http.Request) (map[string]any, error) {
-	if r.Body == nil {
-		return map[string]any{}, nil
-	}
-	defer r.Body.Close()
-	const maxOperationBody = 256 << 10
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxOperationBody+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(body) > maxOperationBody {
-		return nil, fmt.Errorf("operation request body exceeds %d bytes", maxOperationBody)
-	}
-	var payload map[string]any
-	decoder := json.NewDecoder(strings.NewReader(string(body)))
-	if err := decoder.Decode(&payload); err != nil {
-		return nil, err
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return nil, fmt.Errorf("operation request body must contain exactly one JSON value")
-	}
-	return payload, nil
-}
-
-func (h *Handler) withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Accept")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func writeJSON(w http.ResponseWriter, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(value); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	http.Error(w, message, status)
 }

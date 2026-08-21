@@ -43,6 +43,10 @@ function EventCard(props: { event: OperationEvent }) {
     </div>
   );
 }
+const renderReceipt = (receipt: OperationReceipt) => (
+  <ReceiptCard receipt={receipt} />
+);
+const renderEvent = (event: OperationEvent) => <EventCard event={event} />;
 
 export function OperationsView(props: OperationsViewProps) {
   return (
@@ -59,9 +63,7 @@ export function OperationsView(props: OperationsViewProps) {
           <CardContent>
             <h3 class="text-lg font-semibold text-slate-50">Receipts</h3>
             <div class="mt-4 space-y-2">
-              <For each={props.receipts ?? []}>
-                {(receipt) => <ReceiptCard receipt={receipt} />}
-              </For>
+              <For each={props.receipts ?? []}>{renderReceipt}</For>
             </div>
           </CardContent>
         </Card>
@@ -69,9 +71,7 @@ export function OperationsView(props: OperationsViewProps) {
           <CardContent>
             <h3 class="text-lg font-semibold text-slate-50">Events</h3>
             <div class="mt-4 space-y-2">
-              <For each={props.events ?? []}>
-                {(event) => <EventCard event={event} />}
-              </For>
+              <For each={props.events ?? []}>{renderEvent}</For>
             </div>
           </CardContent>
         </Card>

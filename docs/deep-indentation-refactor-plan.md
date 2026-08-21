@@ -33,7 +33,7 @@ must therefore be reviewed before it is changed.
 - CI prevents new indentation regressions and eventually enforces the agreed
   repository threshold.
 
-## Current baseline
+## Initial scan
 
 The first scan found 120 files at depth 5 or greater. The highest-priority files
 are:
@@ -158,17 +158,17 @@ Before treating the script as a gate:
 
 Keep the CI step informational during this phase.
 
-### Phase 2: establish a regression baseline
+### Phase 2: establish explicit exemptions
 
-Record the maximum depth for each existing path in a checked-in baseline file.
-CI should fail only when:
+Record each accepted existing path in a checked-in exemption file. Do not store
+or accept a depth measurement for an exempt file. CI should fail when:
 
 - a new file exceeds the threshold;
-- an existing file becomes deeper than its baseline; or
-- a remediated file regresses beyond its improved baseline.
+- a non-exempt existing file exceeds the threshold; or
+- an exemption is removed before the file meets the threshold.
 
 This makes the check useful immediately without requiring a 120-file atomic
-change. Baseline updates must be explicit and reviewed; the scanner must not
+change. Exemption changes must be explicit and reviewed; the scanner must not
 silently rewrite them during CI.
 
 ### Phase 3: refactor the highest-depth feature clusters
@@ -187,7 +187,7 @@ Work by cohesive feature area rather than raw depth alone:
 5. **Commerce and settings** — separate terminal offer state, purchase actions,
    settings sections, and validation.
 
-Use one feature cluster per pull request where practical. Update the baseline
+Use one feature cluster per pull request where practical. Remove the exemption
 for every improved file in the same commit.
 
 ### Phase 4: address medium-depth production files
@@ -220,7 +220,7 @@ For each candidate:
 8. Run formatting, lint, type checking, focused tests, and the indentation scan.
 9. Inspect the diff for prop forwarding, lost accessibility attributes,
    unstable keys, and altered responsive behavior.
-10. Update the baseline only after the file's new depth is verified.
+10. Remove the exemption only after the file's new depth is verified.
 
 ## Verification requirements
 
@@ -252,5 +252,5 @@ The work is complete when:
 - all extracted and modified source files remain below 400 lines;
 - component extraction has not changed user-visible behavior, available
   controls, operation payloads, or responsive interactions;
-- the baseline is empty or contains only documented exceptions; and
+- the exemption list is empty or contains only documented exceptions; and
 - the full repository verification suite passes.

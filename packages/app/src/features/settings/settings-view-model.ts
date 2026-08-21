@@ -1,4 +1,8 @@
-import type { FeatureFlags, InventorySnapshot, SettingsData } from "@cs-inv-edit/contracts";
+import type {
+  FeatureFlags,
+  InventorySnapshot,
+  SettingsData,
+} from "@cs-inv-edit/contracts";
 import type { RevealItem } from "../../shared/ui/RevealAnimation.js";
 import type { UIActionOutcome } from "../../shared/lib/ui-action-outcome.js";
 
@@ -134,9 +138,46 @@ export const fallbackDebugCollections: Array<[string, RevealItem[]]> = [
 export interface SettingsViewProps {
   settings: SettingsData | undefined;
   inventory?: InventorySnapshot;
+  compactMode: import("../../shared/ui-types.js").CompactMode;
+  onCompactModeChange: (
+    mode: import("../../shared/ui-types.js").CompactMode,
+  ) => void;
   onRefresh: () => void;
   onSave: (next: SettingsData) => Promise<UIActionOutcome>;
 }
+
+export const featureFlagKeys = [
+  "enableStorageMutations",
+  "enableContainerOpening",
+  "enableInventoryDebug",
+  "showStorageUnitItems",
+  "enableProtocolConsole",
+  "enableTradeups",
+  "enableNameTags",
+  "enableItemDeletion",
+  "enableStatTrakSwap",
+  "enableStrangeParts",
+  "enableItemUse",
+  "enableToolApplication",
+  "enableGifting",
+  "enableArmoryRead",
+  "enableArmoryRedemption",
+  "enableStoreRead",
+  "enableStorePurchases",
+  "enableFullCs2Store",
+  "enableCs2Loadouts",
+  "enableTf2Inventory",
+  "enableTf2Store",
+  "enableTf2Loadouts",
+  "enableTf2ItemUse",
+  "enableTf2Tools",
+  "enableTf2Crafting",
+  "enableTf2Unboxing",
+  "enableTf2Customization",
+  "enableDota2Inventory",
+  "enableSteamInventory",
+  "enableSteamTradeMutations",
+] as const satisfies readonly (keyof FeatureFlags)[];
 
 export function settingsEqual(
   left: SettingsData | undefined,
@@ -157,11 +198,7 @@ export function settingsEqual(
     left.animations.terminal !== right.animations.terminal
   )
     return false;
-  const keys = new Set([
-    ...Object.keys(left.featureFlags),
-    ...Object.keys(right.featureFlags),
-  ] as Array<keyof FeatureFlags>);
-  for (const key of keys) {
+  for (const key of featureFlagKeys) {
     if (left.featureFlags[key] !== right.featureFlags[key]) return false;
   }
   return true;

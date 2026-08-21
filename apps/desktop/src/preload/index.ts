@@ -6,15 +6,22 @@ import type { EconomyGame } from "@cs-inv-edit/contracts";
 import type { SafeParseSchema } from "@cs-inv-edit/app";
 import { watchSteamStatusWithRecovery } from "@cs-inv-edit/app";
 
-type IpcResult<T> = { ok: true; value: T } | { ok: false; error: AppError };
+function isAppError(value: unknown): value is AppError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof value.message === "string"
+  );
+}
 
 const invokeResult = <T>(
   schema: SafeParseSchema<T>,
   channel: string,
   ...args: unknown[]
 ) =>
-  ResultAsync.fromPromise(
-    ipcRenderer.invoke(channel, ...args) as Promise<unknown>,
+  ResultAsync.fromPromise<unknown, AppError>(
+    ipcRenderer.invoke(channel, ...args),
     (cause) => ({ message: `Electron IPC failed for ${channel}`, cause }),
   ).andThen((payload) => {
     if (!payload || typeof payload !== "object" || !("ok" in payload))
@@ -22,9 +29,14 @@ const invokeResult = <T>(
         message: `Invalid Electron IPC envelope for ${channel}`,
         cause: payload,
       });
-    const result = payload as IpcResult<unknown>;
-    if (!result.ok) return err(result.error);
-    const parsed = schema.safeParse(result.value);
+    if (payload.ok === false && "error" in payload && isAppError(payload.error))
+      return err(payload.error);
+    if (payload.ok !== true || !("value" in payload))
+      return err({
+        message: `Invalid Electron IPC envelope for ${channel}`,
+        cause: payload,
+      });
+    const parsed = schema.safeParse(payload.value);
     return parsed.success
       ? ok(parsed.data)
       : err({

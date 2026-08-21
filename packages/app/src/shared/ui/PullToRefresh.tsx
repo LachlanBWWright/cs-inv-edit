@@ -2,6 +2,11 @@ import { Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 
 const pullThreshold = 72;
 
+function pullStatusLabel(refreshing: boolean, distance: number) {
+  if (refreshing) return "Refreshing…";
+  return distance >= pullThreshold ? "Release to refresh" : "Pull to refresh";
+}
+
 export function supportsPullToRefresh() {
   return (
     typeof globalThis.matchMedia === "function" &&
@@ -79,11 +84,7 @@ export function PullToRefresh(props: PullToRefreshProps) {
             <span
               class={`h-4 w-4 rounded-full border-2 border-slate-700 border-t-cyan-300 ${refreshing() ? "animate-spin" : ""}`}
             />
-            {refreshing()
-              ? "Refreshing…"
-              : pullDistance() >= pullThreshold
-                ? "Release to refresh"
-                : "Pull to refresh"}
+            {pullStatusLabel(refreshing(), pullDistance())}
           </div>
         </div>
       </Show>

@@ -22,7 +22,6 @@ const (
 	TypeSteamDisconnect       Type = "steam.disconnect"
 	TypeTradeupsExecute       Type = "tradeups.execute"
 	TypeTradeupsPreview       Type = "tradeups.preview"
-	TypeStickersExtract       Type = "stickers.extract"
 	TypeNametagsApply         Type = "nametags.apply"
 	TypeNametagsRemove        Type = "nametags.remove"
 	TypeItemsDelete           Type = "items.delete"

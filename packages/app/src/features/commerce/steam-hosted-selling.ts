@@ -6,7 +6,7 @@ interface SteamInventoryAsset {
 
 const decimalId = /^\d+$/;
 
-export function steamInventoryAssetURL(
+export function steamInventoryAssetUrl(
   steamId: string,
   asset: SteamInventoryAsset,
 ): string | undefined {
@@ -22,7 +22,7 @@ export function steamInventoryAssetURL(
   return `https://steamcommunity.com/profiles/${steamId}/inventory/#${asset.appId}_${asset.contextId}_${asset.assetId}`;
 }
 
-export function steamHostedSaleURL(
+export function steamHostedSaleUrl(
   input: SteamInventoryAsset & {
     steamId?: string;
     marketable?: boolean;
@@ -31,5 +31,5 @@ export function steamHostedSaleURL(
 ): string | undefined {
   if (!input.steamId || input.marketable !== true || input.contained === true)
     return undefined;
-  return steamInventoryAssetURL(input.steamId, input);
+  return steamInventoryAssetUrl(input.steamId, input);
 }

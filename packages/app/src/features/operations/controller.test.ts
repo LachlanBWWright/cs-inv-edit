@@ -1,18 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { errAsync, okAsync } from "neverthrow";
 import { createOperationsController } from "./controller.js";
-import type { AppBackendClient } from "../../shared/lib/backend.js";
 import type { AppError } from "../../shared/lib/result-http.js";
 import type { OperationReceipt } from "@cs-inv-edit/contracts";
+import { createOperationBackendStub } from "../../shared/lib/api.test-support.js";
 
 describe("createOperationsController", () => {
   it("settles successful receipts and refreshes inventory and operation state", async () => {
     const refreshInventory = vi.fn(() => okAsync(undefined));
     const refetchOperations = vi.fn(() => Promise.resolve(undefined));
     const refetchEvents = vi.fn(() => Promise.resolve(undefined));
-    const backend = {
-      refreshInventory: vi.fn(() => okAsync(undefined)),
-    } as unknown as AppBackendClient;
+    const backend = createOperationBackendStub();
 
     const controller = createOperationsController({
       backend,
@@ -38,10 +36,8 @@ describe("createOperationsController", () => {
   });
 
   it("returns a failed fallback receipt for a backend error", async () => {
-    const backend = {
-      refreshInventory: vi.fn(() => okAsync(undefined)),
-    } as unknown as AppBackendClient;
-    const error = { message: "boom" } as AppError;
+    const backend = createOperationBackendStub();
+    const error: AppError = { message: "boom" };
 
     const controller = createOperationsController({
       backend,
@@ -56,9 +52,9 @@ describe("createOperationsController", () => {
   });
 
   it("returns terminal receipts and transport failures to the caller", async () => {
-    const error = { message: "terminal request failed" } as AppError;
+    const error: AppError = { message: "terminal request failed" };
     const controller = createOperationsController({
-      backend: {} as AppBackendClient,
+      backend: createOperationBackendStub(),
       refreshInventory: () => okAsync(undefined),
       refetchOperations: () => Promise.resolve(undefined),
       refetchEvents: () => Promise.resolve(undefined),

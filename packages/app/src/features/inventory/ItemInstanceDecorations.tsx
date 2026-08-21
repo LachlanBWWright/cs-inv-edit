@@ -2,6 +2,39 @@ import { For, Show } from "solid-js";
 import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { formatFloat, hasSkinWearFloat } from "./item-instance-utils.js";
 
+function appliedItemInitial(kind: string) {
+  if (kind === "charm") return "C";
+  if (kind === "patch") return "P";
+  return "S";
+}
+
+function AppliedItemBadge(props: {
+  applied: NonNullable<InventoryItemDto["appliedItems"]>[number];
+}) {
+  return (
+    <span
+      class="inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-sm border border-slate-600 bg-slate-800 text-[8px] font-bold uppercase text-slate-300"
+      title={`${props.applied.kind}: ${props.applied.name}${props.applied.slot === undefined ? "" : ` (slot ${props.applied.slot + 1})`}${props.applied.kind === "sticker" && props.applied.wear !== undefined ? ` · ${Math.round(Math.max(0, Math.min(1, props.applied.wear)) * 100)}% scraped` : ""}`}
+    >
+      <Show
+        when={props.applied.imageUrl}
+        fallback={
+          <span aria-label={`${props.applied.kind}: ${props.applied.name}`}>
+            {appliedItemInitial(props.applied.kind)}
+          </span>
+        }
+      >
+        <img
+          class="h-full w-full object-contain"
+          src={props.applied.imageUrl}
+          alt={props.applied.name}
+          loading="lazy"
+        />
+      </Show>
+    </span>
+  );
+}
+
 export function ItemInstanceDecorations(props: {
   item: InventoryItemDto;
   showFloat?: boolean;
@@ -35,32 +68,7 @@ export function ItemInstanceDecorations(props: {
         </span>
       </Show>
       <For each={props.item.appliedItems ?? []}>
-        {(applied) => (
-          <span
-            class="inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-sm border border-slate-600 bg-slate-800 text-[8px] font-bold uppercase text-slate-300"
-            title={`${applied.kind}: ${applied.name}${applied.slot === undefined ? "" : ` (slot ${applied.slot + 1})`}${applied.kind === "sticker" && applied.wear !== undefined ? ` · ${Math.round(Math.max(0, Math.min(1, applied.wear)) * 100)}% scraped` : ""}`}
-          >
-            <Show
-              when={applied.imageUrl}
-              fallback={
-                <span aria-label={`${applied.kind}: ${applied.name}`}>
-                  {applied.kind === "charm"
-                    ? "C"
-                    : applied.kind === "patch"
-                      ? "P"
-                      : "S"}
-                </span>
-              }
-            >
-              <img
-                class="h-full w-full object-contain"
-                src={applied.imageUrl}
-                alt={applied.name}
-                loading="lazy"
-              />
-            </Show>
-          </span>
-        )}
+        {(applied) => <AppliedItemBadge applied={applied} />}
       </For>
     </div>
   );

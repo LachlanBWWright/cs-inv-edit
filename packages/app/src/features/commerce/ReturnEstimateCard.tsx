@@ -2,6 +2,60 @@ import { Show } from "solid-js";
 import type { ReturnEstimate } from "./roi-utils.js";
 import { formatUSDMinor } from "./roi-utils.js";
 
+function EstimateSummary(props: {
+  estimate: ReturnEstimate;
+  costLabel?: string;
+  unitCost?: number;
+}) {
+  const hasCost = props.estimate.costMinor !== undefined;
+  const hasRoi = props.estimate.roiPercent !== undefined;
+  const hasUnitCost = props.unitCost !== undefined && props.unitCost > 0;
+
+  return (
+    <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+      <div>
+        <p class="text-xs text-slate-500">Expected value</p>
+        <p class="font-semibold text-slate-100">
+          {formatUSDMinor(props.estimate.expectedValueMinor)}
+        </p>
+      </div>
+      <Show when={hasCost}>
+        <div>
+          <p class="text-xs text-slate-500">{props.costLabel ?? "Estimated cost"}</p>
+          <p class="font-semibold text-slate-100">
+            {formatUSDMinor(props.estimate.costMinor!)}
+          </p>
+        </div>
+      </Show>
+      <Show when={hasRoi}>
+        <div>
+          <p class="text-xs text-slate-500">Expected ROI</p>
+          <p
+            class={`font-semibold ${props.estimate.roiPercent! >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+          >
+            {props.estimate.roiPercent! >= 0 ? "+" : ""}
+            {props.estimate.roiPercent!.toFixed(1)}%
+          </p>
+        </div>
+      </Show>
+      <Show when={hasUnitCost}>
+        <div>
+          <p class="text-xs text-slate-500">Value per star</p>
+          <p class="font-semibold text-amber-300">
+            {formatUSDMinor(props.estimate.expectedValueMinor / props.unitCost!)}
+          </p>
+        </div>
+      </Show>
+      <div>
+        <p class="text-xs text-slate-500">Price coverage</p>
+        <p class="text-slate-300">
+          {props.estimate.pricedOutcomes}/{props.estimate.totalOutcomes} outcomes
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function ReturnEstimateCard(props: {
   estimate?: ReturnEstimate;
   loading?: boolean;
@@ -20,9 +74,7 @@ export function ReturnEstimateCard(props: {
           Expected return
         </h4>
         <Show when={props.loading}>
-          <span class="animate-pulse text-xs text-sky-300">
-            Loading prices…
-          </span>
+          <span class="animate-pulse text-xs text-sky-300">Loading prices…</span>
         </Show>
       </div>
       <Show
@@ -33,58 +85,10 @@ export function ReturnEstimateCard(props: {
           </p>
         }
       >
-        {(estimate) => (
-          <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <p class="text-xs text-slate-500">Expected value</p>
-              <p class="font-semibold text-slate-100">
-                {formatUSDMinor(estimate().expectedValueMinor)}
-              </p>
-            </div>
-            <Show when={estimate().costMinor !== undefined}>
-              <div>
-                <p class="text-xs text-slate-500">
-                  {props.costLabel ?? "Estimated cost"}
-                </p>
-                <p class="font-semibold text-slate-100">
-                  {formatUSDMinor(estimate().costMinor!)}
-                </p>
-              </div>
-            </Show>
-            <Show when={estimate().roiPercent !== undefined}>
-              <div>
-                <p class="text-xs text-slate-500">Expected ROI</p>
-                <p
-                  class={`font-semibold ${estimate().roiPercent! >= 0 ? "text-emerald-300" : "text-rose-300"}`}
-                >
-                  {estimate().roiPercent! >= 0 ? "+" : ""}
-                  {estimate().roiPercent!.toFixed(1)}%
-                </p>
-              </div>
-            </Show>
-            <Show when={props.unitCost && props.unitCost! > 0}>
-              <div>
-                <p class="text-xs text-slate-500">Value per star</p>
-                <p class="font-semibold text-amber-300">
-                  {formatUSDMinor(
-                    estimate().expectedValueMinor / props.unitCost!,
-                  )}
-                </p>
-              </div>
-            </Show>
-            <div>
-              <p class="text-xs text-slate-500">Price coverage</p>
-              <p class="text-slate-300">
-                {estimate().pricedOutcomes}/{estimate().totalOutcomes} outcomes
-              </p>
-            </div>
-          </div>
-        )}
+        {(estimate) => <EstimateSummary estimate={estimate()} costLabel={props.costLabel} unitCost={props.unitCost} />}
       </Show>
       <Show when={props.note}>
-        <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
-          {props.note}
-        </p>
+        <p class="mt-2 text-[11px] leading-relaxed text-slate-500">{props.note}</p>
       </Show>
     </section>
   );

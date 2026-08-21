@@ -1,25 +1,8 @@
-import { Match, Show, Switch } from "solid-js";
-import { AccountView } from "../accounts/AccountView.js";
-import { ArmoryView } from "../armory/ArmoryView.js";
-import { StoreView } from "../commerce/StoreView.js";
-import { InventoryView } from "../inventory/InventoryView.js";
-import { GameInventoryView } from "../inventory/GameInventoryView.js";
-import { TF2FeaturesView } from "../tf2/TF2FeaturesView.js";
-import { TF2MatchesView } from "../tf2/TF2MatchesView.js";
-import { TF2CampaignsView } from "../tf2/TF2CampaignsView.js";
-import { CS2FeaturesPanel } from "../cs2/CS2FeaturesPanel.js";
-import { CS2LoadoutsView } from "../cs2/CS2LoadoutsView.js";
-import { TradesView } from "../trades/TradesView.js";
 import { Sidebar } from "./Sidebar.js";
-import { Alert } from "../../shared/ui/Alert.js";
-import { ToastViewport } from "../../shared/ui/ToastViewport.js";
-import {
-  isEconomyInventoryScreen,
-  isInventoryScreen,
-  isTF2FeatureScreen,
-} from "./view.js";
+import { ViewScreenMapper } from "./view-screen-mappers.js";
 import type { AppViewProps } from "./app-view-props.js";
 import { createAppViewState } from "./app-view-state.js";
+import { isInventoryScreen } from "./view.js";
 
 export function AppView(props: AppViewProps) {
   const {
@@ -41,7 +24,6 @@ export function AppView(props: AppViewProps) {
     tf2ActivityFilter,
     setTF2ActivityFilter,
     tf2ActivityLoading,
-    tf2ActivityError,
     cs2ActivityFilter,
     setCS2ActivityFilter,
     cs2ActivityLoading,
@@ -141,247 +123,20 @@ export function AppView(props: AppViewProps) {
         onCS2ActivityRefresh={() => void refreshCS2Activity()}
       />
 
-      <section class="flex flex-1 flex-col p-4 sm:p-6 lg:p-7">
-        <Show when={props.statusMessage}>
-          <Alert class="mb-5">{props.statusMessage}</Alert>
-        </Show>
-
-        <Switch>
-          <Match when={props.view === "account"}>
-            <AccountView
-              connection={props.connection}
-              initialUsername={props.accountUsername}
-              onConnect={props.onConnect}
-              onStartSteamQR={props.onStartSteamQR}
-              onSubmitSteamGuard={props.onSubmitSteamGuard}
-              onDisconnect={props.onDisconnect}
-            />
-          </Match>
-          <Match when={props.view === "cs2-features"}>
-            <CS2FeaturesPanel
-              features={props.cs2Features}
-              inventory={props.inventory}
-              steamId={
-                props.connection?.state === "connected"
-                  ? props.connection.steamId
-                  : undefined
-              }
-              query={props.query}
-              activityFilter={cs2ActivityFilter()}
-            />
-          </Match>
-          <Match when={props.view === "cs2-loadouts"}>
-            <CS2LoadoutsView
-              features={props.cs2Features}
-              inventory={props.inventory}
-              featureFlags={props.settings?.featureFlags}
-              onRefresh={() => props.onInventoryRefresh(true)}
-              onOperation={props.onGameOperation}
-            />
-          </Match>
-          <Match when={isInventoryScreen(props.view)}>
-            <InventoryView
-              mode={isInventoryScreen(props.view) ? props.view : "inventory"}
-              inventory={props.inventory}
-              loading={props.inventoryLoading}
-              selectedItemId={props.selectedItemId}
-              setSelectedItemId={props.setSelectedItemId}
-              connection={props.connection}
-              settings={props.settings}
-              query={props.query}
-              kindFilter={props.kindFilter}
-              rarityFilter={rarityFilter()}
-              weaponFilter={weaponFilter()}
-              collectionFilter={collectionFilter()}
-              sort={sort()}
-              marketPrices={marketPrices()}
-              compactMode={props.compactMode}
-              marketActions={{
-                preview: props.onMarketPreview,
-                scanPrices: props.onScanPrices,
-              }}
-              renameActions={{
-                rename: props.onInventoryRename,
-                removeName: props.onRemoveName,
-              }}
-              containerActions={{
-                open: props.onOpenContainer,
-                purchaseTerminal: props.onStorePurchase,
-                loadTerminalOffer: props.onLoadTerminalOffer,
-              }}
-              storageActions={{
-                loadContents: props.onLoadStorageContents,
-                moveFrom: props.onMoveFromStorage,
-                moveInto: props.onMoveIntoStorage,
-              }}
-              onRefresh={props.onInventoryRefresh}
-            />
-          </Match>
-          <Match when={isEconomyInventoryScreen(props.view)}>
-            <Show
-              when={
-                props.view !== "steam-service-inventory" ||
-                props.steamServiceAppId
-              }
-              fallback={
-                <div class="rounded-xl border border-dashed border-slate-800 bg-slate-950 px-6 py-12 text-center text-sm text-slate-500">
-                  {props.steamServiceGamesLoading
-                    ? "Finding games owned by the connected Steam account…"
-                    : (props.steamServiceGames?.message ??
-                      "There is no eligible owned game to inspect.")}
-                </div>
-              }
-            >
-              <GameInventoryView
-                game={
-                  props.view === "steam-inventory"
-                    ? "steam"
-                    : props.view === "steam-service-inventory"
-                      ? "steam-service"
-                      : props.view === "tf2-inventory"
-                        ? "tf2"
-                        : "dota2"
-                }
-                loading={
-                  props.view === "steam-service-inventory"
-                    ? false
-                    : props.gameInventoryLoading[
-                        props.view === "steam-inventory"
-                          ? "steam"
-                          : props.view === "tf2-inventory"
-                            ? "tf2"
-                            : "dota2"
-                      ]
-                }
-                connected={
-                  props.connection
-                    ? props.connection.state === "connected"
-                    : undefined
-                }
-                steamId={
-                  props.connection?.state === "connected"
-                    ? props.connection.steamId
-                    : undefined
-                }
-                settings={props.settings}
-                snapshot={
-                  props.view === "steam-inventory"
-                    ? props.steamInventory
-                    : props.view === "steam-service-inventory"
-                      ? props.steamServiceInventory
-                      : props.view === "tf2-inventory"
-                        ? props.tf2Inventory
-                        : props.dota2Inventory
-                }
-                query={props.query}
-                tagFilter={economyTagFilter()}
-                selectedAssetId={props.selectedItemId}
-                setSelectedAssetId={props.setSelectedItemId}
-                compactMode={props.compactMode}
-                sort={economySort()}
-                onScanPrices={props.onScanPrices}
-                tf2Features={
-                  props.view === "tf2-inventory" ? props.tf2Features : undefined
-                }
-                protocolEntries={
-                  props.view === "tf2-inventory"
-                    ? props.tf2ProtocolEntries
-                    : undefined
-                }
-                onRefresh={() =>
-                  props.view === "steam-service-inventory"
-                    ? props.steamServiceAppId &&
-                      props.onSteamServiceRefresh(props.steamServiceAppId)
-                    : props.onGameInventoryRefresh(
-                        props.view === "steam-inventory"
-                          ? "steam"
-                          : props.view === "tf2-inventory"
-                            ? "tf2"
-                            : "dota2",
-                      )
-                }
-                onOperation={props.onGameOperation}
-              />
-            </Show>
-          </Match>
-          <Match when={isTF2FeatureScreen(props.view)}>
-            <TF2FeaturesView
-              snapshot={props.tf2Inventory}
-              features={props.tf2Features}
-              loading={props.gameInventoryLoading.tf2}
-              compactMode={props.compactMode}
-              onRefresh={() => props.onGameInventoryRefresh("tf2", true)}
-              onOperation={props.onGameOperation}
-            />
-          </Match>
-          <Match when={props.view === "tf2-matches"}>
-            <TF2MatchesView
-              features={props.tf2Features}
-              inventory={props.tf2Inventory}
-              error={tf2ActivityError()}
-              onRefreshInventory={() =>
-                props.onGameInventoryRefresh("tf2", true)
-              }
-            />
-          </Match>
-          <Match when={props.view === "tf2-campaigns"}>
-            <TF2CampaignsView
-              features={props.tf2Features}
-              inventory={props.tf2Inventory}
-              filter={tf2ActivityFilter()}
-              onRefreshInventory={() =>
-                props.onGameInventoryRefresh("tf2", true)
-              }
-            />
-          </Match>
-          <Match when={props.view === "tf2-store"}>
-            <StoreView
-              store={props.tf2Store}
-              settings={props.settings}
-              gameName="TF2"
-              query={props.query}
-              categoryFilter={commerceCategoryFilter()}
-              sort={commerceSort()}
-              onPurchase={props.onTF2StorePurchase}
-              onReconcile={props.onStoreReconcile}
-            />
-          </Match>
-          <Match when={props.view === "armory"}>
-            <ArmoryView
-              armory={props.armory}
-              settings={props.settings}
-              query={props.query}
-              categoryFilter={commerceCategoryFilter()}
-              sort={commerceSort()}
-              onMarketPreview={props.onMarketPreview}
-              onScanPrices={props.onScanPrices}
-              onRedeem={props.onArmoryRedeem}
-            />
-          </Match>
-          <Match when={props.view === "store"}>
-            <StoreView
-              store={props.store}
-              settings={props.settings}
-              query={props.query}
-              categoryFilter={commerceCategoryFilter()}
-              sort={commerceSort()}
-              onPurchase={props.onStorePurchase}
-              onReconcile={props.onStoreReconcile}
-            />
-          </Match>
-          <Match when={props.view === "trades"}>
-            <TradesView
-              snapshot={props.trades}
-              accounts={props.tradeAccounts}
-              activeSteamId={props.connection?.steamId}
-              onRefresh={props.onTradesRefresh}
-              onReconnect={() => props.setView("account")}
-            />
-          </Match>
-        </Switch>
-      </section>
-
-      <ToastViewport toasts={props.toasts} onDismiss={props.onDismissToast} />
+      <ViewScreenMapper
+        {...props}
+        rarityFilter={rarityFilter()}
+        weaponFilter={weaponFilter()}
+        collectionFilter={collectionFilter()}
+        sort={sort()}
+        marketPrices={marketPrices()}
+        economyTagFilter={economyTagFilter()}
+        economySort={economySort()}
+        tf2ActivityFilter={tf2ActivityFilter()}
+        cs2ActivityFilter={cs2ActivityFilter()}
+        commerceCategoryFilter={commerceCategoryFilter()}
+        commerceSort={commerceSort()}
+      />
     </main>
   );
 }

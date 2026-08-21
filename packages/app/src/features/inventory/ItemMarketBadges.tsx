@@ -55,6 +55,18 @@ export function tradeStateDescription(item: MarketBadgeItem, now = Date.now()) {
   return `${tradeState} · ${marketState}`;
 }
 
+function tradeStatusAriaLabel(label: string) {
+  if (label === "✓") return "Tradable";
+  if (label === "×") return "Permanently untradable or unmarketable";
+  return `Trade locked for approximately ${label}`;
+}
+
+function tradeStatusTitle(item: MarketBadgeItem, label: string) {
+  if (item.tradableAfter)
+    return `Tradable after ${new Date(item.tradableAfter).toLocaleString()}`;
+  return label === "✓" ? "Tradable" : "Permanently untradable or unmarketable";
+}
+
 export function ItemMarketBadges(props: {
   item: MarketBadgeItem;
   priceMinor?: number;
@@ -87,20 +99,8 @@ export function ItemMarketBadges(props: {
         {(label) => (
           <span
             class={`pointer-events-none absolute right-2 top-2 z-20 min-w-6 rounded-md border bg-slate-950 px-1.5 py-0.5 text-center text-[10px] font-bold uppercase shadow-sm shadow-black ${statusClasses()}`}
-            aria-label={
-              label() === "✓"
-                ? "Tradable"
-                : label() === "×"
-                  ? "Permanently untradable or unmarketable"
-                  : `Trade locked for approximately ${label()}`
-            }
-            title={
-              props.item.tradableAfter
-                ? `Tradable after ${new Date(props.item.tradableAfter).toLocaleString()}`
-                : label() === "✓"
-                  ? "Tradable"
-                  : "Permanently untradable or unmarketable"
-            }
+            aria-label={tradeStatusAriaLabel(label())}
+            title={tradeStatusTitle(props.item, label())}
           >
             {label()}
           </span>

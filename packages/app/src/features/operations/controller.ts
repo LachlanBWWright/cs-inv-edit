@@ -2,7 +2,7 @@ import type { OperationReceipt } from "@cs-inv-edit/contracts";
 import type { ResultAsync } from "neverthrow";
 import { createOperationApi } from "../../shared/lib/api.js";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
-import type { AppBackendClient } from "../../shared/lib/backend.js";
+import type { OperationBackend } from "../../shared/lib/api.js";
 import type { AppError } from "../../shared/lib/result-http.js";
 
 export interface OperationsController {
@@ -14,7 +14,7 @@ export interface OperationsController {
 }
 
 export interface CreateOperationsControllerOptions {
-  backend: AppBackendClient;
+  backend: OperationBackend;
   refreshInventory: () => ResultAsync<unknown, AppError>;
   refetchOperations: () => Promise<unknown> | unknown;
   refetchEvents: () => Promise<unknown> | unknown;

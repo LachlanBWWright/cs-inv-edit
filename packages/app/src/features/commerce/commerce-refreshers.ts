@@ -1,7 +1,11 @@
 import type { Setter } from "solid-js";
-import type { SteamAccountTradesCollection, SteamTradesSnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
+import type {
+  SteamAccountTradesCollection,
+  SteamTradesSnapshot,
+  StoreSnapshot,
+} from "@cs-inv-edit/contracts";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
-import type { AppProps } from "../shell/app-controller.js";
+import type { AppProps } from "../shell/app-props.js";
 
 type ResourceRefetch = (info?: unknown) => unknown;
 
@@ -12,7 +16,8 @@ export function createCommerceRefreshers(context: {
   setTradeAccounts: Setter<SteamAccountTradesCollection | undefined>;
   refetchStore: ResourceRefetch;
 }) {
-  const { props, setStore, setTrades, setTradeAccounts, refetchStore } = context;
+  const { props, setStore, setTrades, setTradeAccounts, refetchStore } =
+    context;
   const refreshStoreState = async () => {
     setStore((current): StoreSnapshot => ({
       status: "loading",

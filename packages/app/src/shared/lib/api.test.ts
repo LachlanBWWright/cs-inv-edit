@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createOperationApi } from "./api";
 import type { AppBackendClient } from "./backend";
+import { createOperationBackendStub } from "./api.test-support.js";
 
 describe("createOperationApi", () => {
   it("routes operation methods to the supplied backend client", async () => {
@@ -16,7 +17,7 @@ describe("createOperationApi", () => {
       removeNameTag: vi.fn().mockResolvedValue(receipt),
     };
 
-    const api = createOperationApi(backend as AppBackendClient);
+    const api = createOperationApi(createOperationBackendStub(backend));
 
     await expect(
       api.applyNameTag({ subjectItemId: "1", toolItemId: "2", name: "demo" }),

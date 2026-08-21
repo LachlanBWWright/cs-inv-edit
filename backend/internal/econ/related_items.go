@@ -71,7 +71,9 @@ func (s *Schema) lootListItems(name string, seen map[string]bool) []RelatedItem 
 		}
 		if strings.HasSuffix(strings.ToLower(entry), "_unusual") {
 			collectionItems := s.relatedItems(s.collections[entry].Items)
-			items = append(items, rareSpecialCollection(collectionItems))
+			if len(collectionItems) > 0 {
+				items = append(items, rareSpecialCollection(collectionItems))
+			}
 			continue
 		}
 		items = append(items, s.relatedItems([]string{entry})...)

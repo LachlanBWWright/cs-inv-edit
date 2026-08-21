@@ -14,6 +14,14 @@ import (
 const stickerSlabKeychainID uint32 = 37
 
 func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint32]uint32) Metadata {
+	return s.metadata(defIndex, paintKit, attributes, 0)
+}
+
+func (s *Schema) MetadataForQuality(defIndex uint32, paintKit uint32, attributes map[uint32]uint32, quality uint32) Metadata {
+	return s.metadata(defIndex, paintKit, attributes, quality)
+}
+
+func (s *Schema) metadata(defIndex uint32, paintKit uint32, attributes map[uint32]uint32, quality uint32) Metadata {
 	item, ok := s.items[defIndex]
 	if !ok {
 		name := fmt.Sprintf("Unknown CS2 item #%d", defIndex)
@@ -115,7 +123,12 @@ func (s *Schema) Metadata(defIndex uint32, paintKit uint32, attributes map[uint3
 			rarity = firstNonEmpty(sticker.Rarity, rarity)
 		}
 	}
-	return s.metadataResult(item, name, marketName, kind, rarity, paintKit, attributes, wearMin, wearMax)
+	result := s.metadataResult(item, name, marketName, kind, rarity, paintKit, attributes, wearMin, wearMax)
+	result.TradeUpItems = s.tradeUpItemsForQuality(item.Name, paintKit, rarity, quality)
+	if specials := s.rareSpecialByContainer[defIndex]; len(specials) > 0 {
+		result.ContainerItems = append(result.ContainerItems, rareSpecialCollection(append([]RelatedItem(nil), specials...)))
+	}
+	return result
 }
 
 func (s *Schema) metadataResult(item itemDefinition, name string, marketName string, kind domain.ItemKind, rarity string, paintKit uint32, attributes map[uint32]uint32, wearMin *float64, wearMax *float64) Metadata {

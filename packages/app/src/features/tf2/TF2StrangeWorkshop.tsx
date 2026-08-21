@@ -6,6 +6,79 @@ import type {
 
 type TF2Item = Extract<EconomyInventoryItemDto, { game: "tf2" }>;
 type StrangeAction = "part" | "restriction" | "transfer" | "remove";
+const strangeActions = [
+  ["part", "Apply part"],
+  ["restriction", "Add restriction"],
+  ["transfer", "Transfer counts"],
+  ["remove", "Remove counter"],
+] as const;
+
+function ActionButton(props: {
+  value: StrangeAction;
+  label: string;
+  selected: boolean;
+  onSelect: (value: StrangeAction) => void;
+}) {
+  return (
+    <button
+      class={`rounded-lg border px-2 py-2 text-xs ${props.selected ? "border-slate-500 bg-slate-800 text-white" : "border-slate-800 text-slate-400"}`}
+      onClick={() => props.onSelect(props.value)}
+    >
+      {props.label}
+    </button>
+  );
+}
+
+function CounterOption(props: { counter: { value: number; label: string } }) {
+  return <option value={props.counter.value}>{props.counter.label}</option>;
+}
+
+function ItemOption(props: { item: TF2Item }) {
+  return <option value={props.item.assetId}>{props.item.name}</option>;
+}
+
+function ItemOptions(props: { items: TF2Item[] }) {
+  return <For each={props.items}>{(item) => <ItemOption item={item} />}</For>;
+}
+
+function CounterOptions(props: {
+  counters: Array<{ value: number; label: string }>;
+}) {
+  return (
+    <For each={props.counters}>
+      {(counter) => <CounterOption counter={counter} />}
+    </For>
+  );
+}
+
+function Confirmation(props: {
+  itemName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div class="mt-3 rounded-lg border border-red-900 p-3">
+      <p class="text-xs text-slate-300">
+        This permanently changes {props.itemName}. The request will not be
+        retried if confirmation is not received.
+      </p>
+      <div class="mt-2 flex gap-2">
+        <button
+          class="rounded-lg bg-red-800 px-3 py-1.5 text-xs text-white"
+          onClick={props.onConfirm}
+        >
+          Confirm change
+        </button>
+        <button
+          class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+          onClick={props.onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function normalizedTool(item: TF2Item) {
   return `${item.name} ${item.details.toolType ?? ""} ${item.details.itemClass ?? ""}`.toLowerCase();
@@ -15,8 +88,10 @@ function toolsFor(items: TF2Item[], action: StrangeAction) {
   return items.filter((item) => {
     const value = normalizedTool(item);
     if (action === "part") return value.includes("strange part");
-    if (action === "restriction") return value.includes("strange") && value.includes("restriction");
-    if (action === "transfer") return value.includes("strange") && value.includes("transfer");
+    if (action === "restriction")
+      return value.includes("strange") && value.includes("restriction");
+    if (action === "transfer")
+      return value.includes("strange") && value.includes("transfer");
     return false;
   });
 }
@@ -34,7 +109,8 @@ function strangeTargets(items: TF2Item[], selected: TF2Item) {
 function counterChoices(item: TF2Item) {
   return (item.details.decodedAttributes ?? [])
     .filter((attribute) => {
-      const name = `${attribute.name} ${attribute.attributeClass}`.toLowerCase();
+      const name =
+        `${attribute.name} ${attribute.attributeClass}`.toLowerCase();
       return name.includes("score type") || name.includes("kill eater");
     })
     .map((attribute) => ({
@@ -64,19 +140,35 @@ export function TF2StrangeWorkshop(props: {
   const [confirming, setConfirming] = createSignal(false);
   const [status, setStatus] = createSignal("");
   const tools = createMemo(() => toolsFor(props.items, action()));
-  const destinations = createMemo(() => strangeTargets(props.items, props.item));
+  const destinations = createMemo(() =>
+    strangeTargets(props.items, props.item),
+  );
   const counters = createMemo(() => counterChoices(props.item));
+  const selectAction = (value: StrangeAction) => {
+    setAction(value);
+    setToolId("");
+    setDestinationId("");
+    setScoreType(0);
+    setConfirming(false);
+  };
+  const selectScoreType = (
+    event: Event & { currentTarget: HTMLSelectElement },
+  ) => {
+    setScoreType(Number(event.currentTarget.value));
+  };
 
   const submit = async () => {
     if (!props.enabled) return;
     const base = { game: "tf2", confirmed: true };
-    let request:
-      | { type: string; input: Record<string, unknown> }
-      | undefined;
+    let request: { type: string; input: Record<string, unknown> } | undefined;
     if (action() === "part" && toolId()) {
       request = {
         type: "tf2.tools.strange-part",
-        input: { ...base, toolItemId: toolId(), targetItemId: props.item.assetId },
+        input: {
+          ...base,
+          toolItemId: toolId(),
+          targetItemId: props.item.assetId,
+        },
       };
     } else if (action() === "restriction" && toolId()) {
       request = {
@@ -115,25 +207,14 @@ export function TF2StrangeWorkshop(props: {
       <section class="rounded-lg border border-slate-800 bg-slate-950 p-3">
         <h3 class="text-sm font-semibold text-slate-200">Strange counters</h3>
         <div class="mt-3 grid grid-cols-2 gap-2">
-          <For each={[
-            ["part", "Apply part"],
-            ["restriction", "Add restriction"],
-            ["transfer", "Transfer counts"],
-            ["remove", "Remove counter"],
-          ] as const}>
+          <For each={strangeActions}>
             {([value, label]) => (
-              <button
-                class={`rounded-lg border px-2 py-2 text-xs ${action() === value ? "border-slate-500 bg-slate-800 text-white" : "border-slate-800 text-slate-400"}`}
-                onClick={() => {
-                  setAction(value);
-                  setToolId("");
-                  setDestinationId("");
-                  setScoreType(0);
-                  setConfirming(false);
-                }}
-              >
-                {label}
-              </button>
+              <ActionButton
+                value={value}
+                label={label}
+                selected={action() === value}
+                onSelect={selectAction}
+              />
             )}
           </For>
         </div>
@@ -147,9 +228,7 @@ export function TF2StrangeWorkshop(props: {
               onInput={(event) => setToolId(event.currentTarget.value)}
             >
               <option value="">Select an item</option>
-              <For each={tools()}>
-                {(item) => <option value={item.assetId}>{item.name}</option>}
-              </For>
+              <ItemOptions items={tools()} />
             </select>
           </label>
           <Show when={tools().length === 0}>
@@ -165,14 +244,10 @@ export function TF2StrangeWorkshop(props: {
             <select
               class="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-sm text-slate-200"
               value={scoreType()}
-              onInput={(event) => setScoreType(Number(event.currentTarget.value))}
+              onInput={selectScoreType}
             >
               <option value="0">Select a counter</option>
-              <For each={counters()}>
-                {(counter) => (
-                  <option value={counter.value}>{counter.label}</option>
-                )}
-              </For>
+              <CounterOptions counters={counters()} />
             </select>
           </label>
         </Show>
@@ -186,9 +261,7 @@ export function TF2StrangeWorkshop(props: {
               onInput={(event) => setDestinationId(event.currentTarget.value)}
             >
               <option value="">Select an item</option>
-              <For each={destinations()}>
-                {(item) => <option value={item.assetId}>{item.name}</option>}
-              </For>
+              <ItemOptions items={destinations()} />
             </select>
           </label>
         </Show>
@@ -208,26 +281,11 @@ export function TF2StrangeWorkshop(props: {
           </button>
         </Show>
         <Show when={confirming()}>
-          <div class="mt-3 rounded-lg border border-red-900 p-3">
-            <p class="text-xs text-slate-300">
-              This permanently changes {props.item.name}. The request will not
-              be retried if confirmation is not received.
-            </p>
-            <div class="mt-2 flex gap-2">
-              <button
-                class="rounded-lg bg-red-800 px-3 py-1.5 text-xs text-white"
-                onClick={() => void submit()}
-              >
-                Confirm change
-              </button>
-              <button
-                class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
-                onClick={() => setConfirming(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          <Confirmation
+            itemName={props.item.name}
+            onConfirm={() => void submit()}
+            onCancel={() => setConfirming(false)}
+          />
         </Show>
         <Show when={status()}>
           <p class="mt-2 text-xs text-slate-500">{status()}</p>

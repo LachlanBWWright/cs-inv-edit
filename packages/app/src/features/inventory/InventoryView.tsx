@@ -2,23 +2,28 @@ import { createEffect, createSignal, on } from "solid-js";
 import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
 import {
-  RevealAnimation,
-  type RevealItem,
-} from "../../shared/ui/RevealAnimation.js";
-import {
   isActiveTerminal,
   isOpenableContainer,
-  isTerminal,
   itemKey,
   resolveSelectedInventoryItem,
 } from "./inventory-view-utils.js";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import { formatUSDMinor } from "./ItemMarketBadges.js";
-import type { ReturnEstimate } from "../commerce/roi-utils.js";
 import { createOpenContainerHandler } from "./inventory-open-container.js";
 import { createInventoryActionHandlers } from "./inventory-action-handlers.js";
+import type { StorageMutationFailure } from "./inventory-action-handlers.js";
 import { filterInventoryItems } from "./inventory-filtering.js";
 import type { InventoryViewProps } from "./inventory-view-props.js";
+import {
+  storageMoveCandidates,
+  storageSelectionLimit,
+} from "./inventory-storage-selection.js";
+import { createInventoryTradeUp } from "./inventory-trade-up.js";
+import { TradeUpConfirmationDialog } from "./TradeUpConfirmationDialog.js";
+import {
+  InventoryReveal,
+  type InventoryRevealState,
+} from "./InventoryReveal.js";
 export type { InventoryViewProps } from "./inventory-view-props.js";
 
 export function InventoryView(props: InventoryViewProps) {
@@ -29,15 +34,7 @@ export function InventoryView(props: InventoryViewProps) {
   const [statusMessage, setStatusMessage] = createSignal("");
   const [containerStatusMessage, setContainerStatusMessage] = createSignal("");
   const [pending, setPending] = createSignal(false);
-  const [reveal, setReveal] = createSignal<{
-    result: RevealItem;
-    ready: boolean;
-    candidates: RevealItem[];
-    complete: () => void;
-  }>();
-  const [containerReturn, setContainerReturn] = createSignal<ReturnEstimate>();
-  const [containerReturnLoading, setContainerReturnLoading] =
-    createSignal(false);
+  const [reveal, setReveal] = createSignal<InventoryRevealState>();
   const [selectedItemIds, setSelectedItemIds] = createSignal<string[]>([]);
   const [browsingStorageUnit, setBrowsingStorageUnit] =
     createSignal<InventoryItemDto>();
@@ -53,6 +50,9 @@ export function InventoryView(props: InventoryViewProps) {
     completed: number;
     total: number;
   }>();
+  const [storageFailures, setStorageFailures] = createSignal<
+    StorageMutationFailure[]
+  >([]);
   const [terminalOfferRequestId, setTerminalOfferRequestId] =
     createSignal<string>();
   const [terminalOfferState, setTerminalOfferState] = createSignal<{
@@ -60,6 +60,7 @@ export function InventoryView(props: InventoryViewProps) {
     state: import("../../shared/ui-types.js").LoadingState;
     message: string;
   }>();
+  const tradeUp = createInventoryTradeUp(() => props.inventory?.items ?? []);
   const filteredItems = () => {
     return filterInventoryItems({
       items: props.inventory?.items ?? [],
@@ -79,12 +80,8 @@ export function InventoryView(props: InventoryViewProps) {
           (item) => item.casketId === browsingStorageUnit()!.id,
         )
       : movingIntoStorageUnit()
-        ? filteredItems().filter(
-            (item) =>
-              item.id !== movingIntoStorageUnit()!.id &&
-              item.storageEligible !== false,
-          )
-        : filteredItems();
+        ? storageMoveCandidates(filteredItems(), movingIntoStorageUnit()!)
+        : tradeUp.filterItems(filteredItems());
   const selectedItem = () =>
     movingIntoStorageUnit() ??
     resolveSelectedInventoryItem(visibleItems(), props.selectedItemId);
@@ -157,13 +154,18 @@ export function InventoryView(props: InventoryViewProps) {
     item: InventoryItemDto,
     options?: { range: boolean; selected?: boolean },
   ) => {
+    if (tradeUp.active()) {
+      tradeUp.toggle(item);
+      return;
+    }
     if (
       movingIntoStorageUnit() ||
       (browsingStorageUnit() && removeFromStorageMode())
     ) {
+      setStorageFailures([]);
       const anchorId = storageSelectionAnchorId();
       const selectionLimit = movingIntoStorageUnit()
-        ? Math.max(0, 1000 - (movingIntoStorageUnit()!.storageCount ?? 0))
+        ? storageSelectionLimit(movingIntoStorageUnit()!)
         : Number.POSITIVE_INFINITY;
       if (options?.range && anchorId) {
         const items = visibleItems();
@@ -250,8 +252,6 @@ export function InventoryView(props: InventoryViewProps) {
     connected,
     setContainerStatusMessage,
     setPending,
-    setContainerReturn,
-    setContainerReturnLoading,
     setReveal,
   });
   const {
@@ -281,13 +281,16 @@ export function InventoryView(props: InventoryViewProps) {
     setStorageRetrieval,
     movingIntoStorageUnit,
     setMovingIntoStorageUnit,
+    setStorageFailures,
   });
   return (
     <>
       <InventoryViewContent
         inventory={props.inventory}
         selectionMode="inventory"
-        selectedItemIds={selectedItemIds()}
+        selectedItemIds={
+          tradeUp.active() ? tradeUp.selectedIds() : selectedItemIds()
+        }
         connection={props.connection}
         settings={props.settings}
         filteredItems={visibleItems()}
@@ -328,17 +331,20 @@ export function InventoryView(props: InventoryViewProps) {
           setMovingIntoStorageUnit(unit);
           setStorageSelectedItemIds([]);
           setStorageSelectionAnchorId(undefined);
+          setStorageFailures([]);
         }}
         movingIntoStorageUnit={movingIntoStorageUnit()}
         browsingStorageUnit={browsingStorageUnit()}
         removeFromStorageMode={removeFromStorageMode()}
         storageSelectedItemIds={storageSelectedItemIds()}
         storageRetrieval={storageRetrieval()}
+        storageFailures={storageFailures()}
         onBackFromStorage={backFromStorage}
         onToggleRemoveFromStorageMode={() => {
           setRemoveFromStorageMode((current) => !current);
           setStorageSelectedItemIds([]);
           setStorageSelectionAnchorId(undefined);
+          setStorageFailures([]);
         }}
         onRetrieveFromStorage={() => retrieveFromStorage(false)}
         onRetrieveAllFromStorage={() => retrieveFromStorage(true)}
@@ -346,32 +352,46 @@ export function InventoryView(props: InventoryViewProps) {
           setMovingIntoStorageUnit(undefined);
           setStorageSelectedItemIds([]);
           setStorageSelectionAnchorId(undefined);
+          setStorageFailures([]);
         }}
         onConfirmMoveIntoStorage={moveIntoStorage}
+        tradeUpActive={tradeUp.active()}
+        tradeUpSelectedCount={tradeUp.selectedItems().length}
+        tradeUpRequiredCount={tradeUp.requiredCount()}
+        onStartTradeUp={() => {
+          props.setSelectedItemId(undefined);
+          tradeUp.start();
+        }}
+        onCancelTradeUp={tradeUp.reset}
+        onReviewTradeUp={() => tradeUp.setConfirmationOpen(true)}
         onCloseRename={() => setRenameOpen(false)}
         onDraftNameChange={setDraftName}
         onSelectedToolChange={setSelectedToolId}
         onSelectedContainerKeyChange={setSelectedContainerKeyId}
         onRefresh={props.onRefresh}
       />
-      <RevealAnimation
-        open={!!reveal()}
-        ready={reveal()?.ready}
-        mode={
-          isTerminal(selectedItem())
-            ? (props.settings?.animations?.terminal ?? "slot-machine")
-            : (props.settings?.animations?.container ?? "slot-machine")
-        }
-        title={
-          isTerminal(selectedItem()) ? "Terminal offer" : "Container opening"
-        }
-        candidates={reveal()?.candidates ?? []}
-        result={reveal()?.result ?? { name: "Item" }}
-        returnEstimate={containerReturn()}
-        returnEstimateLoading={containerReturnLoading()}
-        returnEstimateCostLabel="Container + key"
-        returnEstimateNote="Expected value uses schema odds and current market prices; Steam fees are excluded."
-        onComplete={() => {
+      <TradeUpConfirmationDialog
+        open={tradeUp.confirmationOpen()}
+        items={tradeUp.selectedItems()}
+        outcomes={tradeUp.outcomes()}
+        executionEnabled={props.settings?.featureFlags.enableTradeups ?? false}
+        connected={connected()}
+        requiredCount={tradeUp.requiredCount()}
+        marketPrices={props.marketPrices}
+        scanPrices={props.marketActions.scanPrices}
+        onOpenChange={tradeUp.setConfirmationOpen}
+        onRemove={tradeUp.toggle}
+        onExecute={props.tradeUpActions.execute}
+        onAccepted={() => {
+          tradeUp.reset();
+          props.onRefresh();
+        }}
+      />
+      <InventoryReveal
+        reveal={reveal()}
+        selectedItem={selectedItem()}
+        settings={props.settings}
+        onDismiss={() => {
           const current = reveal();
           setReveal(undefined);
           current?.complete();

@@ -15,6 +15,14 @@ export interface ResponsiveInspectorProps {
   label?: string;
 }
 
+function inspectorClass(open: boolean, expanded: boolean) {
+  const mobileClass = expanded ? "h-[min(82dvh,52rem)]" : "h-20";
+  const visibilityClass = open
+    ? `fixed inset-x-0 bottom-0 z-40 rounded-t-2xl border border-b-0 pb-[env(safe-area-inset-bottom)] ${mobileClass}`
+    : "hidden";
+  return `border-slate-700 bg-slate-950 shadow-md shadow-black lg:sticky lg:top-[5.4375rem] lg:order-1 lg:z-auto lg:block lg:h-[calc(100dvh-6.4375rem)] lg:self-start lg:overflow-hidden lg:border-0 lg:bg-transparent lg:shadow-none ${visibilityClass}`;
+}
+
 export function ResponsiveInspector(props: ResponsiveInspectorProps) {
   const [expanded, setExpanded] = createSignal(false);
 
@@ -42,13 +50,7 @@ export function ResponsiveInspector(props: ResponsiveInspectorProps) {
         />
       </Show>
       <aside
-        class={`border-slate-700 bg-slate-950 shadow-md shadow-black lg:sticky lg:top-[5.4375rem] lg:order-1 lg:z-auto lg:block lg:h-[calc(100dvh-6.4375rem)] lg:self-start lg:overflow-hidden lg:border-0 lg:bg-transparent lg:shadow-none ${
-          props.open
-            ? `fixed inset-x-0 bottom-0 z-40 rounded-t-2xl border border-b-0 pb-[env(safe-area-inset-bottom)] ${
-                expanded() ? "h-[min(82dvh,52rem)]" : "h-20"
-              }`
-            : "hidden"
-        }`}
+        class={inspectorClass(props.open, expanded())}
         aria-label={props.label ?? "Selected item details"}
       >
         <button

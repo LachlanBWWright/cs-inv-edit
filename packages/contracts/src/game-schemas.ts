@@ -122,6 +122,17 @@ const tf2EconomyItemSchema = z.object({
         }),
       )
       .optional(),
+    tradeUpItems: z
+      .array(
+        z.object({
+          defIndex: z.number().int().nonnegative().optional(),
+          name: z.string(),
+          rarity: z.string().optional(),
+          poolKind: z.enum(["primary", "bonus", "unresolved"]),
+          imageUrl: z.string().optional(),
+        }),
+      )
+      .optional(),
     decodedAttributes: z
       .array(
         z.object({

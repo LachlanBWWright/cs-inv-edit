@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/proto/tf2tracking"
@@ -15,7 +14,6 @@ import (
 	"github.com/Lucino772/envelop/pkg/steam/steammsg"
 	"github.com/Lucino772/envelop/pkg/steam/steampb"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -303,78 +301,6 @@ func findGCProtoMessageInstance(name string, emsg uint32) proto.Message {
 		}
 	}
 	return nil
-}
-
-func decodeRawProtoWireFormat(b []byte) (map[string]any, bool) {
-	if len(b) == 0 {
-		return map[string]any{}, true
-	}
-	result := make(map[string]any)
-	buf := b
-	for len(buf) > 0 {
-		num, wtype, n := protowire.ConsumeTag(buf)
-		if n < 0 {
-			return nil, false
-		}
-		buf = buf[n:]
-		fieldName := fmt.Sprintf("field_%d", num)
-
-		switch wtype {
-		case protowire.VarintType:
-			v, n := protowire.ConsumeVarint(buf)
-			if n < 0 {
-				return nil, false
-			}
-			buf = buf[n:]
-			appendRawField(result, fieldName, v)
-
-		case protowire.Fixed32Type:
-			v, n := protowire.ConsumeFixed32(buf)
-			if n < 0 {
-				return nil, false
-			}
-			buf = buf[n:]
-			appendRawField(result, fieldName, v)
-
-		case protowire.Fixed64Type:
-			v, n := protowire.ConsumeFixed64(buf)
-			if n < 0 {
-				return nil, false
-			}
-			buf = buf[n:]
-			appendRawField(result, fieldName, v)
-
-		case protowire.BytesType:
-			v, n := protowire.ConsumeBytes(buf)
-			if n < 0 {
-				return nil, false
-			}
-			buf = buf[n:]
-			if utf8.Valid(v) && len(v) > 0 {
-				appendRawField(result, fieldName, string(v))
-			} else if subMap, ok := decodeRawProtoWireFormat(v); ok && len(subMap) > 0 {
-				appendRawField(result, fieldName, subMap)
-			} else {
-				appendRawField(result, fieldName, hex.EncodeToString(v))
-			}
-
-		default:
-			return nil, false
-		}
-	}
-	return result, true
-}
-
-func appendRawField(m map[string]any, key string, val any) {
-	if existing, ok := m[key]; ok {
-		if list, isList := existing.([]any); isList {
-			m[key] = append(list, val)
-		} else {
-			m[key] = []any{existing, val}
-		}
-	} else {
-		m[key] = val
-	}
 }
 
 func protocolMessageName(appID, emsg uint32) string {

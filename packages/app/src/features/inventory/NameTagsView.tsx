@@ -101,6 +101,36 @@ export function NameTagsView(props: NameTagsViewProps) {
   };
 
   const quickItems = () => props.inventory?.items ?? [];
+  const selectQuickItem = (subjectItemId: string) => {
+    setApplyInput((current) => ({ ...current, subjectItemId }));
+  };
+  const setSubjectItemId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setApplyInput((current) => ({
+      ...current,
+      subjectItemId: event.currentTarget.value.trim(),
+    }));
+  };
+  const setToolItemId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setApplyInput((current) => ({
+      ...current,
+      toolItemId: event.currentTarget.value.trim(),
+    }));
+  };
+  const setName: JSX.EventHandler<HTMLInputElement, InputEvent> = (event) => {
+    setApplyInput((current) => ({
+      ...current,
+      name: event.currentTarget.value,
+    }));
+  };
+  const setRemoveItemId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setRemoveInput({ itemId: event.currentTarget.value.trim() });
+  };
 
   return (
     <div class="space-y-5">
@@ -116,9 +146,7 @@ export function NameTagsView(props: NameTagsViewProps) {
       <Show when={quickItems().length > 0}>
         <QuickItemsPanel
           items={quickItems().slice(0, 6)}
-          onSelect={(itemId) =>
-            setApplyInput((current) => ({ ...current, subjectItemId: itemId }))
-          }
+          onSelect={selectQuickItem}
         />
       </Show>
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -131,32 +159,17 @@ export function NameTagsView(props: NameTagsViewProps) {
           <Input
             placeholder="Subject item ID"
             value={applyInput().subjectItemId}
-            onInput={(event) =>
-              setApplyInput((current) => ({
-                ...current,
-                subjectItemId: event.currentTarget.value.trim(),
-              }))
-            }
+            onInput={setSubjectItemId}
           />
           <Input
             placeholder="Name tag item ID"
             value={applyInput().toolItemId}
-            onInput={(event) =>
-              setApplyInput((current) => ({
-                ...current,
-                toolItemId: event.currentTarget.value.trim(),
-              }))
-            }
+            onInput={setToolItemId}
           />
           <Input
             placeholder="New custom name"
             value={applyInput().name}
-            onInput={(event) =>
-              setApplyInput((current) => ({
-                ...current,
-                name: event.currentTarget.value,
-              }))
-            }
+            onInput={setName}
           />
         </NameTagFormCard>
         <NameTagFormCard
@@ -169,9 +182,7 @@ export function NameTagsView(props: NameTagsViewProps) {
           <Input
             placeholder="Item ID"
             value={removeInput().itemId}
-            onInput={(event) =>
-              setRemoveInput({ itemId: event.currentTarget.value.trim() })
-            }
+            onInput={setRemoveItemId}
           />
         </NameTagFormCard>
       </div>

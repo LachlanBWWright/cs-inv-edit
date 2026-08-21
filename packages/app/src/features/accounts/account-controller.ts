@@ -1,12 +1,16 @@
 import type { Accessor } from "solid-js";
-import type { ConnectionStatus, SettingsData, SteamAccountProfile } from "@cs-inv-edit/contracts";
+import type {
+  ConnectionStatus,
+  SettingsData,
+  SteamAccountProfile,
+} from "@cs-inv-edit/contracts";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import { enabledModeOrDefault } from "../shell/view.js";
 import { modeFromUrl } from "../shell/app-controller-url.js";
 import { createOperationsController } from "../operations/controller.js";
 import type { createShellController } from "../shell/controller.js";
 import type { createToastController } from "../notifications/controller.js";
-import type { AppProps } from "../shell/app-controller.js";
+import type { AppProps } from "../shell/app-props.js";
 
 interface AccountControllerContext {
   props: AppProps;
@@ -27,12 +31,25 @@ type ResourceRefetch<T> = (
 ) => T | Promise<T | undefined> | null | undefined;
 
 export function createAccountController(context: AccountControllerContext) {
-  const { props, shell, settings, pushToast, refreshInventoryState, refreshArmoryState, refetchConnection, refetchInventory, refetchOperations, refetchEvents, refetchSettings } = context;
+  const {
+    props,
+    shell,
+    settings,
+    pushToast,
+    refreshInventoryState,
+    refreshArmoryState,
+    refetchConnection,
+    refetchInventory,
+    refetchOperations,
+    refetchEvents,
+    refetchSettings,
+  } = context;
   const syncAccountState = async (latestStatus?: ConnectionStatus) => {
     console.info("[app] syncing account state");
     const refreshedStatus = await refetchConnection();
     const status = latestStatus ?? refreshedStatus;
     if (status?.state === "connected") {
+      shell.setAccountLoginOnly(false);
       shell.setView(
         enabledModeOrDefault(modeFromUrl(), settings()?.featureFlags),
       );
@@ -69,7 +86,7 @@ export function createAccountController(context: AccountControllerContext) {
   });
 
   const disconnectAndRefresh = async () => {
-    if (!props.backend.disconnectSteam) return;
+    if (!props.backend.disconnectSteam) return false;
     return props.backend
       .disconnectSteam()
       .andThen(() =>
@@ -79,13 +96,15 @@ export function createAccountController(context: AccountControllerContext) {
         ),
       )
       .match(
-        () => undefined,
-        (error) =>
+        () => true,
+        (error) => {
           pushToast({
             title: "Disconnect failed",
             description: appErrorMessage(error, "Unable to disconnect"),
             variant: "danger",
-          }),
+          });
+          return false;
+        },
       );
   };
 
@@ -111,6 +130,7 @@ export function createAccountController(context: AccountControllerContext) {
   const addAccount = async () => {
     shell.setSelectedItemId(undefined);
     shell.setAccountUsername("");
+    shell.setAccountLoginOnly(true);
     shell.setView("account");
   };
 
@@ -156,5 +176,14 @@ export function createAccountController(context: AccountControllerContext) {
     });
   };
 
-  return { syncAccountState, operationController, disconnectAndRefresh, saveSettings, addAccount, signInAccount, signOutAccount, deleteAccount };
+  return {
+    syncAccountState,
+    operationController,
+    disconnectAndRefresh,
+    saveSettings,
+    addAccount,
+    signInAccount,
+    signOutAccount,
+    deleteAccount,
+  };
 }

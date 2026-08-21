@@ -1,5 +1,9 @@
 import { fromThrowable } from "neverthrow";
-import { steamAccountProfilesSchema, type SteamAccountProfile } from "@cs-inv-edit/contracts";
+import {
+  steamAccountProfilesSchema,
+  type SteamAccountProfile,
+} from "@cs-inv-edit/contracts";
+import { readStoredJson } from "../../shared/lib/storage.js";
 import type { AppMode, AppScreen } from "./view.js";
 import { isAppMode } from "./view.js";
 
@@ -39,19 +43,9 @@ export function screenFromUrl(): AppScreen {
     : modeFromUrl();
 }
 
-const readSteamAccounts = fromThrowable(
-  () => {
-    const parsed = steamAccountProfilesSchema.safeParse(
-      JSON.parse(window.localStorage.getItem(accountStorageKey) ?? "[]"),
-    );
-    return parsed.success ? parsed.data : [];
-  },
-  () => [] as SteamAccountProfile[],
-);
-
 export function loadSteamAccounts(): SteamAccountProfile[] {
-  return readSteamAccounts().match(
+  return readStoredJson(accountStorageKey, steamAccountProfilesSchema).match(
     (accounts) => accounts,
-    (fallback) => fallback,
+    () => [],
   );
 }

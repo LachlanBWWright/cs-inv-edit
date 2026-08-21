@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import {
   compactItemMeta,
   compactItemName,
@@ -64,12 +65,23 @@ describe("rarityBorderClass", () => {
   });
 
   it("only treats the transformed item as active", () => {
-    expect(isActiveTerminal({ isTerminal: true } as never)).toBe(
-      false,
-    );
-    expect(isActiveTerminal({ isTerminal: true, isActiveTerminal: true } as never)).toBe(
-      true,
-    );
+    expect(
+      isActiveTerminal({
+        id: "terminal",
+        name: "Terminal",
+        kind: "container",
+        isTerminal: true,
+      }),
+    ).toBe(false);
+    expect(
+      isActiveTerminal({
+        id: "terminal",
+        name: "Terminal",
+        kind: "container",
+        isTerminal: true,
+        isActiveTerminal: true,
+      }),
+    ).toBe(true);
   });
 });
 
@@ -90,34 +102,48 @@ describe("sortRelatedItemsByRarity", () => {
 
 describe("isOpenableContainer", () => {
   it("keeps the action available when a live description mislabels a capsule", () => {
-    const capsule = {
+    const capsule: InventoryItemDto = {
       id: "capsule",
       name: "Sticker | Sticker Name",
       kind: "sticker_item",
       containerItems: [{ name: "Sticker" }],
-    } as never;
+    };
     expect(isOpenableContainer(capsule)).toBe(true);
   });
 
   it("recognizes keyless graffiti boxes by name", () => {
-    const box = {
+    const box: InventoryItemDto = {
       id: "box",
       name: "Community Graffiti Box 1",
       kind: "tool_item",
-    } as never;
+    };
     expect(isOpenableContainer(box)).toBe(true);
   });
 });
 
 describe("isTerminal", () => {
   it("uses the GC-derived terminal classification", () => {
-    expect(isTerminal({ name: "任務裝置", isTerminal: true } as never)).toBe(true);
-    expect(isTerminal({ name: "Terminal", isTerminal: false } as never)).toBe(false);
+    expect(
+      isTerminal({
+        id: "active",
+        name: "任務裝置",
+        kind: "container",
+        isTerminal: true,
+      }),
+    ).toBe(true);
+    expect(
+      isTerminal({
+        id: "inactive",
+        name: "Terminal",
+        kind: "container",
+        isTerminal: false,
+      }),
+    ).toBe(false);
   });
 });
 
 describe("inventory filtering helpers", () => {
-  const items = [
+  const items: InventoryItemDto[] = [
     {
       id: "a",
       name: "AK-47 | Redline",
@@ -133,7 +159,7 @@ describe("inventory filtering helpers", () => {
       paintWear: 0.08,
     },
     { id: "c", name: "Sticker", kind: "sticker_item", rarity: "High Grade" },
-  ] as never[];
+  ];
 
   it("derives the specific weapon from a skin name", () => {
     expect(itemWeaponName(items[0]!)).toBe("AK-47");
@@ -222,16 +248,26 @@ describe("inventory filtering helpers", () => {
 
 describe("resolveSelectedInventoryItem", () => {
   it("returns the currently selected item when it is still present in the filtered list", () => {
-    const items = [{ id: "a" }, { id: "b" }] as Array<{ id: string }>;
-    expect(resolveSelectedInventoryItem(items as never[], "b")).toEqual({
+    const items: InventoryItemDto[] = [
+      { id: "a", name: "A", kind: "unknown" },
+      { id: "b", name: "B", kind: "unknown" },
+    ];
+    expect(resolveSelectedInventoryItem(items, "b")).toEqual({
       id: "b",
+      name: "B",
+      kind: "unknown",
     });
   });
 
   it("falls back to the first item when the selected item is no longer visible", () => {
-    const items = [{ id: "a" }, { id: "b" }] as Array<{ id: string }>;
-    expect(resolveSelectedInventoryItem(items as never[], "missing")).toEqual({
+    const items: InventoryItemDto[] = [
+      { id: "a", name: "A", kind: "unknown" },
+      { id: "b", name: "B", kind: "unknown" },
+    ];
+    expect(resolveSelectedInventoryItem(items, "missing")).toEqual({
       id: "a",
+      name: "A",
+      kind: "unknown",
     });
   });
 });

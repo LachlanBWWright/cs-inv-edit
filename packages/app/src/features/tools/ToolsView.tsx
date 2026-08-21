@@ -63,6 +63,38 @@ export function ToolsView(props: ToolsViewProps) {
     });
   const [status, setStatus] = createSignal("");
   const [pending, setPending] = createSignal(false);
+  const setStatTrakField = (
+    field: keyof ApplyStatTrakSwapRequest,
+    value: string,
+  ) => {
+    setStatTrakInput((current) => ({ ...current, [field]: value.trim() }));
+  };
+  const setStrangePartField = (
+    field: keyof ApplyStrangePartRequest,
+    value: string,
+  ) => {
+    setStrangePartInput((current) => ({ ...current, [field]: value.trim() }));
+  };
+  const setStrangePartToolId: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    setStrangePartField("strangePartItemId", event.currentTarget.value);
+  };
+  const setToolToItemField = (
+    field: keyof ApplyToolToItemRequest,
+    value: string,
+  ) => {
+    setToolToItemInput((current) => ({ ...current, [field]: value.trim() }));
+  };
+  const setToolToBaseField = (
+    field: keyof ApplyToolToBaseItemRequest,
+    value: string,
+  ) => {
+    setToolToBaseInput((current) => ({
+      ...current,
+      [field]: field === "baseitemDefIndex" ? Number(value) || 0 : value.trim(),
+    }));
+  };
 
   const run = async (execute: () => Promise<OperationReceipt>) => {
     setPending(true);
@@ -95,30 +127,21 @@ export function ToolsView(props: ToolsViewProps) {
             placeholder="Tool item ID"
             value={statTrakInput().toolItemId}
             onInput={(event) =>
-              setStatTrakInput((current) => ({
-                ...current,
-                toolItemId: event.currentTarget.value.trim(),
-              }))
+              setStatTrakField("toolItemId", event.currentTarget.value)
             }
           />
           <Input
             placeholder="Item 1 ID"
             value={statTrakInput().item1ItemId}
             onInput={(event) =>
-              setStatTrakInput((current) => ({
-                ...current,
-                item1ItemId: event.currentTarget.value.trim(),
-              }))
+              setStatTrakField("item1ItemId", event.currentTarget.value)
             }
           />
           <Input
             placeholder="Item 2 ID"
             value={statTrakInput().item2ItemId}
             onInput={(event) =>
-              setStatTrakInput((current) => ({
-                ...current,
-                item2ItemId: event.currentTarget.value.trim(),
-              }))
+              setStatTrakField("item2ItemId", event.currentTarget.value)
             }
           />
           <Button
@@ -137,21 +160,13 @@ export function ToolsView(props: ToolsViewProps) {
           <Input
             placeholder="Strange part item ID"
             value={strangePartInput().strangePartItemId}
-            onInput={(event) =>
-              setStrangePartInput((current) => ({
-                ...current,
-                strangePartItemId: event.currentTarget.value.trim(),
-              }))
-            }
+            onInput={setStrangePartToolId}
           />
           <Input
             placeholder="Target item ID"
             value={strangePartInput().itemItemId}
             onInput={(event) =>
-              setStrangePartInput((current) => ({
-                ...current,
-                itemItemId: event.currentTarget.value.trim(),
-              }))
+              setStrangePartField("itemItemId", event.currentTarget.value)
             }
           />
           <Button
@@ -171,20 +186,14 @@ export function ToolsView(props: ToolsViewProps) {
             placeholder="Tool item ID"
             value={toolToItemInput().toolItemId}
             onInput={(event) =>
-              setToolToItemInput((current) => ({
-                ...current,
-                toolItemId: event.currentTarget.value.trim(),
-              }))
+              setToolToItemField("toolItemId", event.currentTarget.value)
             }
           />
           <Input
             placeholder="Subject item ID"
             value={toolToItemInput().subjectItemId}
             onInput={(event) =>
-              setToolToItemInput((current) => ({
-                ...current,
-                subjectItemId: event.currentTarget.value.trim(),
-              }))
+              setToolToItemField("subjectItemId", event.currentTarget.value)
             }
           />
           <Button
@@ -204,10 +213,7 @@ export function ToolsView(props: ToolsViewProps) {
             placeholder="Tool item ID"
             value={toolToBaseInput().toolItemId}
             onInput={(event) =>
-              setToolToBaseInput((current) => ({
-                ...current,
-                toolItemId: event.currentTarget.value.trim(),
-              }))
+              setToolToBaseField("toolItemId", event.currentTarget.value)
             }
           />
           <Input
@@ -215,10 +221,7 @@ export function ToolsView(props: ToolsViewProps) {
             type="number"
             value={toolToBaseInput().baseitemDefIndex}
             onInput={(event) =>
-              setToolToBaseInput((current) => ({
-                ...current,
-                baseitemDefIndex: Number(event.currentTarget.value) || 0,
-              }))
+              setToolToBaseField("baseitemDefIndex", event.currentTarget.value)
             }
           />
           <Button

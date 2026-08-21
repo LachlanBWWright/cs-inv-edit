@@ -16,7 +16,6 @@ import {
   createWasmReceipt as createReceipt,
 } from "./wasm-backend-state.js";
 import { defaultWasmSettings } from "./wasm-backend-settings.js";
-
 declare global {
   interface Window {
     Go: new () => {
@@ -29,12 +28,57 @@ declare global {
   }
 }
 
-const wasmAssetBasePath = `${(import.meta as ImportMeta & { env: { BASE_URL: string } }).env.BASE_URL.replace(/\/$/, "")}/`;
+const wasmAssetBasePath = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/`;
 const wasmAssetPaths = {
   wasm: `${wasmAssetBasePath}wasm/cs2-backend.wasm`,
   loader: `${wasmAssetBasePath}wasm/wasm_exec.js`,
 } as const;
-
+function unavailableInWasm(message: string) {
+  return errAsync({ message });
+}
+function requiresConnectionResponse<T extends object>(
+  message: string,
+  value: T,
+) {
+  return okAsync({
+    ...value,
+    status: "requires_connection" as const,
+    message,
+    refreshedAt: new Date().toISOString(),
+  });
+}
+function createDefaultHealthStatus(): HealthStatus {
+  return {
+    status: "ok",
+    service: "cs2-wasm-backend",
+    version: "0.0.0",
+    time: new Date().toISOString(),
+  };
+}
+function decodeHealthStatus(raw: string | undefined): HealthStatus {
+  if (!raw) return createDefaultHealthStatus();
+  const decoded = fromThrowable(JSON.parse, (cause) =>
+    createAppError("Invalid WASM health JSON", undefined, cause),
+  )(raw).andThen((value) => {
+    const parsed = healthStatusSchema.safeParse(value);
+    return parsed.success
+      ? ok(parsed.data)
+      : err(
+          createAppError(
+            `Invalid WASM health payload: ${parsed.error.message}`,
+          ),
+        );
+  });
+  return decoded.match(
+    (value) => value,
+    () => ({
+      status: "error",
+      service: "cs2-wasm-backend",
+      version: "0.0.0",
+      time: new Date().toISOString(),
+    }),
+  );
+}
 async function loadWasmRuntime() {
   const wasmPath = wasmAssetPaths.wasm;
   const loaderPath = wasmAssetPaths.loader;
@@ -76,36 +120,7 @@ export function createWasmBackendClient(): LocalAgentClient {
         createAppError("Failed to load WASM runtime", undefined, cause),
       ).map((): HealthStatus => {
         const runtime = window.csInvEditWasmBackend;
-        const raw = runtime?.health?.();
-        if (raw) {
-          const decoded = fromThrowable(JSON.parse, (cause) =>
-            createAppError("Invalid WASM health JSON", undefined, cause),
-          )(raw).andThen((value) => {
-            const parsed = healthStatusSchema.safeParse(value);
-            return parsed.success
-              ? ok(parsed.data)
-              : err(
-                  createAppError(
-                    `Invalid WASM health payload: ${parsed.error.message}`,
-                  ),
-                );
-          });
-          return decoded.match(
-            (value) => value,
-            () => ({
-              status: "error",
-              service: "cs2-wasm-backend",
-              version: "0.0.0",
-              time: new Date().toISOString(),
-            }),
-          );
-        }
-        return {
-          status: "ok",
-          service: "cs2-wasm-backend",
-          version: "0.0.0",
-          time: new Date().toISOString(),
-        };
+        return decodeHealthStatus(runtime?.health?.());
       }),
     inventory: () => okAsync(createInventorySnapshot()),
     refreshInventory: () =>
@@ -117,27 +132,27 @@ export function createWasmBackendClient(): LocalAgentClient {
         ),
       ),
     gameInventory: (game) =>
-      errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
+      unavailableInWasm(`${game} inventory is unavailable in WASM mode`),
     refreshGameInventory: (game) =>
-      errAsync({ message: `${game} inventory is unavailable in WASM mode` }),
+      unavailableInWasm(`${game} inventory is unavailable in WASM mode`),
     tf2Features: () =>
-      errAsync({
-        message: "TF2 coordinator features are unavailable in WASM mode",
-      }),
+      unavailableInWasm(
+        "TF2 coordinator features are unavailable in WASM mode",
+      ),
     cs2Features: () =>
-      errAsync({
-        message: "CS2 coordinator features are unavailable in WASM mode",
-      }),
+      unavailableInWasm(
+        "CS2 coordinator features are unavailable in WASM mode",
+      ),
     steamInventoryService: (appId) =>
-      errAsync({
-        message: `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
-      }),
+      unavailableInWasm(
+        `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
+      ),
     steamInventoryServiceGames: () =>
-      errAsync({ message: "Steam owned games are unavailable in WASM mode" }),
+      unavailableInWasm("Steam owned games are unavailable in WASM mode"),
     refreshSteamInventoryService: (appId) =>
-      errAsync({
-        message: `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
-      }),
+      unavailableInWasm(
+        `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
+      ),
     armory: () =>
       okAsync({
         balance: 0,
@@ -213,23 +228,23 @@ export function createWasmBackendClient(): LocalAgentClient {
         message: "TF2 Store purchases require the connected backend.",
       }),
     trades: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        received: [],
-        sent: [],
-        history: [],
-        refreshedAt: new Date().toISOString(),
-        message: "Steam trades require the connected backend.",
-      }),
+      requiresConnectionResponse(
+        "Steam trades require the connected backend.",
+        {
+          received: [],
+          sent: [],
+          history: [],
+        },
+      ),
     refreshTrades: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        received: [],
-        sent: [],
-        history: [],
-        refreshedAt: new Date().toISOString(),
-        message: "Steam trades require the connected backend.",
-      }),
+      requiresConnectionResponse(
+        "Steam trades require the connected backend.",
+        {
+          received: [],
+          sent: [],
+          history: [],
+        },
+      ),
     refreshTradeAccounts: () =>
       okAsync({ accounts: [], refreshedAt: new Date().toISOString() }),
     tradeAccounts: () =>

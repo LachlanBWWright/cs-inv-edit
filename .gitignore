@@ -4,6 +4,8 @@ bin/
 .cache/
 coverage/
 .nyc_output/
+storybook-static/
+artifacts/storybook/
 *.tsbuildinfo
 
 # Local environment and secrets

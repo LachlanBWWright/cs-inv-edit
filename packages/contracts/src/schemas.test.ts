@@ -2,9 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   gameInventorySnapshotSchema,
   healthStatusSchema,
+  inventoryItemSchema,
   settingsDataSchema,
   storeSnapshotSchema,
 } from "./schemas.js";
+
+it("accepts current masked and legacy CS2 inspect URLs", () => {
+  const itemBase = { id: "38122655128", name: "Zeus x27", kind: "weapon_skin" };
+  for (const inspectUrl of [
+    "steam://run/730//+csgo_econ_action_preview%20D0C0484B76525ED1",
+    "steam://rungame/730/0/+csgo_econ_action_preview%20S1A2D3",
+  ]) {
+    expect(inventoryItemSchema.safeParse({ ...itemBase, inspectUrl }).success).toBe(
+      true,
+    );
+  }
+});
 
 it("validates generated health responses", () => {
   expect(
@@ -146,7 +159,6 @@ it("migrates older settings payloads with multi-game flags disabled", () => {
       enableContainerOpening: false,
       enableInventoryDebug: false,
       enableTradeups: false,
-      enableStickerExtract: false,
       enableNameTags: false,
       enableItemDeletion: false,
       enableStatTrakSwap: false,

@@ -12,8 +12,35 @@ export interface DialogProps {
   children: JSX.Element;
 }
 
+function DialogHeader(
+  props: Pick<DialogProps, "title" | "description" | "onOpenChange">,
+) {
+  return (
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 id="collection-dialog-title" class="text-lg font-semibold">
+          {props.title}
+        </h2>
+        <Show when={props.description}>
+          <p class="mt-1 text-sm text-slate-400">{props.description}</p>
+        </Show>
+      </div>
+      <IconButton
+        label="Close"
+        class="border-transparent text-xl leading-none text-slate-400"
+        onClick={() => props.onOpenChange(false)}
+      >
+        ×
+      </IconButton>
+    </div>
+  );
+}
+
 export function Dialog(props: DialogProps) {
-  useEscapeDismiss(() => props.open, () => props.onOpenChange(false));
+  useEscapeDismiss(
+    () => props.open,
+    () => props.onOpenChange(false),
+  );
 
   return (
     <Show when={props.open}>
@@ -33,23 +60,11 @@ export function Dialog(props: DialogProps) {
             aria-modal="true"
             aria-labelledby="collection-dialog-title"
           >
-            <div class="flex items-start justify-between gap-4">
-              <div>
-                <h2 id="collection-dialog-title" class="text-lg font-semibold">
-                  {props.title}
-                </h2>
-                <Show when={props.description}>
-                  <p class="mt-1 text-sm text-slate-400">{props.description}</p>
-                </Show>
-              </div>
-              <IconButton
-                label="Close"
-                class="border-transparent text-xl leading-none text-slate-400"
-                onClick={() => props.onOpenChange(false)}
-              >
-                ×
-              </IconButton>
-            </div>
+            <DialogHeader
+              title={props.title}
+              description={props.description}
+              onOpenChange={props.onOpenChange}
+            />
             <div class="mt-5 min-h-0 overflow-y-auto">{props.children}</div>
           </section>
         </div>

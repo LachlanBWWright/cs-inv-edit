@@ -1,12 +1,184 @@
 import { AppView } from "./AppView.js";
-import { createOperationApi } from "../../shared/lib/api.js";
 import { fromAppPromise } from "../../shared/lib/result.js";
-import { createAppController, type AppProps } from "./app-controller.js";
+import { createOperationApi } from "../../shared/lib/api.js";
+import type { EconomyGame } from "../../shared/ui-types.js";
+import { createAppController } from "./app-controller.js";
+import type { AppProps } from "./app-props.js";
 
-export type { AppProps } from "./app-controller.js";
+export type { AppProps } from "./app-props.js";
 
 export function App(props: AppProps) {
   const controller = createAppController(props);
+
+  const handleConnect = async (input: {
+    username?: string;
+    password?: string;
+  }) => {
+    if (!props.backend.connectSteam)
+      return { ok: false as const, message: "Steam sign-in unavailable" };
+    return props.backend
+      .connectSteam(input)
+      .andThen((res) => {
+        console.info("[app] connecting Steam account", input);
+        console.info("[app] connect result", res);
+        return fromAppPromise(
+          controller.syncAccountState(res),
+          "Account synchronization failed",
+        );
+      })
+      .match(
+        () => ({ ok: true as const }),
+        (error) => ({
+          ok: false as const,
+          message: error.message ?? "Unable to sign in to Steam",
+        }),
+      );
+  };
+
+  const handleStartSteamQR = async () => {
+    if (!props.backend.startSteamQR)
+      return { ok: false as const, message: "Steam QR login unavailable" };
+    return props.backend.startSteamQR().match(
+      (status) => {
+        controller.setConnection(status);
+        return { ok: true as const };
+      },
+      (error) => ({
+        ok: false as const,
+        message: error.message ?? "Unable to start QR sign-in",
+      }),
+    );
+  };
+
+  const handleSubmitSteamGuard = async (input: { code: string }) => {
+    if (!props.backend.submitSteamGuard)
+      return { ok: false as const, message: "Steam Guard is unavailable" };
+    return props.backend
+      .submitSteamGuard(input)
+      .andThen((res) => {
+        console.info("[app] submitting Steam Guard code");
+        console.info("[app] Steam Guard result", res);
+        return fromAppPromise(
+          controller.syncAccountState(res),
+          "Account synchronization failed",
+        );
+      })
+      .match(
+        () => ({ ok: true as const }),
+        (error) => ({
+          ok: false as const,
+          message: error.message ?? "Unable to verify the code",
+        }),
+      );
+  };
+
+  const handleDisconnect = async () => {
+    if (!props.backend.disconnectSteam)
+      return { ok: false as const, message: "Steam disconnect unavailable" };
+    return props.backend
+      .disconnectSteam()
+      .andThen(() =>
+        fromAppPromise(
+          Promise.resolve(controller.refetchConnection()),
+          "Connection reload failed",
+        ),
+      )
+      .match(
+        () => {
+          controller.setView("account");
+          return { ok: true as const };
+        },
+        (error) => ({
+          ok: false as const,
+          message: error.message ?? "Unable to disconnect",
+        }),
+      );
+  };
+
+  const handleInventoryRefresh = (suppressToast?: boolean) =>
+    controller.refreshInventoryState({ suppressToast });
+
+  const refetchGameInventory = (game: EconomyGame) => {
+    if (game === "steam") return controller.refetchSteamInventory();
+    if (game === "tf2") return controller.refetchTF2Inventory();
+    return controller.refetchDota2Inventory();
+  };
+
+  const handleGameInventoryRefresh = (
+    game: EconomyGame,
+    suppressToast?: boolean,
+  ) =>
+    void props.backend
+      .refreshGameInventory(game)
+      .andThen(() =>
+        fromAppPromise(
+          Promise.resolve(refetchGameInventory(game)),
+          `${game} inventory reload failed`,
+        ),
+      )
+      .match(
+        () => undefined,
+        (error) => {
+          if (suppressToast) return;
+          controller.pushToast({
+            title: "Inventory refresh failed",
+            description: error.message ?? `Unable to refresh ${game} inventory`,
+            variant: "danger",
+          });
+        },
+      );
+
+  const handleSteamServiceRefresh = (appId: number) =>
+    void props.backend
+      .refreshSteamInventoryService(appId)
+      .andThen(() =>
+        fromAppPromise(
+          Promise.resolve(controller.refetchSteamServiceInventory()),
+          "Steam Inventory Service reload failed",
+        ),
+      )
+      .match(
+        () => undefined,
+        (error) =>
+          controller.pushToast({
+            title: "Inventory Service refresh failed",
+            description: error.message ?? `Unable to refresh AppID ${appId}`,
+            variant: "danger",
+          }),
+      );
+
+  const handleGameOperation = (
+    type: string,
+    input: unknown,
+    suppressToast?: boolean,
+  ) =>
+    controller.settleOperation(props.backend.submitOperation(type, input), {
+      suppressToast,
+    });
+  const handleArmoryRedeem = (
+    input: Parameters<typeof props.backend.redeemArmory>[0],
+  ) =>
+    controller
+      .settleOperation(props.backend.redeemArmory(input), {
+        skipInventoryRefresh: true,
+      })
+      .then(async (receipt) => {
+        if (receipt.state === "awaiting_gc_confirmation") {
+          await Promise.all([
+            controller.refreshArmoryState(),
+            controller.refreshInventoryState({ suppressToast: true }),
+          ]);
+        } else {
+          await controller.refetchArmory();
+        }
+        return receipt;
+      });
+  const failedStoreIdentity = () => ({
+    offerId: "",
+    defIndex: 0,
+    name: "Store purchase",
+    currency: controller.store()?.currency ?? "",
+  });
 
   return (
     <AppView
@@ -19,6 +191,7 @@ export function App(props: AppProps) {
       connection={controller.connection()}
       accounts={controller.accounts()}
       accountUsername={controller.accountUsername()}
+      accountLoginOnly={controller.accountLoginOnly()}
       inventory={controller.inventory()}
       inventoryLoading={
         controller.inventoryRefreshActive() || controller.inventory.loading
@@ -59,144 +232,14 @@ export function App(props: AppProps) {
       onDeleteAccount={(account) => void controller.deleteAccount(account)}
       onRefreshInventory={() => void controller.refreshInventoryState()}
       onDismissToast={controller.dismissToast}
-      onConnect={async (input) => {
-        const result = props.backend.connectSteam
-          ? props.backend.connectSteam(input)
-          : ({ match: () => undefined } as never);
-        return result
-          .andThen((res: any) => {
-            console.info("[app] connecting Steam account", input);
-            console.info("[app] connect result", res);
-            return fromAppPromise(
-              controller.syncAccountState(res),
-              "Account synchronization failed",
-            );
-          })
-          .match(
-            () => ({ ok: true as const }),
-            (error: any) => ({
-              ok: false as const,
-              message: error.message ?? "Unable to sign in to Steam",
-            }),
-          );
-      }}
-      onStartSteamQR={async () => {
-        const result = props.backend.startSteamQR
-          ? props.backend.startSteamQR()
-          : ({
-              match: (onOk: any, onErr: any) =>
-                onErr({ message: "Steam QR login unavailable" }),
-            } as never);
-        return result.match(
-          (status: any) => {
-            controller.setConnection(status);
-            return { ok: true as const };
-          },
-          (error: any) => ({
-            ok: false as const,
-            message: error.message ?? "Unable to start QR sign-in",
-          }),
-        );
-      }}
-      onSubmitSteamGuard={async (input) => {
-        const result = props.backend.submitSteamGuard
-          ? props.backend.submitSteamGuard(input)
-          : ({ andThen: () => ({ match: () => undefined }) } as never);
-        return result
-          .andThen((res: any) => {
-            console.info("[app] submitting Steam Guard code");
-            console.info("[app] Steam Guard result", res);
-            return fromAppPromise(
-              controller.syncAccountState(res),
-              "Account synchronization failed",
-            );
-          })
-          .match(
-            () => ({ ok: true as const }),
-            (error: any) => ({
-              ok: false as const,
-              message: error.message ?? "Unable to verify the code",
-            }),
-          );
-      }}
-      onDisconnect={async () => {
-        const disconnect =
-          props.backend.disconnectSteam?.() ??
-          ({ andThen: () => ({ match: () => undefined }) } as never);
-        return disconnect
-          .andThen(() =>
-            fromAppPromise(
-              Promise.resolve(controller.refetchConnection()),
-              "Connection reload failed",
-            ),
-          )
-          .match(
-            () => {
-              controller.setView("account");
-              return { ok: true as const };
-            },
-            (error: any) => ({
-              ok: false as const,
-              message: error.message ?? "Unable to disconnect",
-            }),
-          );
-      }}
-      onInventoryRefresh={(suppressToast) =>
-        controller.refreshInventoryState({ suppressToast })
-      }
-      onGameInventoryRefresh={(game, suppressToast) =>
-        void props.backend
-          .refreshGameInventory(game)
-          .andThen(() =>
-            fromAppPromise(
-              Promise.resolve(
-                game === "steam"
-                  ? controller.refetchSteamInventory()
-                  : game === "tf2"
-                    ? controller.refetchTF2Inventory()
-                    : controller.refetchDota2Inventory(),
-              ),
-              `${game} inventory reload failed`,
-            ),
-          )
-          .match(
-            () => undefined,
-            (error: any) => {
-              if (suppressToast) return;
-              controller.pushToast({
-                title: "Inventory refresh failed",
-                description:
-                  error.message ?? `Unable to refresh ${game} inventory`,
-                variant: "danger",
-              });
-            },
-          )
-      }
-      onSteamServiceRefresh={(appId) =>
-        void props.backend
-          .refreshSteamInventoryService(appId)
-          .andThen(() =>
-            fromAppPromise(
-              Promise.resolve(controller.refetchSteamServiceInventory()),
-              "Steam Inventory Service reload failed",
-            ),
-          )
-          .match(
-            () => undefined,
-            (error: any) =>
-              controller.pushToast({
-                title: "Inventory Service refresh failed",
-                description:
-                  error.message ?? `Unable to refresh AppID ${appId}`,
-                variant: "danger",
-              }),
-          )
-      }
-      onGameOperation={(type, input, suppressToast) =>
-        controller.settleOperation(props.backend.submitOperation(type, input), {
-          suppressToast,
-        })
-      }
+      onConnect={handleConnect}
+      onStartSteamQR={handleStartSteamQR}
+      onSubmitSteamGuard={handleSubmitSteamGuard}
+      onDisconnect={handleDisconnect}
+      onInventoryRefresh={handleInventoryRefresh}
+      onGameInventoryRefresh={handleGameInventoryRefresh}
+      onSteamServiceRefresh={handleSteamServiceRefresh}
+      onGameOperation={handleGameOperation}
       onArmoryRefresh={controller.refreshArmoryState}
       onMarketPreview={controller.requestMarketPreview}
       onScanPrices={(marketNames, appId) =>
@@ -212,23 +255,7 @@ export function App(props: AppProps) {
           },
         )
       }
-      onArmoryRedeem={(input) => {
-        return controller
-          .settleOperation(props.backend.redeemArmory(input), {
-            skipInventoryRefresh: true,
-          })
-          .then(async (receipt) => {
-            if (receipt.state === "awaiting_gc_confirmation") {
-              await Promise.all([
-                controller.refreshArmoryState(),
-                controller.refreshInventoryState({ suppressToast: true }),
-              ]);
-            } else {
-              await controller.refetchArmory();
-            }
-            return receipt;
-          });
-      }}
+      onArmoryRedeem={handleArmoryRedeem}
       onStoreRefresh={controller.refreshStoreState}
       onTF2StoreRefresh={controller.refreshTF2StoreState}
       onStorePurchase={(input) =>
@@ -271,19 +298,7 @@ export function App(props: AppProps) {
         props.backend.reconcileStorePurchase(id).match(
           (session) => session,
           (error) => ({
-            ...(controller.store()
-              ? {
-                  offerId: "",
-                  defIndex: 0,
-                  name: "Store purchase",
-                  currency: controller.store()?.currency ?? "",
-                }
-              : {
-                  offerId: "",
-                  defIndex: 0,
-                  name: "Store purchase",
-                  currency: "",
-                }),
+            ...failedStoreIdentity(),
             id,
             status: "failed" as const,
             quantity: 1,
@@ -332,6 +347,11 @@ export function App(props: AppProps) {
       onMoveIntoStorage={(input) =>
         controller.settleOperation(
           props.backend.submitOperation("storage.move-in", input),
+        )
+      }
+      onExecuteTradeUp={(input) =>
+        controller.settleOperation(
+          props.backend.submitOperation("tradeups.execute", input),
         )
       }
       onSaveSettings={(next) => controller.saveSettings(next)}

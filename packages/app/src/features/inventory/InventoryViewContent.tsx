@@ -14,6 +14,7 @@ import { InventoryDetailsPanel } from "./InventoryDetailsPanel.js";
 import { Alert } from "../../shared/ui/Alert.js";
 import { InventoryGrid } from "./inventory-view-content-sections.js";
 import type { InventoryMode } from "../shell/view.js";
+import type { StorageMutationFailure } from "./inventory-action-handlers.js";
 
 export interface InventoryViewContentProps {
   inventory: InventorySnapshot | undefined;
@@ -74,6 +75,7 @@ export interface InventoryViewContentProps {
   removeFromStorageMode: boolean;
   storageSelectedItemIds: string[];
   storageRetrieval: { completed: number; total: number } | undefined;
+  storageFailures: StorageMutationFailure[];
   onBackFromStorage: () => void;
   onToggleRemoveFromStorageMode: () => void;
   onRetrieveFromStorage: () => Promise<void> | void;
@@ -85,6 +87,12 @@ export interface InventoryViewContentProps {
   onSelectedToolChange: (value: string) => void;
   onSelectedContainerKeyChange: (value: string) => void;
   onRefresh: () => void;
+  tradeUpActive: boolean;
+  tradeUpSelectedCount: number;
+  tradeUpRequiredCount: number;
+  onStartTradeUp: () => void;
+  onCancelTradeUp: () => void;
+  onReviewTradeUp: () => void;
 }
 
 function ConnectionAlert(
@@ -203,6 +211,15 @@ function InventoryAlerts(
 export function InventoryViewContent(props: InventoryViewContentProps) {
   const inventoryDebugEnabled = () =>
     props.settings?.featureFlags.enableInventoryDebug ?? false;
+  const storageMutationsEnabled = () =>
+    props.connected &&
+    (props.settings?.featureFlags.enableStorageMutations ?? false);
+  const storageUnavailableReason = () => {
+    if (!props.connected) return "Connect to Steam to manage storage contents.";
+    if (!props.settings?.featureFlags.enableStorageMutations)
+      return "Storage mutations are disabled in Settings.";
+    return undefined;
+  };
   const detailsPanel = (
     <InventoryDetailsPanel
       selectedItem={props.selectedItem}
@@ -217,6 +234,8 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
       draftName={props.draftName}
       selectedToolId={props.selectedToolId}
       inventoryDebugEnabled={inventoryDebugEnabled()}
+      storageMutationsEnabled={storageMutationsEnabled()}
+      storageUnavailableReason={storageUnavailableReason()}
       nameTagTools={props.nameTagTools}
       compatibleContainerKey={props.compatibleContainerKey}
       compatibleContainerKeys={props.compatibleContainerKeys}
@@ -261,12 +280,21 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         removeFromStorageMode={props.removeFromStorageMode}
         storageSelectedItemIds={props.storageSelectedItemIds}
         storageRetrieval={props.storageRetrieval}
+        storageFailures={props.storageFailures}
+        storageMutationsEnabled={storageMutationsEnabled()}
+        storageUnavailableReason={storageUnavailableReason()}
         onBackFromStorage={props.onBackFromStorage}
         onToggleRemoveFromStorageMode={props.onToggleRemoveFromStorageMode}
         onRetrieveFromStorage={props.onRetrieveFromStorage}
         onRetrieveAllFromStorage={props.onRetrieveAllFromStorage}
         onCancelMoveIntoStorage={props.onCancelMoveIntoStorage}
         onConfirmMoveIntoStorage={props.onConfirmMoveIntoStorage}
+        tradeUpActive={props.tradeUpActive}
+        tradeUpSelectedCount={props.tradeUpSelectedCount}
+        tradeUpRequiredCount={props.tradeUpRequiredCount}
+        onStartTradeUp={props.onStartTradeUp}
+        onCancelTradeUp={props.onCancelTradeUp}
+        onReviewTradeUp={props.onReviewTradeUp}
         alerts={
           <InventoryAlerts
             inventory={props.inventory}

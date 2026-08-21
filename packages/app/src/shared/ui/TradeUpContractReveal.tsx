@@ -23,8 +23,100 @@ const underlyingMode = (mode: TradeUpAnimationMode): RevealAnimationMode => {
   return "none";
 };
 
+function ContractResultView(props: {
+  result: RevealItem;
+  onComplete: () => void;
+}) {
+  return (
+    <div class="contract-result">
+      <p>Contract accepted</p>
+      <strong>{props.result.name}</strong>
+      <Show when={props.result.imageUrl}>
+        <img src={props.result.imageUrl} alt="" />
+      </Show>
+      <button type="button" onClick={props.onComplete}>
+        Done
+      </button>
+    </div>
+  );
+}
+
+function ContractModalContent(props: {
+  phase: "contract" | "reveal" | "result";
+  hasInk: boolean;
+  onClear: () => void;
+  onSubmit: () => void;
+  onComplete: () => void;
+  result: RevealItem;
+  setCanvas: (element: HTMLCanvasElement | undefined) => void;
+  onBegin: (event: PointerEvent) => void;
+  onDraw: (event: PointerEvent) => void;
+  onEnd: () => void;
+}) {
+  return (
+    <div class="contract-desk">
+      <ModalCloseRow
+        label="Close trade-up contract"
+        buttonClass="border-stone-500 bg-stone-950 text-stone-100"
+        onClose={props.onComplete}
+      />
+      <section class="contract-paper">
+        <div class="contract-seal">CS</div>
+        <p class="contract-kicker">Arms Replacement Agreement</p>
+        <h2>Trade Up Contract</h2>
+        <Show
+          when={props.phase === "contract"}
+          fallback={
+            <ContractResultView
+              result={props.result}
+              onComplete={props.onComplete}
+            />
+          }
+        >
+          <p class="contract-copy">
+            I hereby relinquish the submitted items in exchange for one item of
+            superior grade. Sign within the field below to authorize this
+            contract.
+          </p>
+          <div class="contract-rule" />
+          <p class="contract-sign-label">Authorized signature</p>
+          <canvas
+            ref={props.setCanvas}
+            class="contract-canvas"
+            onPointerDown={props.onBegin}
+            onPointerMove={props.onDraw}
+            onPointerUp={props.onEnd}
+            onPointerCancel={props.onEnd}
+            onPointerLeave={props.onEnd}
+          />
+          <div class="contract-actions">
+            <button
+              type="button"
+              class="contract-clear"
+              onClick={props.onClear}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              class="contract-submit"
+              disabled={!props.hasInk}
+              onClick={props.onSubmit}
+            >
+              Submit contract
+            </button>
+          </div>
+        </Show>
+      </section>
+    </div>
+  );
+}
+
 export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
   let canvas: HTMLCanvasElement | undefined;
+  const setCanvas = (element: HTMLCanvasElement | undefined) => {
+    canvas = element;
+  };
   const [phase, setPhase] = createSignal<"contract" | "reveal" | "result">(
     "contract",
   );
@@ -45,10 +137,7 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
     });
   });
 
-  useEscapeDismiss(
-    () => props.open && phase() !== "reveal",
-    props.onComplete,
-  );
+  useEscapeDismiss(() => props.open && phase() !== "reveal", props.onComplete);
 
   const point = (event: PointerEvent) => {
     const rect = canvas!.getBoundingClientRect();
@@ -104,69 +193,18 @@ export function TradeUpContractReveal(props: TradeUpContractRevealProps) {
             aria-modal="true"
             aria-label="Trade Up Contract"
           >
-            <div class="contract-desk">
-              <ModalCloseRow
-                label="Close trade-up contract"
-                buttonClass="border-stone-500 bg-stone-950 text-stone-100"
-                onClose={props.onComplete}
-              />
-              <section class="contract-paper">
-                <div class="contract-seal">CS</div>
-                <p class="contract-kicker">Arms Replacement Agreement</p>
-                <h2>Trade Up Contract</h2>
-                <Show
-                  when={phase() === "contract"}
-                  fallback={
-                    <div class="contract-result">
-                      <p>Contract accepted</p>
-                      <strong>{props.result.name}</strong>
-                      <Show when={props.result.imageUrl}>
-                        <img src={props.result.imageUrl} alt="" />
-                      </Show>
-                      <button type="button" onClick={props.onComplete}>
-                        Done
-                      </button>
-                    </div>
-                  }
-                >
-                  <p class="contract-copy">
-                    I hereby relinquish the submitted items in exchange for one
-                    item of superior grade. Sign within the field below to
-                    authorize this contract.
-                  </p>
-                  <div class="contract-rule" />
-                  <p class="contract-sign-label">Authorized signature</p>
-                  <canvas
-                    ref={(element) => {
-                      canvas = element;
-                    }}
-                    class="contract-canvas"
-                    onPointerDown={begin}
-                    onPointerMove={draw}
-                    onPointerUp={end}
-                    onPointerCancel={end}
-                    onPointerLeave={end}
-                  />
-                  <div class="contract-actions">
-                    <button
-                      type="button"
-                      class="contract-clear"
-                      onClick={clear}
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      class="contract-submit"
-                      disabled={!hasInk()}
-                      onClick={submit}
-                    >
-                      Submit contract
-                    </button>
-                  </div>
-                </Show>
-              </section>
-            </div>
+            <ContractModalContent
+              phase={phase()}
+              hasInk={hasInk()}
+              onClear={clear}
+              onSubmit={submit}
+              onComplete={props.onComplete}
+              result={props.result}
+              setCanvas={setCanvas}
+              onBegin={begin}
+              onDraw={draw}
+              onEnd={end}
+            />
           </div>
         </Show>
       </Portal>

@@ -2,8 +2,6 @@
 
 This plan is for a follow-up agent. The goal is to review SteamTracking/GameTracking protobuf sources, identify the authoritative files for CS2 first, note comparable TF2 and Dota 2 files if available, then implement the CS2 feature-flagged operations from authoritative protobuf definitions.
 
-Do not implement `enableStickerExtract`.
-
 ## Source Rules
 
 - Treat `proto/vendor/gametracking-cs2/Protobufs/` and `SteamTracking/Protobufs` as authoritative for CS2 GC message IDs, protobuf message structures, and field numbers.
@@ -46,10 +44,6 @@ Implement CS2 operations corresponding to these feature flags:
 - `enableInventoryDebug`
 
 Do not implement:
-
-- `enableStickerExtract`
-
-If `enableStickerExtract` remains in the UI/settings model, leave it disabled and document that it is intentionally excluded from implementation.
 
 ## Implementation Guidelines
 

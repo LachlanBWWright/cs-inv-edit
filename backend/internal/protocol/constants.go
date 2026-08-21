@@ -51,7 +51,6 @@ var (
 	EMsgVolatileItemClaimReward       = mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_VolatileItemClaimReward")
 	EMsgVolatileShopSubscribe         = mustGameTrackingEnum("ECsgoGCMsg", "k_EMsgGCCStrike15_v2_VolatileShopSubscribe")
 
-	CustomizationExtractSticker            = mustGameTrackingEnum("EGCItemCustomizationNotification", "k_EGCItemCustomizationNotification_ExtractSticker")
 	CustomizationEncapsulateSticker        = mustGameTrackingEnum("EGCItemCustomizationNotification", "k_EGCItemCustomizationNotification_EncapsulateSticker")
 	CustomizationUnlockCrate               = mustGameTrackingEnum("EGCItemCustomizationNotification", "k_EGCItemCustomizationNotification_UnlockCrate")
 	CustomizationXRayItemReveal            = mustGameTrackingEnum("EGCItemCustomizationNotification", "k_EGCItemCustomizationNotification_XRayItemReveal")

@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 import type {
   EconomyInventorySource,
   GameInventorySnapshot,
@@ -15,9 +15,24 @@ import { PullToRefresh } from "../../shared/ui/PullToRefresh.js";
 import { ResponsiveInspector } from "../../shared/ui/ResponsiveInspector.js";
 import type { EconomyInventorySort } from "./game-inventory-utils.js";
 import { RevealAnimation } from "../../shared/ui/RevealAnimation.js";
-import { GameInventoryCard } from "./GameInventoryCard.js";
 import { createGameInventoryModel } from "./game-inventory-model.js";
-import { GameInventoryDetails } from "./game-inventory-details.js";
+import { GameInventoryDetails } from "./game-inventory-details-panel.js";
+import { GameInventoryTF2Activity } from "./GameInventoryTF2Activity.js";
+import { InventoryItemsGrid } from "./InventoryItemsGrid.js";
+import { InventoryTradeUpToolbar } from "./InventoryTradeUpToolbar.js";
+import { createTF2TradeUp } from "./tf2-trade-up.js";
+import { TF2TradeUpConfirmationDialog } from "./TF2TradeUpConfirmationDialog.js";
+import { createTF2Crafting } from "./tf2-crafting-controller.js";
+import { TF2CraftingToolbar } from "./TF2CraftingToolbar.js";
+
+function SelectedItemSummary(props: { name: string; subtitle: string }) {
+  return (
+    <div class="min-w-0">
+      <p class="truncate text-sm font-semibold text-slate-100">{props.name}</p>
+      <p class="mt-0.5 truncate text-xs text-slate-500">{props.subtitle}</p>
+    </div>
+  );
+}
 
 export interface GameInventoryViewProps {
   game: EconomyInventorySource;
@@ -59,6 +74,15 @@ export function GameInventoryView(props: GameInventoryViewProps) {
     tf2Activity,
     submitTF2Operation,
   } = model;
+  const tradeUp = createTF2TradeUp(items);
+  const crafting = createTF2Crafting(items);
+  const workflowActive = () => tradeUp.active() || crafting.active();
+  const visibleItems = () =>
+    tradeUp.active()
+      ? tradeUp.filterItems(items())
+      : crafting.filterItems(items());
+  const selectedSubtitle = () =>
+    [selected()?.type, selected()?.rarity].filter(Boolean).join(" · ");
   return (
     <div class="flex min-h-0 flex-1 flex-col gap-4">
       <Show
@@ -76,291 +100,101 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           {snapshot()?.error || "Inventory loading failed"}
         </Alert>
       </Show>
-      <Show when={props.game === "tf2" && props.showTF2Activity}>
-        <details class="rounded-xl border border-slate-800 bg-slate-900">
-          <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-200">
-            Activity and progression{" "}
-            <span class="ml-1 text-xs font-normal text-slate-500">
-              matches, contracts, notifications, and XP
-            </span>
-          </summary>
-          <div class="border-t border-slate-800 p-4">
-            <div class="flex flex-wrap items-end gap-2">
-              <label class="grid gap-1 text-xs text-slate-400">
-                <span>Match history</span>
-                <select
-                  class="h-9 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-200"
-                  value={matchGroup()}
-                  onInput={(event) =>
-                    setMatchGroup(Number(event.currentTarget.value))
-                  }
-                >
-                  <option value="7">Casual 12v12</option>
-                  <option value="6">Casual 9v9</option>
-                  <option value="5">Casual 6v6</option>
-                  <option value="4">Competitive 12v12</option>
-                  <option value="3">Competitive 9v9</option>
-                  <option value="2">Competitive 6v6</option>
-                  <option value="1">Mann Up</option>
-                  <option value="0">MvM Practice</option>
-                </select>
-              </label>
-              <button
-                class="h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-sm text-slate-200 hover:bg-slate-700"
-                onClick={() =>
-                  void submitTF2Operation("tf2.matches.load", {
-                    game: "tf2",
-                    matchGroup: matchGroup(),
-                  })
-                }
-              >
-                Load history
-              </button>
-              <button
-                class="h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-sm text-slate-200 hover:bg-slate-700"
-                onClick={() =>
-                  void submitTF2Operation("tf2.matches.stats", { game: "tf2" })
-                }
-              >
-                Refresh matchmaking context
-              </button>
-            </div>
-            <Show
-              when={
-                tf2Activity().length > 0 ||
-                (props.tf2Features?.matches.length ?? 0) > 0 ||
-                (props.tf2Features?.quests.length ?? 0) > 0 ||
-                (props.tf2Features?.questNodes.length ?? 0) > 0 ||
-                (props.tf2Features?.questRewards.length ?? 0) > 0
-              }
-              fallback={
-                <p class="mt-4 text-sm text-slate-500">
-                  No match, contract, notification, or XP activity has arrived
-                  from the TF2 Game Coordinator in this session.
-                </p>
-              }
-            >
-              <div class="mt-4 grid gap-2 sm:grid-cols-2">
-                <For each={props.tf2Features?.matches ?? []}>
-                  {(entry) => (
-                    <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Match result
-                      </p>
-                      <p class="mt-1 text-sm text-slate-200">
-                        Match{" "}
-                        {String(entry.match_id ?? entry.matchId ?? "recorded")}
-                      </p>
-                      <p class="mt-1 text-xs text-slate-500">
-                        Map {String(entry.map_index ?? "unavailable")} · group{" "}
-                        {String(entry.match_group ?? "unavailable")} · season{" "}
-                        {String(entry.season_id ?? "unavailable")}
-                      </p>
-                      <dl class="mt-3 grid grid-cols-3 gap-2 text-xs">
-                        <For
-                          each={
-                            [
-                              ["Score", entry.score],
-                              ["Kills", entry.kills],
-                              ["Deaths", entry.deaths],
-                              ["Damage", entry.damage],
-                              ["Healing", entry.healing],
-                              ["Support", entry.support],
-                              ["Rating", entry.display_rating],
-                              ["Change", entry.display_rating_change],
-                              ["Party", entry.original_party_id],
-                            ] as const
-                          }
-                        >
-                          {([label, value]) => (
-                            <div>
-                              <dt class="text-slate-600">{label}</dt>
-                              <dd class="text-slate-300">
-                                {value === undefined
-                                  ? "Unavailable"
-                                  : String(value)}
-                              </dd>
-                            </div>
-                          )}
-                        </For>
-                      </dl>
-                    </div>
-                  )}
-                </For>
-                <For each={props.tf2Features?.quests ?? []}>
-                  {(entry) => (
-                    <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Contract
-                      </p>
-                      <p class="mt-1 text-sm text-slate-200">
-                        Quest{" "}
-                        {String(
-                          entry.quest_id ??
-                            entry.questId ??
-                            entry.id ??
-                            "active",
-                        )}
-                      </p>
-                      <p class="mt-1 text-xs text-slate-500">
-                        {entry.active === false
-                          ? "Completed or inactive"
-                          : "Active"}
-                        {" · "}objectives {String(entry.points_0 ?? "—")} /{" "}
-                        {String(entry.points_1 ?? "—")} /{" "}
-                        {String(entry.points_2 ?? "—")}
-                      </p>
-                    </div>
-                  )}
-                </For>
-                <For each={props.tf2Features?.questNodes ?? []}>
-                  {(entry) => (
-                    <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Quest-map node
-                      </p>
-                      <p class="mt-1 text-sm text-slate-200">
-                        Node{" "}
-                        {String(entry.node_id ?? entry.defindex ?? "available")}
-                      </p>
-                      <p class="mt-1 text-xs text-slate-500">
-                        Stars{" "}
-                        {
-                          [
-                            entry.star_0_earned,
-                            entry.star_1_earned,
-                            entry.star_2_earned,
-                          ].filter(Boolean).length
-                        }
-                        /3
-                        {" · "}
-                        {entry.loot_claimed === true
-                          ? "Reward claimed"
-                          : "Reward unclaimed"}
-                      </p>
-                    </div>
-                  )}
-                </For>
-                <For each={props.tf2Features?.questRewards ?? []}>
-                  {(entry) => (
-                    <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Quest reward purchase
-                      </p>
-                      <p class="mt-1 text-sm text-slate-200">
-                        Reward {String(entry.defindex ?? "recorded")}
-                      </p>
-                      <p class="mt-1 text-xs text-slate-500">
-                        Count {String(entry.count ?? 1)} · cycle{" "}
-                        {String(entry.map_cycle ?? "unavailable")}
-                      </p>
-                    </div>
-                  )}
-                </For>
-                <For each={tf2Activity()}>
-                  {(entry) => {
-                    const ownedItem = () => {
-                      const definitionId = Number(entry.data.def_index ?? 0);
-                      return (snapshot()?.items ?? []).find(
-                        (item) => item.definitionId === definitionId,
-                      );
-                    };
-                    return (
-                      <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                        <div class="flex items-start justify-between gap-2">
-                          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            {entry.kind.replaceAll("_", " ")}
-                          </p>
-                          <button
-                            class="text-xs text-slate-600 hover:text-slate-300"
-                            onClick={() =>
-                              dismissActivity(`${entry.kind}:${entry.id ?? ""}`)
-                            }
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                        <p class="mt-1 text-sm text-slate-200">
-                          {entry.kind === "item_pickup"
-                            ? (ownedItem()?.name ??
-                              `Item definition ${String(entry.data.def_index ?? "unknown")}`)
-                            : String(
-                                entry.data.notification_string ??
-                                  (entry.id
-                                    ? `Record ${entry.id}`
-                                    : "New TF2 activity"),
-                              )}
-                        </p>
-                        <Show when={entry.timestamp}>
-                          <p class="mt-1 text-xs text-slate-500">
-                            {new Date(entry.timestamp! * 1000).toLocaleString()}
-                          </p>
-                        </Show>
-                      </div>
-                    );
-                  }}
-                </For>
-                <Show when={props.tf2Features?.matchmaking}>
-                  <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Matchmaking context
-                    </p>
-                    <p class="mt-1 text-sm text-slate-200">
-                      Population and datacenter state received
-                    </p>
-                    <p class="mt-1 text-xs text-slate-500">
-                      Coordinator availability is shown only when supplied;
-                      missing regions are not treated as zero population.
-                    </p>
-                  </div>
-                </Show>
-              </div>
-            </Show>
-          </div>
-        </details>
-      </Show>
-      <div class="grid flex-1 items-start gap-4 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1fr)]">
-        <ResponsiveInspector
-          open={!!props.selectedAssetId}
-          selectionKey={selected()?.assetId}
-          label="Selected economy item details"
-          summary={
-            <div class="min-w-0">
-              <p class="truncate text-sm font-semibold text-slate-100">
-                {selected()?.name ?? "Selected item"}
-              </p>
-              <p class="mt-0.5 truncate text-xs text-slate-500">
-                {[selected()?.type, selected()?.rarity]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-          }
-        >
-          <GameInventoryDetails props={props} model={model} />
-        </ResponsiveInspector>
+      <GameInventoryTF2Activity
+        game={props.game}
+        showTF2Activity={props.showTF2Activity}
+        matchGroup={matchGroup}
+        setMatchGroup={setMatchGroup}
+        submitTF2Operation={submitTF2Operation}
+        tf2Features={props.tf2Features}
+        tf2Activity={tf2Activity}
+        snapshot={snapshot}
+        dismissActivity={dismissActivity}
+      />
+      <div
+        class={`grid flex-1 items-start gap-4 ${
+          workflowActive()
+            ? ""
+            : "lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1fr)]"
+        }`}
+      >
+        <Show when={!workflowActive()}>
+          <ResponsiveInspector
+            open={!!props.selectedAssetId}
+            selectionKey={selected()?.assetId}
+            label="Selected economy item details"
+            summary={
+              <SelectedItemSummary
+                name={selected()?.name ?? "Selected item"}
+                subtitle={selectedSubtitle()}
+              />
+            }
+          >
+            <GameInventoryDetails props={props} model={model} />
+          </ResponsiveInspector>
+        </Show>
         <PullToRefresh
           class="pb-24 lg:order-2 lg:pb-0"
           onRefresh={props.onRefresh}
         >
-          <div
-            class="grid gap-3"
-            style={{
-              "grid-template-columns": "repeat(auto-fill, minmax(190px, 1fr))",
+          <Show when={props.game === "tf2"}>
+            <Show when={!crafting.active()}>
+              <InventoryTradeUpToolbar
+                active={tradeUp.active()}
+                selectedCount={tradeUp.selectedItems().length}
+                requiredCount={10}
+                onStart={() => {
+                  props.setSelectedAssetId(undefined);
+                  tradeUp.start();
+                }}
+                onCancel={tradeUp.reset}
+                onReview={() => tradeUp.setConfirmationOpen(true)}
+              />
+            </Show>
+            <Show when={!tradeUp.active()}>
+              <TF2CraftingToolbar
+                active={crafting.active()}
+                label={
+                  crafting.statClock()
+                    ? "Craft a Civilian Grade Stat Clock"
+                    : (crafting.recipe()?.name ?? "TF2 crafting")
+                }
+                selectedCount={crafting.selectedItems().length}
+                requiredCount={crafting.requiredCount()}
+                onStartRecipe={(recipe) => {
+                  props.setSelectedAssetId(undefined);
+                  crafting.startRecipe(recipe);
+                }}
+                onStartStatClock={() => {
+                  props.setSelectedAssetId(undefined);
+                  crafting.startStatClock();
+                }}
+                onCancel={crafting.reset}
+                onReview={() => crafting.setConfirmationOpen(true)}
+              />
+            </Show>
+          </Show>
+          <InventoryItemsGrid
+            items={visibleItems()}
+            selectedAssetId={selected()?.assetId}
+            selectedAssetIds={
+              tradeUp.active()
+                ? tradeUp.selectedIds()
+                : crafting.active()
+                  ? crafting.selectedIds()
+                  : undefined
+            }
+            compactMode={props.compactMode}
+            marketPrices={marketPrices()}
+            onSelectAsset={(assetId) => {
+              const item = visibleItems().find(
+                (candidate) => candidate.assetId === assetId,
+              );
+              if (tradeUp.active() && item) tradeUp.toggle(item);
+              else if (crafting.active() && item) crafting.toggle(item);
+              else props.setSelectedAssetId(assetId);
             }}
-          >
-            <For each={items()}>
-              {(item) => (
-                <GameInventoryCard
-                  item={item}
-                  selected={selected()?.assetId === item.assetId}
-                  compactMode={props.compactMode}
-                  priceMinor={marketPrices().get(item.marketName ?? "")}
-                  onSelect={() => props.setSelectedAssetId(item.assetId)}
-                />
-              )}
-            </For>
-          </div>
+          />
           <Show
             when={
               (props.loading || snapshot()?.status === "loading") &&
@@ -382,6 +216,79 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           </Show>
         </PullToRefresh>
       </div>
+      <TF2TradeUpConfirmationDialog
+        open={tradeUp.confirmationOpen()}
+        items={tradeUp.selectedItems()}
+        outcomes={tradeUp.outcomes()}
+        connected={props.connected === true}
+        enabled={props.settings?.featureFlags.enableTf2Crafting ?? false}
+        marketPrices={marketPrices()}
+        scanPrices={props.onScanPrices}
+        onOpenChange={tradeUp.setConfirmationOpen}
+        onRemove={tradeUp.toggle}
+        onExecute={(itemIds) =>
+          submitTF2Operation("tf2.crafting.craft", {
+            game: "tf2",
+            itemIds,
+            confirmed: true,
+          })
+        }
+        onAccepted={() => {
+          tradeUp.reset();
+          props.onRefresh();
+        }}
+      />
+      <TF2TradeUpConfirmationDialog
+        open={crafting.confirmationOpen()}
+        title={
+          crafting.statClock()
+            ? "Permanently craft a Civilian Grade Stat Clock?"
+            : `Permanently submit ${crafting.recipe()?.name ?? "this recipe"}?`
+        }
+        description={
+          crafting.statClock()
+            ? "Five qualifying items will be consumed to create one Civilian Grade Stat Clock."
+            : `${crafting.recipe()?.inputLabel ?? "The selected ingredients"} will be consumed to create ${crafting.recipe()?.outputName ?? "the recipe output"}.`
+        }
+        requiredCount={crafting.requiredCount()}
+        items={crafting.selectedItems()}
+        outcomes={[
+          {
+            name: crafting.statClock()
+              ? "Civilian Grade Stat Clock"
+              : (crafting.recipe()?.outputName ?? "TF2 crafting output"),
+            poolKind: "primary",
+            probability: 1,
+            marketName: crafting.statClock()
+              ? "Civilian Grade Stat Clock"
+              : crafting.recipe()?.outputName,
+          },
+        ]}
+        connected={props.connected === true}
+        enabled={props.settings?.featureFlags.enableTf2Crafting ?? false}
+        protocolWarning={crafting.statClock() ? "" : undefined}
+        marketPrices={marketPrices()}
+        scanPrices={props.onScanPrices}
+        onOpenChange={crafting.setConfirmationOpen}
+        onRemove={crafting.toggle}
+        onExecute={(itemIds) =>
+          submitTF2Operation(
+            crafting.statClock()
+              ? "tf2.crafting.stat-clock"
+              : "tf2.crafting.craft",
+            {
+              game: "tf2",
+              itemIds,
+              recipeId: crafting.recipe()?.id,
+              confirmed: true,
+            },
+          )
+        }
+        onAccepted={() => {
+          crafting.reset();
+          props.onRefresh();
+        }}
+      />
       <RevealAnimation
         open={!!tf2ContainerPreview()}
         ready

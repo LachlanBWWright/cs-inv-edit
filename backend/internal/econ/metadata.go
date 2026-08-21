@@ -11,19 +11,17 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"cs-inv-edit/backend/internal/domain"
 )
 
 const (
 	itemsGameURL  = "https://raw.githubusercontent.com/SteamTracking/GameTracking-CS2/master/game/csgo/pak01_dir/scripts/items/items_game.txt"
 	englishURL    = "https://raw.githubusercontent.com/SteamTracking/GameTracking-CS2/master/game/csgo/pak01_dir/resource/csgo_english.txt"
 	imageIndexURL = "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/refs/heads/main/static/images.json"
+	crateIndexURL = "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/crates.json"
 )
 
 // fallbackImageIndex is generated from the pinned counter-strike-image-tracker
@@ -38,233 +36,6 @@ type Provider struct {
 	previewCache map[string]MarketDescription
 }
 
-type Metadata struct {
-	Name                  string
-	MarketName            string
-	Kind                  domain.ItemKind
-	Rarity                string
-	ImageURL              string
-	ImageSource           string
-	ImageKey              string
-	MarketPrice           MarketPrice
-	ToolType              string
-	RequiredKeyDefIndexes []uint32
-	IsNameTagTool         bool
-	Collection            string
-	CollectionItems       []RelatedItem
-	TradeUpItems          []RelatedItem
-	ContainerItems        []RelatedItem
-	AppliedItemImages     []string
-	Tradable              *bool
-	Marketable            *bool
-	TradableAfter         string
-	PaintWearMin          *float64
-	PaintWearMax          *float64
-	DecodedAttributes     []DecodedEconAttribute
-	IsVolatileContainer   bool
-}
-
-// IsCoupon reports whether the definition uses Valve's coupon item schema.
-// This is the authoritative boundary for Steam's public /buyitem route.
-func (s *Schema) IsCoupon(defIndex uint32) bool {
-	item, ok := s.items[defIndex]
-	if !ok {
-		return false
-	}
-	return strings.Contains(strings.ToLower(item.Prefab+" "+item.Name), "coupon")
-}
-
-type econAttributeDefinition struct {
-	Name              string
-	AttributeClass    string
-	AttributeType     string
-	DescriptionFormat string
-	StoredAsInteger   bool
-}
-
-type DecodedEconAttribute struct {
-	DefIndex uint32
-	Name     string
-	Value    string
-	RawValue uint32
-}
-
-type RelatedItem struct {
-	DefIndex    uint32
-	PaintKit    uint32
-	Name        string
-	MarketName  string
-	ListingName string
-	Kind        domain.ItemKind
-	Rarity      string
-	ImageURL    string
-	Price       string
-	PaintWear   *float64
-	WearMin     *float64
-	WearMax     *float64
-	Items       []RelatedItem
-}
-
-type AppliedItem struct {
-	Kind     domain.ItemKind
-	Slot     uint32
-	ID       uint32
-	Name     string
-	ImageURL string
-	Wear     *float64
-}
-
-type MarketPrice struct {
-	SellPrice     int
-	SellPriceText string
-	SalePriceText string
-	SellListings  int
-}
-
-type InventoryDescription struct {
-	AssetID           string
-	ClassID           string
-	InstanceID        string
-	Name              string
-	MarketName        string
-	MarketHashName    string
-	IconURL           string
-	IconURLLarge      string
-	Type              string
-	Tradable          bool
-	Marketable        bool
-	AppliedItemImages []string
-	TradableAfter     string
-	InspectURL        string
-}
-
-type MarketDescription struct {
-	Name           string
-	HashName       string
-	MarketName     string
-	MarketHashName string
-	IconURL        string
-	IconURLLarge   string
-	Type           string
-	Price          MarketPrice
-}
-
-type Schema struct {
-	items              map[uint32]itemDefinition
-	paintKits          map[uint32]paintKitDefinition
-	stickerKits        map[uint32]stickerKitDefinition
-	musicDefinitions   map[uint32]musicDefinition
-	keychains          map[uint32]keychainDefinition
-	tokens             map[string]string
-	collections        map[string]collectionDefinition
-	collectionByItem   map[string]string
-	lootLists          map[string][]string
-	revolvingLootLists map[string]string
-	imageURLs          map[string]string
-	armoryOffers       []ArmoryOffer
-	attributes         map[uint32]econAttributeDefinition
-}
-
-type ArmoryOffer struct {
-	CampaignID   uint32
-	RedeemID     uint32
-	ExpectedCost uint32
-	ItemName     string
-	Name         string
-	Category     string
-	Items        []RelatedItem
-}
-
-type collectionDefinition struct {
-	Name     string
-	Items    []string
-	Rarities map[string]string
-}
-
-type Collection struct {
-	Name  string
-	Items []RelatedItem
-}
-
-func (s *Schema) Collections() []Collection {
-	collections := make([]Collection, 0, len(s.collections))
-	for _, definition := range s.collections {
-		if definition.Name == "" || len(definition.Items) == 0 {
-			continue
-		}
-		collections = append(collections, Collection{Name: definition.Name, Items: s.relatedItemsWithRarities(definition.Items, definition.Rarities)})
-	}
-	sort.Slice(collections, func(i, j int) bool { return collections[i].Name < collections[j].Name })
-	return collections
-}
-
-type itemDefinition struct {
-	Name                  string
-	ItemName              string
-	TypeName              string
-	ItemClass             string
-	Prefab                string
-	Rarity                string
-	Image                 string
-	ToolType              string
-	Capabilities          map[string]string
-	LootList              string
-	SupplyCrateSeries     string
-	IsVolatileContainer   bool
-	RequiredKeyDefIndexes []uint32
-}
-
-func (s *Schema) MetadataByItemName(itemName string) (uint32, Metadata, bool) {
-	for defIndex, item := range s.items {
-		if item.Name == itemName {
-			return defIndex, s.Metadata(defIndex, 0, nil), true
-		}
-	}
-	return 0, Metadata{}, false
-}
-
-func (s *Schema) AttributeDefIndexByName(name string) (uint32, bool) {
-	if s == nil || s.attributes == nil {
-		return 0, false
-	}
-	target := strings.ToLower(name)
-	for defIndex, attr := range s.attributes {
-		if strings.ToLower(attr.Name) == target || strings.ToLower(attr.AttributeClass) == target {
-			return defIndex, true
-		}
-	}
-	return 0, false
-}
-
-type paintKitDefinition struct {
-	Name        string
-	Description string
-	Rarity      string
-	WearMin     *float64
-	WearMax     *float64
-}
-
-type stickerKitDefinition struct {
-	Name          string
-	ItemName      string
-	Material      string
-	PatchMaterial string
-	Rarity        string
-}
-
-type musicDefinition struct {
-	Name     string
-	ItemName string
-	Image    string
-}
-
-type keychainDefinition struct {
-	Name     string
-	ItemName string
-	Image    string
-	Rarity   string
-}
-
 func NewProvider() *Provider {
 	return &Provider{client: &http.Client{Timeout: 15 * time.Second}, previewCache: make(map[string]MarketDescription)}
 }
@@ -276,8 +47,9 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 	var itemsText, englishText string
 	var itemsErr, englishErr error
 	var imageURLs map[string]string
+	var crateIndex string
 	var wait sync.WaitGroup
-	wait.Add(3)
+	wait.Add(4)
 	go func() {
 		defer wait.Done()
 		itemsText, itemsErr = p.fetch(ctx, itemsGameURL)
@@ -289,6 +61,12 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 	go func() {
 		defer wait.Done()
 		imageURLs = p.loadImageURLs(ctx)
+	}()
+	go func() {
+		defer wait.Done()
+		// The public items_game omits the expanded members of rare-special
+		// pools. This live, game-derived index supplies only that missing join.
+		crateIndex, _ = p.fetch(ctx, crateIndexURL)
 	}()
 	wait.Wait()
 	if itemsErr != nil {
@@ -306,20 +84,26 @@ func (p *Provider) Load(ctx context.Context) (*Schema, error) {
 		return nil, fmt.Errorf("parse CS2 English localization: %w", err)
 	}
 	schema := &Schema{
-		items:              make(map[uint32]itemDefinition),
-		paintKits:          make(map[uint32]paintKitDefinition),
-		stickerKits:        make(map[uint32]stickerKitDefinition),
-		musicDefinitions:   make(map[uint32]musicDefinition),
-		keychains:          make(map[uint32]keychainDefinition),
-		tokens:             parseTokens(englishRoot),
-		collections:        make(map[string]collectionDefinition),
-		collectionByItem:   make(map[string]string),
-		lootLists:          make(map[string][]string),
-		revolvingLootLists: make(map[string]string),
-		imageURLs:          imageURLs,
-		attributes:         make(map[uint32]econAttributeDefinition),
+		items:                   make(map[uint32]itemDefinition),
+		paintKits:               make(map[uint32]paintKitDefinition),
+		stickerKits:             make(map[uint32]stickerKitDefinition),
+		musicDefinitions:        make(map[uint32]musicDefinition),
+		keychains:               make(map[uint32]keychainDefinition),
+		tokens:                  parseTokens(englishRoot),
+		collections:             make(map[string]collectionDefinition),
+		collectionByItem:        make(map[string]string),
+		lootLists:               make(map[string][]string),
+		revolvingLootLists:      make(map[string]string),
+		rareSpecialByContainer:  make(map[uint32][]RelatedItem),
+		rareSpecialByCollection: make(map[string][]RelatedItem),
+		rareSpecialQualities:    make(map[string]map[string]bool),
+		imageURLs:               imageURLs,
+		attributes:              make(map[uint32]econAttributeDefinition),
+		quests:                  make(map[uint32]QuestDefinition),
 	}
 	schema.parseItems(itemsRoot)
+	schema.applyRareSpecialIndex(crateIndex)
+	schema.parseQuests(itemsRoot.object("items_game"))
 	schema.armoryOffers = parseArmoryOffers(itemsText, schema)
 	if len(schema.items) == 0 {
 		return nil, fmt.Errorf("CS2 items_game schema contained no item definitions")

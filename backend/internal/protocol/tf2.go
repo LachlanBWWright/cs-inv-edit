@@ -26,6 +26,7 @@ const (
 	TF2EMsgApplyStrangeCountTransfer uint32 = 2566
 	TF2EMsgCraftCollectionUpgrade    uint32 = 2567
 	TF2EMsgCraftHalloweenOffering    uint32 = 2568
+	TF2EMsgCraftCommonStatClock      uint32 = 2574
 	TF2EMsgSetItemPositions          uint32 = 1100
 	TF2EMsgEconPreviewRequest        uint32 = 6402
 	TF2EMsgEconPreviewResponse       uint32 = 6403
@@ -61,6 +62,7 @@ func TF2OperationMapping(operation string) (TF2OperationProtocol, bool) {
 		"tf2.market.refresh":            {EMsg: TF2EMsgClientMarketDataRequest, Protobuf: true, FeatureFlag: "enableTf2Inventory", Verified: true},
 		"tf2.customization.decal-apply": {EMsg: TF2EMsgCustomizeItemTexture, Protobuf: false, FeatureFlag: "enableTf2Customization", Verified: true},
 		"tf2.crafting.craft":            {EMsg: TF2EMsgCraft, Protobuf: false, FeatureFlag: "enableTf2Crafting", Verified: false, Reason: "the current TF2 protobuf dump defines only the EMsg and response body; the permanent request layout requires a verified capture"},
+		"tf2.crafting.stat-clock":       {EMsg: TF2EMsgCraftCommonStatClock, Protobuf: true, FeatureFlag: "enableTf2Crafting", Verified: true},
 		"tf2.containers.open":           {EMsg: TF2EMsgUnlockCrate, Protobuf: false, FeatureFlag: "enableTf2Unboxing", Verified: false, Reason: "the current TF2 protobuf dump contains no UnlockCrate request body; a verified capture is required"},
 	}
 	mapping, ok := mappings[operation]

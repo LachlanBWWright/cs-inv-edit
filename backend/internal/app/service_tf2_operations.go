@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -91,7 +89,7 @@ func (s *Service) submitTF2Operation(receipt operations.Receipt, operation strin
 
 func tf2OperationIsPermanent(operation string) bool {
 	switch operation {
-	case "tf2.items.use", "tf2.tools.strange-part", "tf2.tools.strange-restriction", "tf2.tools.strange-transfer", "tf2.tools.strange-remove", "tf2.tools.strange-reset", "tf2.crafting.craft", "tf2.containers.open", "tf2.customization.decal-apply":
+	case "tf2.items.use", "tf2.tools.strange-part", "tf2.tools.strange-restriction", "tf2.tools.strange-transfer", "tf2.tools.strange-remove", "tf2.tools.strange-reset", "tf2.crafting.craft", "tf2.crafting.stat-clock", "tf2.containers.open", "tf2.customization.decal-apply":
 		return true
 	default:
 		return false
@@ -188,6 +186,9 @@ func (s *Service) validateTF2OwnedItems(steamID string, itemIDs []uint64) error 
 
 func (s *Service) validateTF2Compatibility(steamID, operation string, input map[string]any) error {
 	operationType := operations.Type(operation)
+	if operation == "tf2.crafting.stat-clock" {
+		return s.validateTF2StatClockIngredients(steamID, input)
+	}
 	if operationType != operations.TypeTF2StrangePart && operationType != operations.TypeTF2StrangeRestriction && operationType != operations.TypeTF2StrangeTransfer && operationType != operations.TypeTF2StrangeRemove && operationType != operations.TypeTF2StrangeReset {
 		return nil
 	}
@@ -232,6 +233,42 @@ func (s *Service) validateTF2Compatibility(steamID, operation string, input map[
 			if !strings.Contains(descriptor, expected) {
 				return fmt.Errorf("selected owned tool is not compatible with %s", operation)
 			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateTF2StatClockIngredients(
+	steamID string,
+	input map[string]any,
+) error {
+	ids, err := requiredTF2ItemIDs(input, 5)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	snapshot := s.gameInventories[gameInventoryKey(steamID, "tf2")]
+	s.mu.Unlock()
+	items := make(map[string]domain.EconomyInventoryItem, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		items[item.AssetID] = item
+	}
+	eligibleRarities := map[string]bool{
+		"uncommon": true, "rare": true, "mythical": true,
+		"legendary": true, "ancient": true, "freelance": true,
+		"mercenary": true, "commando": true, "assassin": true, "elite": true,
+	}
+	for _, id := range ids {
+		item := items[strconv.FormatUint(id, 10)]
+		quality := strings.ToLower(firstNonEmptyApp(
+			item.Quality,
+			item.Details.SchemaQuality,
+		))
+		rarity := strings.ToLower(item.Details.Rarity)
+		if quality != "strange" && !eligibleRarities[rarity] {
+			return fmt.Errorf(
+				"TF2 Stat Clock ingredients must be Strange or Freelance Grade or higher",
+			)
 		}
 	}
 	return nil
@@ -290,9 +327,37 @@ func encodeTF2Operation(operation string, input map[string]any) ([]byte, []uint6
 		}
 		body, err := tf2tracking.Marshal("CMsgGCClientMarketDataRequest", map[string]uint64{"user_currency": uint64(currency)})
 		return body, nil, err
+	case "tf2.crafting.stat-clock":
+		itemIDs, err := requiredTF2ItemIDs(input, 5)
+		if err != nil {
+			return nil, nil, err
+		}
+		body, err := tf2tracking.MarshalFields(
+			"CMsgCraftCommonStatClock",
+			map[string]any{"item_id": itemIDs},
+		)
+		return body, itemIDs, err
 	default:
 		return nil, nil, fmt.Errorf("TF2 operation %q has no verified encoder", operation)
 	}
+}
+
+func requiredTF2ItemIDs(input map[string]any, required int) ([]uint64, error) {
+	values, ok := input["itemIds"].([]any)
+	if !ok || len(values) != required {
+		return nil, fmt.Errorf("itemIds must contain exactly %d items", required)
+	}
+	items := make([]uint64, 0, len(values))
+	seen := make(map[uint64]bool, len(values))
+	for _, value := range values {
+		id, err := requiredUint64Input(map[string]any{"itemId": value}, "itemId")
+		if err != nil || id == 0 || seen[id] {
+			return nil, fmt.Errorf("itemIds must contain unique valid Steam item ids")
+		}
+		seen[id] = true
+		items = append(items, id)
+	}
+	return items, nil
 }
 
 func encodeTF2PresetItem(input map[string]any) ([]byte, []uint64, error) {
@@ -380,138 +445,4 @@ func encodeTF2Inspect(input map[string]any) ([]byte, []uint64, error) {
 	}
 	body, err := tf2tracking.Marshal("CMsgGC_Client2GCEconPreviewDataBlockRequest", map[string]uint64{"param_s": s, "param_a": a, "param_d": d, "param_m": m})
 	return body, nil, err
-}
-
-var tf2InspectPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)\bS(\d+)A(\d+)D(\d+)`),
-	regexp.MustCompile(`(?i)\bM(\d+)A(\d+)D(\d+)`),
-}
-
-func parseTF2InspectURL(raw string) (map[string]any, error) {
-	decoded, err := url.QueryUnescape(raw)
-	if err != nil {
-		return nil, fmt.Errorf("TF2 inspect action is malformed")
-	}
-	for index, pattern := range tf2InspectPatterns {
-		match := pattern.FindStringSubmatch(decoded)
-		if len(match) != 4 {
-			continue
-		}
-		first, firstErr := strconv.ParseUint(match[1], 10, 64)
-		asset, assetErr := strconv.ParseUint(match[2], 10, 64)
-		definition, definitionErr := strconv.ParseUint(match[3], 10, 64)
-		if firstErr != nil || assetErr != nil || definitionErr != nil {
-			return nil, fmt.Errorf("TF2 inspect action contains invalid parameters")
-		}
-		params := map[string]any{
-			"paramA": strconv.FormatUint(asset, 10),
-			"paramD": strconv.FormatUint(definition, 10),
-		}
-		if index == 0 {
-			params["paramS"] = strconv.FormatUint(first, 10)
-		} else {
-			params["paramM"] = strconv.FormatUint(first, 10)
-		}
-		return params, nil
-	}
-	return nil, fmt.Errorf("TF2 inspect action does not contain S/A/D or M/A/D parameters")
-}
-
-func cloneInput(source map[string]any) map[string]any {
-	clone := make(map[string]any, len(source)+1)
-	for key, value := range source {
-		clone[key] = value
-	}
-	return clone
-}
-
-func encodeTF2Equip(input map[string]any) ([]byte, []uint64, error) {
-	itemID, err := requiredUint64Input(input, "itemId")
-	if err != nil {
-		return nil, nil, err
-	}
-	classID, err := optionalUint32Input(input, "classId")
-	if err != nil {
-		return nil, nil, err
-	}
-	slotID, err := optionalUint32Input(input, "slotId")
-	if err != nil {
-		return nil, nil, err
-	}
-	body, err := tf2tracking.MarshalFields("CMsgAdjustItemEquippedState", map[string]any{"item_id": itemID, "new_class": classID, "new_slot": slotID})
-	return body, []uint64{itemID}, err
-}
-
-func encodeTF2TwoItemTool(input map[string]any, toolKey string, targetKey string, encode func(uint64, uint64) ([]byte, error)) ([]byte, []uint64, error) {
-	toolID, err := requiredUint64Input(input, toolKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	targetID, err := requiredUint64Input(input, targetKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	if toolID == targetID {
-		return nil, nil, fmt.Errorf("tool and target item IDs must be distinct")
-	}
-	body, err := encode(toolID, targetID)
-	return body, []uint64{toolID, targetID}, err
-}
-
-func encodeTF2StrangeRestriction(input map[string]any) ([]byte, []uint64, error) {
-	index, err := optionalUint32Input(input, "attributeIndex")
-	if err != nil {
-		return nil, nil, err
-	}
-	return encodeTF2TwoItemTool(input, "toolItemId", "targetItemId", func(toolID, targetID uint64) ([]byte, error) {
-		return tf2tracking.MarshalFields("CMsgApplyStrangeRestriction", map[string]any{"strange_part_item_id": toolID, "item_item_id": targetID, "strange_attr_index": index})
-	})
-}
-
-func encodeTF2StrangeTransfer(input map[string]any) ([]byte, []uint64, error) {
-	toolID, err := requiredUint64Input(input, "toolItemId")
-	if err != nil {
-		return nil, nil, err
-	}
-	sourceID, err := requiredUint64Input(input, "sourceItemId")
-	if err != nil {
-		return nil, nil, err
-	}
-	destinationID, err := requiredUint64Input(input, "destinationItemId")
-	if err != nil {
-		return nil, nil, err
-	}
-	if toolID == sourceID || toolID == destinationID || sourceID == destinationID {
-		return nil, nil, fmt.Errorf("tool, source, and destination item IDs must be distinct")
-	}
-	body, err := tf2tracking.MarshalFields("CMsgApplyStrangeCountTransfer", map[string]any{"tool_item_id": toolID, "item_src_item_id": sourceID, "item_dest_item_id": destinationID})
-	return body, []uint64{toolID, sourceID, destinationID}, err
-}
-
-func optionalUint32Input(input map[string]any, key string) (uint32, error) {
-	value, ok := input[key]
-	if !ok {
-		return 0, nil
-	}
-	parsed, err := requiredUint64Input(map[string]any{key: value}, key)
-	if err != nil || parsed > uint64(^uint32(0)) {
-		return 0, fmt.Errorf("%s must be a uint32", key)
-	}
-	return uint32(parsed), nil
-}
-
-func requiredInt32Input(input map[string]any, key string) (int32, error) {
-	value, err := requiredUint64Input(input, key)
-	if err != nil || value > uint64(^uint32(0)>>1) {
-		return 0, fmt.Errorf("%s must be a non-negative int32", key)
-	}
-	return int32(value), nil
-}
-
-func uint64Strings(values []uint64) []string {
-	out := make([]string, len(values))
-	for index, value := range values {
-		out[index] = fmt.Sprintf("%d", value)
-	}
-	return out
 }

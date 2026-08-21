@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, type JSX } from "solid-js";
 import { Alert } from "../../shared/ui/Alert.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Input } from "../../shared/ui/Input.js";
@@ -16,6 +16,7 @@ export interface AccountViewLayoutProps {
   guardCode: string;
   qrImage: string;
   qrLoadingText: string;
+  loginOnly?: boolean;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onPasswordToggle: () => void;
@@ -77,8 +78,16 @@ function renderConnectionPanel(props: AccountViewLayoutProps) {
   }
 
   return (
-    <div class="grid flex-1 gap-10 md:grid-cols-[minmax(0,1fr)_minmax(24rem,30rem)] md:items-center lg:gap-14">
-      <AccountIntroduction />
+    <div
+      class={
+        props.loginOnly
+          ? "mx-auto w-full max-w-[30rem]"
+          : "grid flex-1 gap-10 md:grid-cols-[minmax(0,1fr)_minmax(24rem,30rem)] md:items-center lg:gap-14"
+      }
+    >
+      <Show when={!props.loginOnly}>
+        <AccountIntroduction />
+      </Show>
       <div class="space-y-7 rounded-3xl bg-slate-900 p-5 sm:p-7">
         <QrSignInPanel
           qrImage={props.qrImage}
@@ -273,6 +282,16 @@ function PasswordToggle(props: {
 }
 
 function CredentialsForm(props: CredentialsFormProps) {
+  const updateUsername: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    props.onUsernameChange(event.currentTarget.value);
+  };
+  const updatePassword: JSX.EventHandler<HTMLInputElement, InputEvent> = (
+    event,
+  ) => {
+    props.onPasswordChange(event.currentTarget.value);
+  };
   return (
     <form class="w-full space-y-4" onSubmit={props.onConnect}>
       <h3 class="text-center font-semibold text-slate-100">
@@ -283,11 +302,7 @@ function CredentialsForm(props: CredentialsFormProps) {
         <Input
           type="text"
           value={props.username}
-          onInput={(e) =>
-            props.onUsernameChange(
-              (e.currentTarget as HTMLInputElement | null)?.value ?? "",
-            )
-          }
+          onInput={updateUsername}
           disabled={props.loading}
           autocomplete="username"
           required
@@ -300,11 +315,7 @@ function CredentialsForm(props: CredentialsFormProps) {
             type={props.passwordVisible ? "text" : "password"}
             value={props.password}
             class="pr-12"
-            onInput={(e) =>
-              props.onPasswordChange(
-                (e.currentTarget as HTMLInputElement | null)?.value ?? "",
-              )
-            }
+            onInput={updatePassword}
             disabled={props.loading}
             autocomplete="current-password"
             required

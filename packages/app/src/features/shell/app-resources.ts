@@ -4,7 +4,7 @@ import type { ResultAsync } from "neverthrow";
 import { type ProtocolTraceEntry } from "@cs-inv-edit/contracts";
 import type { AppError } from "../../shared/lib/result-http.js";
 
-import type { AppProps } from "./app-controller.js";
+import type { AppProps } from "./app-props.js";
 
 export function createAppResources(props: AppProps) {
   const resourceValue = <T>(result: ResultAsync<T, AppError>) =>

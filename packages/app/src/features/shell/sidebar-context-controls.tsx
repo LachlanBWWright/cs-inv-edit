@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import { Input } from "../../shared/ui/Input.js";
 import { Select } from "../../shared/ui/Select.js";
 import { IconButton } from "../../shared/ui/IconButton.js";
@@ -13,6 +13,7 @@ import type { CS2ActivityFilter } from "../cs2/CS2FeaturesPanel.js";
 import type { EconomyInventorySort } from "../inventory/game-inventory-utils.js";
 import type { CommerceSort } from "../commerce/commerce-view-utils.js";
 import type { InventorySort } from "../inventory/inventory-view-utils.js";
+import { isOption } from "../../shared/lib/options.js";
 
 const inventorySortOptions: [InventorySort, string][] = [
   ["name", "Name: A to Z"],
@@ -23,12 +24,69 @@ const inventorySortOptions: [InventorySort, string][] = [
   ["price-high", "Price: high to low"],
   ["price-low", "Price: low to high"],
 ];
+const inventoryKinds = [
+  "all",
+  "weapon_skin",
+  "sticker_item",
+  "container",
+  "storage_unit",
+  "tool_item",
+  "cs2_econ_item",
+  "unknown",
+] as const satisfies readonly SidebarProps["kindFilter"][];
+const inventorySorts = inventorySortOptions.map(([value]) => value);
+const economySorts = [
+  "name",
+  "quality-high",
+  "quality-low",
+  "price-high",
+  "price-low",
+  "quantity-high",
+] as const satisfies readonly EconomyInventorySort[];
+const commerceSorts = [
+  "name",
+  "price-low",
+  "price-high",
+] as const satisfies readonly CommerceSort[];
+const tf2ActivityFilters = [
+  "all",
+  "contracts",
+  "updates",
+] as const satisfies readonly TF2ActivityFilter[];
+const cs2ActivityFilters = [
+  "all",
+  "matches",
+  "items",
+  "missions",
+] as const satisfies readonly CS2ActivityFilter[];
+
+function OwnedGameOption(props: { game: { appId: number; name: string } }) {
+  return (
+    <option value={props.game.appId}>
+      {props.game.name} — AppID {props.game.appId}
+    </option>
+  );
+}
 
 export function SidebarContextControls(props: SidebarProps) {
   const inventoryContext = () =>
     isInventoryScreen(props.view) ||
     isEconomyInventoryScreen(props.view) ||
     isCommerceScreen(props.view);
+  const setSteamServiceGame: JSX.EventHandler<HTMLSelectElement, InputEvent> = (
+    event,
+  ) => {
+    const value = event.currentTarget.value;
+    props.setSteamServiceAppId(value ? Number(value) : undefined);
+  };
+  const ownedGamePlaceholder = () =>
+    props.steamServiceGamesLoading ? "Finding owned games…" : "Choose a game";
+  const setTF2Activity: JSX.EventHandler<HTMLSelectElement, InputEvent> = (
+    event,
+  ) => {
+    const value = event.currentTarget.value;
+    if (isOption(value, tf2ActivityFilters)) props.setTF2ActivityFilter(value);
+  };
   return (
     <>
       <Show when={inventoryContext()}>
@@ -38,25 +96,13 @@ export function SidebarContextControls(props: SidebarProps) {
             aria-label="Owned game"
             disabled={!props.steamServiceGames?.games.length}
             value={props.steamServiceAppId?.toString() ?? ""}
-            onInput={(event) =>
-              props.setSteamServiceAppId(
-                event.currentTarget.value
-                  ? Number(event.currentTarget.value)
-                  : undefined,
-              )
-            }
+            onInput={setSteamServiceGame}
           >
             <option value="" disabled>
-              {props.steamServiceGamesLoading
-                ? "Finding owned games…"
-                : "Choose a game"}
+              {ownedGamePlaceholder()}
             </option>
             <For each={props.steamServiceGames?.games ?? []}>
-              {(game) => (
-                <option value={game.appId}>
-                  {game.name} — AppID {game.appId}
-                </option>
-              )}
+              {(game) => <OwnedGameOption game={game} />}
             </For>
           </Select>
         </Show>
@@ -73,11 +119,10 @@ export function SidebarContextControls(props: SidebarProps) {
             class="hidden h-9 max-w-44 sm:block"
             aria-label="Item type"
             value={props.kindFilter}
-            onInput={(event) =>
-              props.setKindFilter(
-                event.currentTarget.value as SidebarProps["kindFilter"],
-              )
-            }
+            onInput={(event) => {
+              const value = event.currentTarget.value;
+              if (isOption(value, inventoryKinds)) props.setKindFilter(value);
+            }}
           >
             <option value="all">All item types</option>
             <option value="weapon_skin">Weapon skins</option>
@@ -92,9 +137,10 @@ export function SidebarContextControls(props: SidebarProps) {
             class="hidden h-9 max-w-48 sm:block"
             aria-label="Sort inventory"
             value={props.sort}
-            onInput={(event) =>
-              props.setSort(event.currentTarget.value as InventorySort)
-            }
+            onInput={(event) => {
+              const value = event.currentTarget.value;
+              if (isOption(value, inventorySorts)) props.setSort(value);
+            }}
           >
             <For each={inventorySortOptions}>
               {([value, label]) => <option value={value}>{label}</option>}
@@ -126,11 +172,10 @@ export function SidebarContextControls(props: SidebarProps) {
             class="hidden h-9 sm:block"
             aria-label="Sort inventory"
             value={props.economySort}
-            onInput={(event) =>
-              props.setEconomySort(
-                event.currentTarget.value as EconomyInventorySort,
-              )
-            }
+            onInput={(event) => {
+              const value = event.currentTarget.value;
+              if (isOption(value, economySorts)) props.setEconomySort(value);
+            }}
           >
             <option value="name">Name: A to Z</option>
             <option value="quality-high">Quality: high to low</option>
@@ -158,29 +203,16 @@ export function SidebarContextControls(props: SidebarProps) {
             class="hidden h-9 sm:block"
             aria-label="Sort offers"
             value={props.commerceSort}
-            onInput={(event) =>
-              props.setCommerceSort(event.currentTarget.value as CommerceSort)
-            }
+            onInput={(event) => {
+              const value = event.currentTarget.value;
+              if (isOption(value, commerceSorts)) props.setCommerceSort(value);
+            }}
           >
             <option value="name">Name</option>
             <option value="price-low">Price: low to high</option>
             <option value="price-high">Price: high to low</option>
           </Select>
         </Show>
-        <Select
-          class="hidden h-9 sm:block"
-          aria-label="Inventory display size"
-          value={props.compactMode}
-          onInput={(event) =>
-            props.setCompactMode(
-              event.currentTarget.value as SidebarProps["compactMode"],
-            )
-          }
-        >
-          <option value="icons">Icons</option>
-          <option value="concise">Concise</option>
-          <option value="detailed">Detailed</option>
-        </Select>
       </Show>
       <Show
         when={props.view === "tf2-matches" || props.view === "tf2-campaigns"}
@@ -210,11 +242,7 @@ export function SidebarContextControls(props: SidebarProps) {
             class="h-9 max-w-36"
             aria-label="Activity filter"
             value={props.tf2ActivityFilter}
-            onInput={(event) =>
-              props.setTF2ActivityFilter(
-                event.currentTarget.value as TF2ActivityFilter,
-              )
-            }
+            onInput={setTF2Activity}
           >
             <option value="all">All campaign data</option>
             <option value="contracts">Contracts</option>
@@ -244,11 +272,11 @@ export function SidebarContextControls(props: SidebarProps) {
           class="h-9 max-w-40"
           aria-label="Activity filter"
           value={props.cs2ActivityFilter}
-          onInput={(event) =>
-            props.setCS2ActivityFilter(
-              event.currentTarget.value as CS2ActivityFilter,
-            )
-          }
+          onInput={(event) => {
+            const value = event.currentTarget.value;
+            if (isOption(value, cs2ActivityFilters))
+              props.setCS2ActivityFilter(value);
+          }}
         >
           <option value="all">All activity</option>
           <option value="matches">Matches</option>

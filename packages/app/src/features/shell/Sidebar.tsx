@@ -86,6 +86,8 @@ export function Sidebar(props: SidebarProps) {
         inventory={props.inventory}
         accounts={props.accounts}
         settings={props.settings}
+        compactMode={props.compactMode}
+        setCompactMode={props.setCompactMode}
         onAddAccount={props.onAddAccount}
         onSignInAccount={props.onSignInAccount}
         onSignOutAccount={props.onSignOutAccount}

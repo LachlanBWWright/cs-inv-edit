@@ -24,6 +24,8 @@ export interface ShellController {
   setAccounts: Setter<SteamAccountProfile[]>;
   accountUsername: Accessor<string>;
   setAccountUsername: Setter<string>;
+  accountLoginOnly: Accessor<boolean>;
+  setAccountLoginOnly: Setter<boolean>;
 }
 
 export function createShellController(
@@ -35,11 +37,10 @@ export function createShellController(
   >();
   const [query, setQuery] = createSignal("");
   const [kindFilter, setKindFilter] = createSignal<ShellKindFilter>("all");
-  const [compactMode, setCompactMode] = createSignal<
-    CompactMode
-  >("concise");
+  const [compactMode, setCompactMode] = createSignal<CompactMode>("concise");
   const [accounts, setAccounts] = createSignal<SteamAccountProfile[]>([]);
   const [accountUsername, setAccountUsername] = createSignal("");
+  const [accountLoginOnly, setAccountLoginOnly] = createSignal(false);
 
   return {
     view,
@@ -56,5 +57,7 @@ export function createShellController(
     setAccounts,
     accountUsername,
     setAccountUsername,
+    accountLoginOnly,
+    setAccountLoginOnly,
   };
 }

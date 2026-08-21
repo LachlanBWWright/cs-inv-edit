@@ -1,24 +1,20 @@
 import { For, Show, type JSX } from "solid-js";
-import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
 import {
   itemDisplayName,
   itemInitials,
-  itemKindLabel,
   itemSubtitle,
 } from "./inventory-view-utils.js";
 import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
-import { formatFloat } from "./item-instance-utils.js";
-import { tradeStateDescription } from "./ItemMarketBadges.js";
 import type { RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import { ItemPreviewMedia } from "./ItemPreviewMedia.js";
 import type { ReturnEstimate } from "../commerce/roi-utils.js";
 
-function steamMarketURL(marketName: string) {
+function steamMarketUrl(marketName: string) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
 }
 
 export interface ItemHeaderProps {
-  selected: InventoryItemDto;
+  selected: import("@cs-inv-edit/contracts").InventoryItemDto;
 }
 
 export function ItemHeader(props: ItemHeaderProps) {
@@ -33,12 +29,15 @@ export function ItemHeader(props: ItemHeaderProps) {
           {itemSubtitle(props.selected)}
         </p>
       </Show>
-      <ItemInstanceDecorations item={props.selected} showFloat />
+      <ItemInstanceDecorations item={props.selected} />
     </div>
   );
 }
 
-export function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
+export function ItemIcon(props: {
+  item: import("@cs-inv-edit/contracts").InventoryItemDto;
+  large?: boolean;
+}) {
   if (props.large)
     return (
       <ItemPreviewMedia
@@ -68,17 +67,21 @@ export function ItemIcon(props: { item: InventoryItemDto; large?: boolean }) {
 }
 
 export interface PropertyGridProps {
-  selected: InventoryItemDto;
-  selectedMarketPreview: RelatedItemDto | undefined;
+  selected: import("@cs-inv-edit/contracts").InventoryItemDto;
+  selectedMarketPreview:
+    import("@cs-inv-edit/contracts").RelatedItemDto | undefined;
   selectedMarketLoading: boolean;
   onOpenCollection: (
     collection: string,
-    items: RelatedItemDto[],
+    items: import("@cs-inv-edit/contracts").RelatedItemDto[],
     context: RelatedItemPreviewContext,
   ) => void;
+  appearance?: "card" | "plain";
+  showMarket?: boolean;
+  showWear?: boolean;
 }
 
-function PropertyField(props: {
+export function PropertyField(props: {
   label: string;
   children: JSX.Element | string | number | null | undefined;
 }) {
@@ -98,8 +101,68 @@ function scrapePercent(wear: number | undefined) {
     : Math.round(Math.max(0, Math.min(1, wear)) * 100);
 }
 
-function AppliedItemGallery(props: {
-  items: NonNullable<InventoryItemDto["appliedItems"]>;
+function appliedItemInitial(kind: string) {
+  if (kind === "charm") return "C";
+  if (kind === "patch") return "P";
+  return "S";
+}
+
+function AppliedItemCard(props: {
+  item: NonNullable<
+    import("@cs-inv-edit/contracts").InventoryItemDto["appliedItems"]
+  >[number];
+}) {
+  const scraped = () =>
+    props.item.kind === "sticker" ? scrapePercent(props.item.wear) : undefined;
+
+  return (
+    <div class="w-24 rounded-lg border border-slate-700/80 bg-slate-950 p-2">
+      <div class="flex h-16 w-full items-center justify-center overflow-hidden rounded bg-slate-900">
+        <Show
+          when={props.item.imageUrl}
+          fallback={
+            <span class="text-xl font-bold text-slate-600">
+              {appliedItemInitial(props.item.kind)}
+            </span>
+          }
+        >
+          <img
+            class="h-full w-full object-contain"
+            src={props.item.imageUrl}
+            alt={props.item.name}
+            loading="lazy"
+          />
+        </Show>
+      </div>
+      <p
+        class="mt-1 line-clamp-2 text-[11px] font-medium leading-tight text-slate-200"
+        title={props.item.name}
+      >
+        {props.item.name}
+      </p>
+      <p class="mt-1 text-[10px] capitalize text-slate-500">
+        {props.item.kind}
+        {props.item.slot === undefined ? "" : ` · slot ${props.item.slot + 1}`}
+      </p>
+      <Show when={scraped() !== undefined}>
+        <div class="mt-1" title={`Sticker scrape level: ${scraped()}%`}>
+          <div class="h-1 overflow-hidden rounded bg-slate-700">
+            <div
+              class="h-full bg-amber-400"
+              style={{ width: `${scraped()}%` }}
+            />
+          </div>
+          <p class="mt-0.5 text-[10px] text-amber-200">{scraped()}% scraped</p>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+export function AppliedItemGallery(props: {
+  items: NonNullable<
+    import("@cs-inv-edit/contracts").InventoryItemDto["appliedItems"]
+  >;
 }) {
   return (
     <div class="sm:col-span-2">
@@ -108,74 +171,17 @@ function AppliedItemGallery(props: {
       </p>
       <div class="mt-2 flex flex-wrap gap-3">
         <For each={props.items}>
-          {(applied) => {
-            const scraped = () =>
-              applied.kind === "sticker"
-                ? scrapePercent(applied.wear)
-                : undefined;
-            return (
-              <div class="w-24 rounded-lg border border-slate-700/80 bg-slate-950 p-2">
-                <div class="flex h-16 w-full items-center justify-center overflow-hidden rounded bg-slate-900">
-                  <Show
-                    when={applied.imageUrl}
-                    fallback={
-                      <span class="text-xl font-bold text-slate-600">
-                        {applied.kind === "charm"
-                          ? "C"
-                          : applied.kind === "patch"
-                            ? "P"
-                            : "S"}
-                      </span>
-                    }
-                  >
-                    <img
-                      class="h-full w-full object-contain"
-                      src={applied.imageUrl}
-                      alt={applied.name}
-                      loading="lazy"
-                    />
-                  </Show>
-                </div>
-                <p
-                  class="mt-1 line-clamp-2 text-[11px] font-medium leading-tight text-slate-200"
-                  title={applied.name}
-                >
-                  {applied.name}
-                </p>
-                <p class="mt-1 text-[10px] capitalize text-slate-500">
-                  {applied.kind}
-                  {applied.slot === undefined
-                    ? ""
-                    : ` · slot ${applied.slot + 1}`}
-                </p>
-                <Show when={scraped() !== undefined}>
-                  <div
-                    class="mt-1"
-                    title={`Sticker scrape level: ${scraped()}%`}
-                  >
-                    <div class="h-1 overflow-hidden rounded bg-slate-700">
-                      <div
-                        class="h-full bg-amber-400"
-                        style={{ width: `${scraped()}%` }}
-                      />
-                    </div>
-                    <p class="mt-0.5 text-[10px] text-amber-200">
-                      {scraped()}% scraped
-                    </p>
-                  </div>
-                </Show>
-              </div>
-            );
-          }}
+          {(applied) => <AppliedItemCard item={applied} />}
         </For>
       </div>
     </div>
   );
 }
 
-function MarketField(props: {
-  selected: InventoryItemDto;
-  selectedMarketPreview: RelatedItemDto | undefined;
+export function MarketField(props: {
+  selected: import("@cs-inv-edit/contracts").InventoryItemDto;
+  selectedMarketPreview:
+    import("@cs-inv-edit/contracts").RelatedItemDto | undefined;
   selectedMarketLoading: boolean;
 }) {
   const hasMarketValue =
@@ -198,7 +204,7 @@ function MarketField(props: {
       >
         <a
           class="mt-1 inline-block font-medium text-sky-300 underline decoration-sky-500/50 underline-offset-4 hover:text-sky-200"
-          href={steamMarketURL(props.selected.marketName!)}
+          href={steamMarketUrl(props.selected.marketName!)}
           target="_blank"
           rel="noreferrer"
         >
@@ -209,106 +215,11 @@ function MarketField(props: {
   );
 }
 
-export function PropertyGrid(props: PropertyGridProps) {
-  return (
-    <div class="rounded-2xl border border-slate-800/80 bg-slate-900 p-3 text-sm text-slate-300">
-      <div class="grid gap-3 sm:grid-cols-2">
-        <Show when={props.selected.kind}>
-          <PropertyField label="Type">
-            <p class="mt-1 font-medium text-slate-100">
-              {itemKindLabel(props.selected.kind)}
-            </p>
-          </PropertyField>
-        </Show>
-        <Show when={props.selected.collection}>
-          <PropertyField label="Collection">
-            <button
-              type="button"
-              class="mt-1 text-left font-medium text-cyan-300 underline decoration-cyan-500/50 underline-offset-4 hover:text-cyan-200"
-              onClick={() =>
-                props.onOpenCollection(
-                  props.selected.collection!,
-                  props.selected.collectionItems ?? [],
-                  "collection",
-                )
-              }
-            >
-              {props.selected.collection}
-            </button>
-          </PropertyField>
-        </Show>
-        <Show when={props.selected.exterior}>
-          <PropertyField label="Exterior">
-            <p class="mt-1 font-medium text-slate-100">
-              {props.selected.exterior}
-            </p>
-          </PropertyField>
-        </Show>
-        <Show when={props.selected.storageLocation}>
-          <PropertyField label="Storage">
-            <p class="mt-1 font-medium text-slate-100">
-              {props.selected.storageLocation}
-            </p>
-          </PropertyField>
-        </Show>
-        <Show when={props.selected.paintWear !== undefined}>
-          <PropertyField label="Wear">
-            <p class="mt-1 font-mono font-medium text-slate-100">
-              {formatFloat(props.selected.paintWear!)}
-            </p>
-          </PropertyField>
-        </Show>
-        <Show when={props.selected.graffitiCharges !== undefined}>
-          <PropertyField label="Charges remaining">
-            <p class="mt-1 font-mono font-medium text-slate-100">
-              {props.selected.graffitiCharges}
-            </p>
-          </PropertyField>
-        </Show>
-        <MarketField
-          selected={props.selected}
-          selectedMarketPreview={props.selectedMarketPreview}
-          selectedMarketLoading={props.selectedMarketLoading}
-        />
-        <PropertyField label="Trade state">
-          <p class="mt-1 font-medium text-slate-100">
-            {tradeStateDescription(props.selected)}
-          </p>
-        </PropertyField>
-        <Show when={props.selected.marketSellListings}>
-          <PropertyField label="Listings">
-            <p class="mt-1 font-medium text-slate-100">
-              {props.selected.marketSellListings}
-            </p>
-          </PropertyField>
-        </Show>
-        <Show
-          when={props.selected.stickers && props.selected.stickers.length > 0}
-        >
-          <PropertyField label="Stickers">
-            <p class="mt-1 font-medium text-slate-100">
-              {props.selected.stickers?.length}
-            </p>
-          </PropertyField>
-        </Show>
-        <Show when={(props.selected.appliedItems?.length ?? 0) > 0}>
-          <AppliedItemGallery items={props.selected.appliedItems!} />
-        </Show>
-        <Show when={props.selected.customName}>
-          <PropertyField label="Name Tag">
-            <p class="mt-1 font-medium text-cyan-200">
-              {props.selected.customName}
-            </p>
-          </PropertyField>
-        </Show>
-      </div>
-    </div>
-  );
-}
+export { PropertyGrid } from "./inventory-property-grid.js";
 
 export interface TradeUpOutcomesProps {
-  selected: InventoryItemDto;
-  onPreview?: (item: InventoryItemDto) => void;
+  selected: import("@cs-inv-edit/contracts").InventoryItemDto;
+  onPreview?: (item: import("@cs-inv-edit/contracts").InventoryItemDto) => void;
   returnEstimate?: ReturnEstimate;
   returnEstimateLoading?: boolean;
 }

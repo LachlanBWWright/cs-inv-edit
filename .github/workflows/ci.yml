@@ -32,17 +32,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Check deep indentation
-        run: pnpm find:deep-indentation
+      - name: Static checks
+        run: pnpm --silent static-check
 
       - name: Test
         run: pnpm test
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Build SolidJS Storybook
+        run: pnpm storybook:build
+
+      - name: Install screenshot browser
+        run: pnpm --filter @cs-inv-edit/app exec playwright install --with-deps chromium
+
+      - name: Capture component screenshots
+        run: pnpm storybook:screenshot
+
+      - name: Upload component screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-screenshots
+          path: packages/app/artifacts/storybook/*.png
+          if-no-files-found: error
+
+      - name: Check generated API contracts
+        run: pnpm check:api-codegen
 
       - name: Build shared shells
         run: pnpm build

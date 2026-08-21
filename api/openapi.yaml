@@ -385,12 +385,6 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/JsonObject" }
       responses:
         "200": { $ref: "#/components/responses/OperationReceiptResponse" }
-  /stickers/extract:
-    post:
-      operationId: extractSticker
-      requestBody: { $ref: "#/components/requestBodies/JsonObject" }
-      responses:
-        "200": { $ref: "#/components/responses/OperationReceiptResponse" }
   /nametags/apply:
     post:
       operationId: applyNameTag
@@ -910,7 +904,7 @@ components:
         imageUrl: { type: string }
         inspectUrl:
           type: string
-          pattern: '^steam://rungame/730/[^/]*/\\+csgo_econ_action_preview%20'
+          pattern: '^steam://(?:run|rungame)/730/[^/]*/\+csgo_econ_action_preview%20'
         kind:
           type: string
           enum:
@@ -1451,7 +1445,6 @@ components:
         - enableInventoryDebug
         - showStorageUnitItems
         - enableTradeups
-        - enableStickerExtract
         - enableNameTags
         - enableItemDeletion
         - enableStatTrakSwap
@@ -1476,7 +1469,6 @@ components:
         showStorageUnitItems: { type: boolean, default: false }
         enableProtocolConsole: { type: boolean, default: true }
         enableTradeups: { type: boolean }
-        enableStickerExtract: { type: boolean }
         enableNameTags: { type: boolean }
         enableItemDeletion: { type: boolean }
         enableStatTrakSwap: { type: boolean }

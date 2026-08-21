@@ -79,6 +79,12 @@ export type TF2OperationRequest =
       confirmed?: boolean;
     }
   | {
+      type: "tf2.crafting.stat-clock";
+      game: "tf2";
+      itemIds: string[];
+      confirmed?: boolean;
+    }
+  | {
       type: "tf2.containers.open";
       game: "tf2";
       itemId: string;
@@ -165,6 +171,7 @@ export interface TF2ItemDetails extends EconomyItemDetailsBase {
   loadoutSlots?: Record<string, string>;
   prefabChain?: string[];
   containerItems?: TF2RelatedItem[];
+  tradeUpItems?: TF2RelatedItem[];
   decodedAttributes?: TF2Attribute[];
   hero?: never;
   slot?: never;

@@ -22,6 +22,18 @@ interface SteamInventoryServiceControllerOptions {
   }) => void;
 }
 
+function refreshFailed(state: string) {
+  return (
+    state === "failed" ||
+    state === "requires_connection" ||
+    state === "blocked_by_feature_flag"
+  );
+}
+
+function refreshFailureMessage(message: string | undefined) {
+  return message ?? "Steam Inventory Service refresh failed";
+}
+
 export function createSteamInventoryServiceController(
   options: SteamInventoryServiceControllerOptions,
 ) {
@@ -94,13 +106,8 @@ export function createSteamInventoryServiceController(
     void options.backend
       .refreshSteamInventoryService(requestedAppId)
       .andThen((receipt) =>
-        receipt.state === "failed" ||
-        receipt.state === "requires_connection" ||
-        receipt.state === "blocked_by_feature_flag"
-          ? errAsync({
-              message:
-                receipt.message ?? "Steam Inventory Service refresh failed",
-            })
+        refreshFailed(receipt.state)
+          ? errAsync({ message: refreshFailureMessage(receipt.message) })
           : fromAppPromise(
               Promise.resolve(refetch()),
               "Steam Inventory Service reload failed",

@@ -6,6 +6,17 @@ import type {
 import { TF2MatchHistory } from "./tf2-activity-matches.js";
 import { activityNumber } from "./tf2-activity-utils.js";
 
+function MatchStat(props: { name: string; value: string | number | undefined }) {
+  return (
+    <div class="border-b border-slate-800 px-4 py-5 last:border-0 sm:border-b-0 sm:border-r">
+      <p class="text-2xl font-semibold tabular-nums text-slate-100">
+        {props.value}
+      </p>
+      <p class="mt-1 text-xs text-slate-500">{props.name}</p>
+    </div>
+  );
+}
+
 export function TF2MatchesView(props: {
   features?: TF2FeatureSnapshot;
   inventory?: GameInventorySnapshot;
@@ -34,6 +45,8 @@ export function TF2MatchesView(props: {
   );
   const ready = () =>
     props.inventory?.game === "tf2" && props.inventory.status === "ready";
+  const killDeathRatio = () =>
+    totals().deaths ? (totals().kills / totals().deaths).toFixed(2) : "—";
 
   return (
     <section class="mx-auto w-full max-w-7xl">
@@ -56,20 +69,10 @@ export function TF2MatchesView(props: {
               totals().games ? Math.round(totals().score / totals().games) : 0,
             ],
             ["Kills", totals().kills],
-            [
-              "K/D",
-              totals().deaths
-                ? (totals().kills / totals().deaths).toFixed(2)
-                : "—",
-            ],
+            ["K/D", killDeathRatio()],
             ["Damage", totals().damage.toLocaleString()],
           ].map(([name, value]) => (
-            <div class="border-b border-slate-800 px-4 py-5 last:border-0 sm:border-b-0 sm:border-r">
-              <p class="text-2xl font-semibold tabular-nums text-slate-100">
-                {value}
-              </p>
-              <p class="mt-1 text-xs text-slate-500">{name}</p>
-            </div>
+            <MatchStat name={String(name)} value={value} />
           ))}
         </div>
         <Show
