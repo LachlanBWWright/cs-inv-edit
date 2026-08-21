@@ -81,7 +81,19 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </div>
       <SidebarAccountControls
-        {...props}
+        view={props.view}
+        connection={props.connection}
+        inventory={props.inventory}
+        accounts={props.accounts}
+        settings={props.settings}
+        onAddAccount={props.onAddAccount}
+        onSignInAccount={props.onSignInAccount}
+        onSignOutAccount={props.onSignOutAccount}
+        onDeleteAccount={props.onDeleteAccount}
+        onRefreshInventory={props.onRefreshInventory}
+        onRefreshCurrentInventory={props.onRefreshCurrentInventory}
+        onOpenAccount={props.onOpenAccount}
+        onSaveSettings={props.onSaveSettings}
         state={{
           accountOpen,
           settingsOpen,

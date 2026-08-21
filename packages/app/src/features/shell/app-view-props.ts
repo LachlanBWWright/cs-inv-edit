@@ -1,18 +1,11 @@
 import type {
-  ApplyStatTrakSwapRequest,
   ArmoryRedeemRequest,
   ArmorySnapshot,
-  ApplyStrangePartRequest,
-  ApplyToolToBaseItemRequest,
-  ApplyToolToItemRequest,
   ConnectionStatus,
-  DeleteItemRequest,
-  GiftItemRequest,
   GameInventorySnapshot,
   HealthStatus,
   InventoryItemDto,
   InventorySnapshot,
-  OperationEvent,
   OperationReceipt,
   OpenContainerRequest,
   PriceScanResult,
@@ -30,9 +23,8 @@ import type {
   SteamInventoryServiceGames,
   TF2FeatureSnapshot,
   CS2FeatureSnapshot,
-  UseItemRequest,
-  UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
+import type { CompactMode } from "../../shared/ui-types.js";
 import type { ToastItem } from "../../shared/ui/ToastViewport.js";
 import type { AppScreen } from "./view.js";
 import type { UIActionOutcome } from "../../shared/lib/ui-action-outcome.js";
@@ -59,7 +51,10 @@ export interface AppViewProps {
   cs2Features: CS2FeatureSnapshot | undefined;
   tf2ProtocolEntries: ProtocolTraceEntry[];
   dota2Inventory: GameInventorySnapshot | undefined;
-  gameInventoryLoading: Record<"steam" | "tf2" | "dota2", boolean>;
+  gameInventoryLoading: Record<
+    import("../../shared/ui-types.js").EconomyGame,
+    boolean
+  >;
   armory: ArmorySnapshot | undefined;
   store: StoreSnapshot | undefined;
   tf2Store: StoreSnapshot | undefined;
@@ -70,12 +65,10 @@ export interface AppViewProps {
   setQuery: (value: string) => void;
   kindFilter: "all" | InventoryItemDto["kind"];
   setKindFilter: (value: "all" | InventoryItemDto["kind"]) => void;
-  compactMode: "icons" | "concise" | "detailed";
-  setCompactMode: (value: "icons" | "concise" | "detailed") => void;
-  receipts: OperationReceipt[] | undefined;
-  events: OperationEvent[] | undefined;
+  compactMode: CompactMode;
+  setCompactMode: (value: CompactMode) => void;
   toasts: ToastItem[];
-  platform: "desktop" | "web";
+  platform: import("../../shared/ui-types.js").AppPlatform;
   onAddAccount: () => void;
   onSignInAccount: (account: SteamAccountProfile) => void;
   onSignOutAccount: (account: SteamAccountProfile) => void;
@@ -91,7 +84,7 @@ export interface AppViewProps {
   onDisconnect: () => Promise<UIActionOutcome>;
   onInventoryRefresh: (suppressToast?: boolean) => Promise<boolean>;
   onGameInventoryRefresh: (
-    game: "steam" | "tf2" | "dota2",
+    game: import("../../shared/ui-types.js").EconomyGame,
     suppressToast?: boolean,
   ) => void;
   onSteamServiceRefresh: (appId: number) => void;
@@ -123,32 +116,15 @@ export interface AppViewProps {
     input: OpenContainerRequest,
     suppressToast?: boolean,
   ) => Promise<unknown>;
-  onTerminalSubmit: (
-    type: string,
-    input?: unknown,
-  ) => Promise<OperationReceipt>;
-  onStorageSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
-  onTradeUpSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
-  onStickerSubmit: (type: string, input?: unknown) => Promise<OperationReceipt>;
-  onNameTagApply: (input: SetItemNameRequest) => Promise<OperationReceipt>;
-  onNameTagRemove: (input: RemoveItemNameRequest) => Promise<OperationReceipt>;
-  onToolApplyStatTrakSwap: (
-    input: ApplyStatTrakSwapRequest,
-  ) => Promise<OperationReceipt>;
-  onToolApplyStrangePart: (
-    input: ApplyStrangePartRequest,
-  ) => Promise<OperationReceipt>;
-  onToolApplyToolToItem: (
-    input: ApplyToolToItemRequest,
-  ) => Promise<OperationReceipt>;
-  onToolApplyToolToBaseItem: (
-    input: ApplyToolToBaseItemRequest,
-  ) => Promise<OperationReceipt>;
-  onItemDelete: (input: DeleteItemRequest) => Promise<OperationReceipt>;
-  onItemUse: (input: UseItemRequest) => Promise<OperationReceipt>;
-  onItemUseMultiple: (
-    input: UseMultipleItemsRequest,
-  ) => Promise<OperationReceipt>;
-  onItemGift: (input: GiftItemRequest) => Promise<OperationReceipt>;
+  onLoadTerminalOffer: (terminalId: string) => Promise<OperationReceipt>;
+  onLoadStorageContents: (casketId: string) => Promise<OperationReceipt>;
+  onMoveFromStorage: (input: {
+    casketId: string;
+    itemId: string;
+  }) => Promise<OperationReceipt>;
+  onMoveIntoStorage: (input: {
+    casketId: string;
+    itemId: string;
+  }) => Promise<OperationReceipt>;
   onSaveSettings: (next: SettingsData) => Promise<UIActionOutcome>;
 }

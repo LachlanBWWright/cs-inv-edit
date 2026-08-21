@@ -368,7 +368,7 @@ export interface ContentsDialogProps {
   selected: InventoryItemDto;
   items: RelatedItemDto[];
   dialogContext: RelatedItemPreviewContext | undefined;
-  context: "container" | "collection" | undefined;
+  context: import("../../shared/ui-types.js").RelatedItemPreviewContext | undefined;
   onClose: () => void;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
 }

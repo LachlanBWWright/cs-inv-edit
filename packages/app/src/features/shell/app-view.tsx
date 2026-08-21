@@ -51,8 +51,6 @@ export function App(props: AppProps) {
       setKindFilter={controller.setKindFilter}
       compactMode={controller.compactMode()}
       setCompactMode={controller.setCompactMode}
-      receipts={controller.receipts()}
-      events={controller.events()}
       toasts={controller.toasts()}
       platform={props.platform}
       onAddAccount={() => void controller.addAccount()}
@@ -313,68 +311,27 @@ export function App(props: AppProps) {
           { suppressToast },
         )
       }
-      onTerminalSubmit={(type, input) =>
-        controller.settleOperation(props.backend.submitOperation(type, input), {
-          suppressToast: true,
-        })
-      }
-      onStorageSubmit={(type, input) =>
-        controller.settleOperation(props.backend.submitOperation(type, input))
-      }
-      onTradeUpSubmit={(type, input) =>
-        controller.settleOperation(props.backend.submitOperation(type, input))
-      }
-      onStickerSubmit={(type, input) =>
-        controller.settleOperation(props.backend.submitOperation(type, input))
-      }
-      onNameTagApply={(input) =>
+      onLoadTerminalOffer={(terminalId) =>
         controller.settleOperation(
-          createOperationApi(props.backend).applyNameTag(input),
+          props.backend.submitOperation("terminal.load-offer", { terminalId }),
+          {
+            suppressToast: true,
+          },
         )
       }
-      onNameTagRemove={(input) =>
+      onLoadStorageContents={(casketId) =>
         controller.settleOperation(
-          createOperationApi(props.backend).removeNameTag(input),
+          props.backend.submitOperation("storage.load", { casketId }),
         )
       }
-      onToolApplyStatTrakSwap={(input) =>
+      onMoveFromStorage={(input) =>
         controller.settleOperation(
-          createOperationApi(props.backend).applyStatTrakSwap(input),
+          props.backend.submitOperation("storage.move-out", input),
         )
       }
-      onToolApplyStrangePart={(input) =>
+      onMoveIntoStorage={(input) =>
         controller.settleOperation(
-          createOperationApi(props.backend).applyStrangePart(input),
-        )
-      }
-      onToolApplyToolToItem={(input) =>
-        controller.settleOperation(
-          createOperationApi(props.backend).applyToolToItem(input),
-        )
-      }
-      onToolApplyToolToBaseItem={(input) =>
-        controller.settleOperation(
-          createOperationApi(props.backend).applyToolToBaseItem(input),
-        )
-      }
-      onItemDelete={(input) =>
-        controller.settleOperation(
-          createOperationApi(props.backend).deleteItem(input),
-        )
-      }
-      onItemUse={(input) =>
-        controller.settleOperation(
-          createOperationApi(props.backend).useItem(input),
-        )
-      }
-      onItemUseMultiple={(input) =>
-        controller.settleOperation(
-          createOperationApi(props.backend).useMultipleItems(input),
-        )
-      }
-      onItemGift={(input) =>
-        controller.settleOperation(
-          createOperationApi(props.backend).giftItem(input),
+          props.backend.submitOperation("storage.move-in", input),
         )
       }
       onSaveSettings={(next) => controller.saveSettings(next)}

@@ -18,7 +18,7 @@ interface SteamInventoryServiceControllerOptions {
   pushToast: (toast: {
     title: string;
     description?: string;
-    variant?: "default" | "success" | "warning" | "danger";
+    variant?: import("../../shared/ui-types.js").StatusTone;
   }) => void;
 }
 

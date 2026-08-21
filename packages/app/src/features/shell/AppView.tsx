@@ -196,24 +196,24 @@ export function AppView(props: AppViewProps) {
               sort={sort()}
               marketPrices={marketPrices()}
               compactMode={props.compactMode}
-              onMarketPreview={props.onMarketPreview}
-              onScanPrices={props.onScanPrices}
-              onRename={props.onInventoryRename}
-              onRemoveName={props.onRemoveName}
-              onOpenContainer={props.onOpenContainer}
-              onTerminalPurchase={props.onStorePurchase}
-              onLoadTerminalOffer={(terminalId) =>
-                props.onTerminalSubmit("terminal.load-offer", { terminalId })
-              }
-              onLoadStorageContents={(casketId) =>
-                props.onStorageSubmit("storage.load", { casketId })
-              }
-              onMoveFromStorage={(input) =>
-                props.onStorageSubmit("storage.move-out", input)
-              }
-              onMoveIntoStorage={(input) =>
-                props.onStorageSubmit("storage.move-in", input)
-              }
+              marketActions={{
+                preview: props.onMarketPreview,
+                scanPrices: props.onScanPrices,
+              }}
+              renameActions={{
+                rename: props.onInventoryRename,
+                removeName: props.onRemoveName,
+              }}
+              containerActions={{
+                open: props.onOpenContainer,
+                purchaseTerminal: props.onStorePurchase,
+                loadTerminalOffer: props.onLoadTerminalOffer,
+              }}
+              storageActions={{
+                loadContents: props.onLoadStorageContents,
+                moveFrom: props.onMoveFromStorage,
+                moveInto: props.onMoveIntoStorage,
+              }}
               onRefresh={props.onInventoryRefresh}
             />
           </Match>

@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check deep indentation
+        run: pnpm find:deep-indentation
+
       - name: Test
         run: pnpm test
 

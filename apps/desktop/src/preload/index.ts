@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { ResultAsync, err, ok, fromThrowable } from "neverthrow";
 import type { AppError } from "@cs-inv-edit/app";
 import { backendSchemas } from "@cs-inv-edit/contracts";
+import type { EconomyGame } from "@cs-inv-edit/contracts";
 import type { SafeParseSchema } from "@cs-inv-edit/app";
 import { watchSteamStatusWithRecovery } from "@cs-inv-edit/app";
 
@@ -37,9 +38,9 @@ const api = {
   inventory: () => invokeResult(backendSchemas.inventory, "backend:inventory"),
   refreshInventory: () =>
     invokeResult(backendSchemas.receipt, "backend:refreshInventory"),
-  gameInventory: (game: "steam" | "tf2" | "dota2") =>
+  gameInventory: (game: EconomyGame) =>
     invokeResult(backendSchemas.gameInventory, "backend:gameInventory", game),
-  refreshGameInventory: (game: "steam" | "tf2" | "dota2") =>
+  refreshGameInventory: (game: EconomyGame) =>
     invokeResult(backendSchemas.receipt, "backend:refreshGameInventory", game),
   tf2Features: () =>
     invokeResult(backendSchemas.tf2Features, "backend:tf2Features"),

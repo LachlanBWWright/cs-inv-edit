@@ -1,10 +1,11 @@
 import type { AppBackendClient } from "./backend.js";
 import { appErrorMessage, fromAppPromise } from "./result.js";
+import type { StatusTone } from "../ui-types.js";
 
 type Toast = {
   title: string;
   description?: string;
-  variant?: "default" | "success" | "warning" | "danger";
+  variant?: StatusTone;
 };
 
 function pollLoadingSnapshot(refetch: () => unknown, label: string) {

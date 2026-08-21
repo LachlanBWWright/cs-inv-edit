@@ -8,6 +8,7 @@ import type {
   SteamInventoryServiceGames,
 } from "@cs-inv-edit/contracts";
 import type { UIActionOutcome } from "../../shared/lib/ui-action-outcome.js";
+import type { CompactMode } from "../../shared/ui-types.js";
 import type { InventorySort } from "../inventory/inventory-view-utils.js";
 import type { CommerceSort } from "../commerce/commerce-view-utils.js";
 import type { EconomyInventorySort } from "../inventory/game-inventory-utils.js";
@@ -18,7 +19,7 @@ import type { AppScreen } from "./view.js";
 export interface SidebarProps {
   view: AppScreen;
   setView: (view: AppScreen) => void;
-  platform: "desktop" | "web";
+  platform: import("../../shared/ui-types.js").AppPlatform;
   health: HealthStatus | undefined;
   connection: ConnectionStatus | undefined;
   accounts: SteamAccountProfile[];
@@ -39,8 +40,8 @@ export interface SidebarProps {
   rarityOptions: string[];
   weaponOptions: string[];
   collectionOptions: string[];
-  compactMode: "icons" | "concise" | "detailed";
-  setCompactMode: (value: "icons" | "concise" | "detailed") => void;
+  compactMode: CompactMode;
+  setCompactMode: (value: CompactMode) => void;
   economyTagFilter: string;
   setEconomyTagFilter: (value: string) => void;
   economyCategoryOptions: [string, string][];
@@ -67,7 +68,7 @@ export interface SidebarProps {
   setTF2MatchGroup: (value: number) => void;
   tf2ActivityFilter: TF2ActivityFilter;
   setTF2ActivityFilter: (value: TF2ActivityFilter) => void;
-  tf2ActivityLoading?: "history" | "context";
+  tf2ActivityLoading?: import("../../shared/ui-types.js").TF2ActivityLoading;
   onTF2HistoryRefresh: () => void;
   onTF2ContextRefresh: () => void;
   onTF2CampaignRefresh: () => void;

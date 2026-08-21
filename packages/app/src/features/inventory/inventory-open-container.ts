@@ -1,7 +1,11 @@
 import type { Accessor, Setter } from "solid-js";
 import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { containerItemOdds } from "./related-item-preview-utils.js";
-import { expectedReturn, scanPriceMap, type ReturnEstimate } from "../commerce/roi-utils.js";
+import {
+  expectedReturn,
+  scanPriceMap,
+  type ReturnEstimate,
+} from "../commerce/roi-utils.js";
 import type { RevealItem } from "../../shared/ui/RevealAnimation.js";
 import { itemDisplayName } from "./inventory-view-utils.js";
 import { isOpenableContainer, isTerminal } from "./inventory-view-utils.js";
@@ -18,7 +22,15 @@ interface OpenContainerContext {
   setPending: Setter<boolean>;
   setContainerReturn: Setter<ReturnEstimate | undefined>;
   setContainerReturnLoading: Setter<boolean>;
-  setReveal: Setter<{ result: RevealItem; ready: boolean; candidates: RevealItem[]; complete: () => void } | undefined>;
+  setReveal: Setter<
+    | {
+        result: RevealItem;
+        ready: boolean;
+        candidates: RevealItem[];
+        complete: () => void;
+      }
+    | undefined
+  >;
 }
 
 export function containerOpeningUsesReveal(
@@ -28,7 +40,18 @@ export function containerOpeningUsesReveal(
 }
 
 export function createOpenContainerHandler(context: OpenContainerContext) {
-  const { props, selectedItem, compatibleContainerKey, compatibleContainerKeys, connected, setContainerStatusMessage, setPending, setContainerReturn, setContainerReturnLoading, setReveal } = context;
+  const {
+    props,
+    selectedItem,
+    compatibleContainerKey,
+    compatibleContainerKeys,
+    connected,
+    setContainerStatusMessage,
+    setPending,
+    setContainerReturn,
+    setContainerReturnLoading,
+    setReveal,
+  } = context;
   return async (terminalSelection?: {
     pointsRemaining?: number;
     volatileLimit?: number;
@@ -96,23 +119,25 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
     ];
     setContainerReturnLoading(priceNames.length > 0);
     if (priceNames.length > 0)
-      void scanPriceMap(priceNames, props.onScanPrices).then((prices) => {
-        const odds = containerItemOdds(item.containerItems ?? []);
-        const cost =
-          (prices.get(item.marketName ?? "") ?? 0) +
-          (prices.get(compatibleContainerKey()?.marketName ?? "") ?? 0);
-        setContainerReturn(
-          expectedReturn(
-            (item.containerItems ?? []).map((candidate) => ({
-              marketName: candidate.marketName,
-              probability: odds.get(candidate) ?? 0,
-            })),
-            prices,
-            cost || undefined,
-          ),
-        );
-        setContainerReturnLoading(false);
-      });
+      void scanPriceMap(priceNames, props.marketActions.scanPrices).then(
+        (prices) => {
+          const odds = containerItemOdds(item.containerItems ?? []);
+          const cost =
+            (prices.get(item.marketName ?? "") ?? 0) +
+            (prices.get(compatibleContainerKey()?.marketName ?? "") ?? 0);
+          setContainerReturn(
+            expectedReturn(
+              (item.containerItems ?? []).map((candidate) => ({
+                marketName: candidate.marketName,
+                probability: odds.get(candidate) ?? 0,
+              })),
+              prices,
+              cost || undefined,
+            ),
+          );
+          setContainerReturnLoading(false);
+        },
+      );
     if (containerOpeningUsesReveal(animationMode))
       setReveal({
         result: candidates[0] ?? { name: "Awaiting item…" },
@@ -121,7 +146,7 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
         complete: () => undefined,
       });
     await fromAppPromise(
-      props.onOpenContainer(
+      props.containerActions.open(
         {
           itemId: item.id,
           ...(keyItemId ? { keyItemId } : {}),
@@ -183,7 +208,9 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
             receipt.result &&
             "offer" in receipt.result
               ? (receipt.result.offer as
-                  | NonNullable<InventoryItemDto["terminalOffers"]>[number]["item"]
+                  | NonNullable<
+                      InventoryItemDto["terminalOffers"]
+                    >[number]["item"]
                   | undefined)
               : terminalOffer?.item;
           const resolvedTerminalItemId =
@@ -262,6 +289,4 @@ export function createOpenContainerHandler(context: OpenContainerContext) {
     );
     setPending(false);
   };
-
-
 }

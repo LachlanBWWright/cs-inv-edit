@@ -10,7 +10,9 @@ import {
 import { WearRangeBar } from "../../shared/ui/WearRangeBar.js";
 import { Button } from "../../shared/ui/Button.js";
 
-export type RelatedItemPreviewContext = "collection" | "container" | "trade-up";
+import type { RelatedItemPreviewContext } from "../../shared/ui-types.js";
+
+export type { RelatedItemPreviewContext } from "../../shared/ui-types.js";
 
 export function RelatedItemPreview(props: {
   item: RelatedItemDto;

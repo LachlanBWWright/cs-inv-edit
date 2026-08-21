@@ -11,7 +11,7 @@ import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import type { createShellController } from "./controller.js";
 
 type ShellController = ReturnType<typeof createShellController>;
-type Game = "steam" | "tf2" | "dota2";
+type Game = import("../../shared/ui-types.js").EconomyGame;
 
 export function installAutomaticGameInventoryRefresh(input: {
   backend: LocalAgentClient;

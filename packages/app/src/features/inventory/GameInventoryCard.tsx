@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
 import type { EconomyInventoryItemDto } from "@cs-inv-edit/contracts";
+import type { CompactMode } from "../../shared/ui-types.js";
 import { economyOutlineClass } from "./game-inventory-utils.js";
 import { ItemMarketBadges } from "./ItemMarketBadges.js";
 import { ItemImage } from "./game-inventory-elements.js";
@@ -8,7 +9,7 @@ import { TF2ItemEffectBadges } from "../tf2/TF2ItemEffectBadges.js";
 export function GameInventoryCard(props: {
   item: EconomyInventoryItemDto;
   selected: boolean;
-  compactMode: "icons" | "concise" | "detailed";
+  compactMode: CompactMode;
   priceMinor: number | undefined;
   onSelect: () => void;
 }) {

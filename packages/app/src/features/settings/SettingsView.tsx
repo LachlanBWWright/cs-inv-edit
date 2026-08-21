@@ -43,7 +43,7 @@ export function SettingsView(props: SettingsViewProps) {
   >(props.settings);
   const [status, setStatus] = createSignal<string>("");
   const [statusVariant, setStatusVariant] = createSignal<
-    "default" | "success" | "danger"
+    import("../../shared/ui-types.js").FeedbackTone
   >("default");
   const [saving, setSaving] = createSignal(false);
   const [debugAnimation, setDebugAnimation] = createSignal<
@@ -160,10 +160,10 @@ export function SettingsView(props: SettingsViewProps) {
   };
 
   const animationMode = (
-    key: "container" | "tradeUp" | "armory" | "terminal",
+    key: import("../../shared/ui-types.js").SettingsRevealKey,
   ) => draft()?.animations?.[key] ?? "slot-machine";
   const setAnimationMode = (
-    key: "container" | "tradeUp" | "armory" | "terminal",
+    key: import("../../shared/ui-types.js").SettingsRevealKey,
     value: RevealAnimationMode | TradeUpAnimationMode,
   ) => {
     setDraft((current) =>

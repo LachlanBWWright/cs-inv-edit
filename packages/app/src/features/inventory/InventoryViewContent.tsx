@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
+import type { CompactMode } from "../../shared/ui-types.js";
 import type {
   ConnectionStatus,
   InitializeStorePurchaseRequest,
@@ -26,7 +27,7 @@ export interface InventoryViewContentProps {
   selectedItemKey: string | undefined;
   statusMessage: string;
   terminalOfferState:
-    | { terminalId: string; state: "loading" | "error"; message: string }
+    | { terminalId: string; state: import("../../shared/ui-types.js").LoadingState; message: string }
     | undefined;
   containerStatusMessage: string;
   renameOpen: boolean;
@@ -43,7 +44,7 @@ export interface InventoryViewContentProps {
   selectedContainerKeyId: string;
   canOpenContainer: boolean;
   canUseNameTagOn: boolean;
-  compactMode: "icons" | "concise" | "detailed";
+  compactMode: CompactMode;
   marketPrices: ReadonlyMap<string, number>;
   onMarketPreview: (
     marketName: string,

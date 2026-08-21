@@ -8,6 +8,7 @@ import type {
   SettingsData,
   TF2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
+import type { CompactMode } from "../../shared/ui-types.js";
 import { Alert } from "../../shared/ui/Alert.js";
 import { InventoryLoadingState } from "../../shared/ui/InventoryLoadingState.js";
 import { PullToRefresh } from "../../shared/ui/PullToRefresh.js";
@@ -29,7 +30,7 @@ export interface GameInventoryViewProps {
   tagFilter: string;
   selectedAssetId?: string;
   setSelectedAssetId: (id: string | undefined) => void;
-  compactMode: "icons" | "concise" | "detailed";
+  compactMode: CompactMode;
   sort: EconomyInventorySort;
   onRefresh: () => void;
   onScanPrices: (

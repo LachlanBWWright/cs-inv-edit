@@ -1,9 +1,10 @@
 import type { JSX } from "solid-js";
+import type { StatusTone } from "../ui-types.js";
 
 export interface AlertProps {
   children?: JSX.Element;
   class?: string;
-  variant?: "default" | "success" | "warning" | "danger";
+  variant?: StatusTone;
 }
 
 function cn(...values: Array<string | false | undefined>) {

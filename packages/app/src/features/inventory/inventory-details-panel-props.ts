@@ -27,7 +27,7 @@ export interface InventoryDetailsPanelProps {
   containerStatusMessage: string;
   terminalOfferState?: {
     terminalId: string;
-    state: "loading" | "error";
+    state: import("../../shared/ui-types.js").LoadingState;
     message: string;
   };
   onOpenRenameEditor: (item: InventoryItemDto) => void;

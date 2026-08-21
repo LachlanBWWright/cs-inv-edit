@@ -12,10 +12,10 @@ type RevealSelectionMode =
 
 export function RevealSettingsSection(props: {
   animationMode: (
-    key: "container" | "tradeUp" | "armory" | "terminal",
+    key: import("../../shared/ui-types.js").SettingsRevealKey,
   ) => RevealSelectionMode;
   setAnimationMode: (
-    key: "container" | "tradeUp" | "armory" | "terminal",
+    key: import("../../shared/ui-types.js").SettingsRevealKey,
     mode: RevealSelectionMode,
   ) => void;
   selectedDebugCollection: () => string;

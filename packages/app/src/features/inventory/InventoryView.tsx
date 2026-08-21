@@ -57,7 +57,7 @@ export function InventoryView(props: InventoryViewProps) {
     createSignal<string>();
   const [terminalOfferState, setTerminalOfferState] = createSignal<{
     terminalId: string;
-    state: "loading" | "error";
+    state: import("../../shared/ui-types.js").LoadingState;
     message: string;
   }>();
   const filteredItems = () => {
@@ -103,7 +103,7 @@ export function InventoryView(props: InventoryViewProps) {
       message: "Loading the current offer from CS2…",
     });
     void fromAppPromise(
-      props.onLoadTerminalOffer(selected.id),
+      props.containerActions.loadTerminalOffer(selected.id),
       "Failed to load terminal offer",
     ).match(
       (receipt) => {
@@ -313,8 +313,8 @@ export function InventoryView(props: InventoryViewProps) {
         canUseNameTagOn={
           selectedItem()?.kind === "weapon_skin" && nameTagTools().length > 0
         }
-        onMarketPreview={props.onMarketPreview}
-        onScanPrices={props.onScanPrices}
+        onMarketPreview={props.marketActions.preview}
+        onScanPrices={props.marketActions.scanPrices}
         compactMode={props.compactMode}
         marketPrices={props.marketPrices}
         onSelectItem={selectItem}
@@ -322,7 +322,7 @@ export function InventoryView(props: InventoryViewProps) {
         onRenameSubmit={handleRenameSubmit}
         onRemoveName={handleRemoveName}
         onOpenContainer={handleOpenContainer}
-        onTerminalPurchase={props.onTerminalPurchase}
+        onTerminalPurchase={props.containerActions.purchaseTerminal}
         onLoadStorageContents={handleLoadStorageContents}
         onBeginMoveIntoStorage={(unit) => {
           setMovingIntoStorageUnit(unit);

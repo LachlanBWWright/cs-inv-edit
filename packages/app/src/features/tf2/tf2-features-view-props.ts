@@ -3,12 +3,13 @@ import type {
   OperationReceipt,
   TF2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
+import type { CompactMode } from "../../shared/ui-types.js";
 
 export interface TF2FeaturesViewProps {
   snapshot?: GameInventorySnapshot;
   features?: TF2FeatureSnapshot;
   loading: boolean;
-  compactMode: "icons" | "concise" | "detailed";
+  compactMode: CompactMode;
   onRefresh: () => void;
   onOperation: (
     type: string,

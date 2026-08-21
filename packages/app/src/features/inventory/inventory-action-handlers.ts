@@ -65,7 +65,7 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     setPending(true);
     setStatusMessage("Applying custom name...");
     await fromAppPromise(
-      props.onRename({
+      props.renameActions.rename({
         subjectItemId: item.id,
         toolItemId: toolId,
         name: draftName(),
@@ -95,7 +95,7 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     setPending(true);
     setStatusMessage("Removing custom name...");
     await fromAppPromise(
-      props.onRemoveName({ itemId: item.id }),
+      props.renameActions.removeName({ itemId: item.id }),
       "Failed to remove custom name",
     ).match(
       () => {
@@ -113,7 +113,7 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     setPending(true);
     setStatusMessage("Loading storage unit contents from CS2...");
     const loaded = await fromAppPromise(
-      props.onLoadStorageContents(casketId),
+      props.storageActions.loadContents(casketId),
       "Failed to load storage unit contents",
     ).match(
       (receipt) => {
@@ -175,7 +175,7 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     let completed = 0;
     for (const itemId of itemIds) {
       await fromAppPromise(
-        props.onMoveFromStorage({ casketId: unit.id, itemId }),
+        props.storageActions.moveFrom({ casketId: unit.id, itemId }),
         "Failed to retrieve item from storage",
       ).match(
         (receipt) => {
@@ -207,7 +207,7 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     let completed = 0;
     for (const itemId of itemIds) {
       await fromAppPromise(
-        props.onMoveIntoStorage({ casketId: unit.id, itemId }),
+        props.storageActions.moveInto({ casketId: unit.id, itemId }),
         "Failed to move item into storage",
       ).match(
         (receipt) => {

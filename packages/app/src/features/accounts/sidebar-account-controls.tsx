@@ -11,19 +11,34 @@ import {
   isInventoryScreen,
 } from "../shell/view.js";
 
-export function SidebarAccountControls(
-  props: SidebarProps & {
-    state: {
-      accountOpen: Accessor<boolean>;
-      settingsOpen: Accessor<boolean>;
-      setAccountOpen: Setter<boolean>;
-      setSettingsOpen: Setter<boolean>;
-      setModeMenuOpen: Setter<boolean>;
-      setKindMenuOpen: Setter<boolean>;
-      setCompactMenuOpen: Setter<boolean>;
-    };
-  },
-) {
+type SidebarAccountControlsProps = Pick<
+  SidebarProps,
+  | "view"
+  | "connection"
+  | "inventory"
+  | "accounts"
+  | "settings"
+  | "onAddAccount"
+  | "onSignInAccount"
+  | "onSignOutAccount"
+  | "onDeleteAccount"
+  | "onRefreshInventory"
+  | "onRefreshCurrentInventory"
+  | "onOpenAccount"
+  | "onSaveSettings"
+> & {
+  state: {
+    accountOpen: Accessor<boolean>;
+    settingsOpen: Accessor<boolean>;
+    setAccountOpen: Setter<boolean>;
+    setSettingsOpen: Setter<boolean>;
+    setModeMenuOpen: Setter<boolean>;
+    setKindMenuOpen: Setter<boolean>;
+    setCompactMenuOpen: Setter<boolean>;
+  };
+};
+
+export function SidebarAccountControls(props: SidebarAccountControlsProps) {
   const state = props.state;
   return (
     <div class="ml-auto flex items-center gap-2">

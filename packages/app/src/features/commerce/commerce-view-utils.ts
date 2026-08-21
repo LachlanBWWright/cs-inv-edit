@@ -1,6 +1,8 @@
 import type { ArmorySnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
 
-export type CommerceSort = "name" | "price-low" | "price-high";
+import type { InventorySort } from "../../shared/ui-types.js";
+
+export type CommerceSort = Extract<InventorySort, "name" | "price-low" | "price-high">;
 
 export interface CommerceFilters {
   query: string;

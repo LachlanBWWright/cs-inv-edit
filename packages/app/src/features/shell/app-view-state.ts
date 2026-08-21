@@ -30,7 +30,7 @@ export function createAppViewState(props: AppViewProps) {
   const [tf2ActivityFilter, setTF2ActivityFilter] =
     createSignal<TF2ActivityFilter>("all");
   const [tf2ActivityLoading, setTF2ActivityLoading] = createSignal<
-    "history" | "context"
+    import("../../shared/ui-types.js").TF2ActivityLoading
   >();
   const [tf2ActivityError, setTF2ActivityError] = createSignal("");
   const [cs2ActivityFilter, setCS2ActivityFilter] =
@@ -63,7 +63,9 @@ export function createAppViewState(props: AppViewProps) {
     requestedCS2Profile = true;
     void props.onGameOperation("cs2.profile.refresh", { game: "cs2" }, true);
   });
-  const runTF2ActivityOperation = async (kind: "history" | "context") => {
+  const runTF2ActivityOperation = async (
+    kind: import("../../shared/ui-types.js").TF2ActivityLoading,
+  ) => {
     setTF2ActivityLoading(kind);
     setTF2ActivityError("");
     const receipt = await props.onGameOperation(

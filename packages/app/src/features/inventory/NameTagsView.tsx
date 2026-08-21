@@ -53,7 +53,10 @@ function NameTagFormCard(props: {
   title: string;
   pending: boolean;
   actionLabel: string;
-  variant?: "default" | "danger";
+  variant?: Extract<
+    import("../../shared/ui-types.js").StatusTone,
+    "default" | "danger"
+  >;
   onSubmit: () => void;
   children: JSX.Element | string | number | null | undefined;
 }) {

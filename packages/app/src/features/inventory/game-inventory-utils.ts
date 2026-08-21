@@ -3,14 +3,9 @@ import type {
   EconomyInventoryItemDto,
   GameInventorySnapshot,
 } from "@cs-inv-edit/contracts";
+import type { CompactMode, EconomyInventorySort } from "../../shared/ui-types.js";
 
-export type EconomyInventorySort =
-  | "name"
-  | "quality-high"
-  | "quality-low"
-  | "price-high"
-  | "price-low"
-  | "quantity-high";
+export type { EconomyInventorySort } from "../../shared/ui-types.js";
 
 const tf2QualityRanks: Record<number, number> = {
   0: 0,
@@ -201,7 +196,7 @@ export function calculateVirtualInventoryWindow(
   width: number,
   height: number,
   scrollTop: number,
-  compactMode: "icons" | "concise" | "detailed",
+  compactMode: CompactMode,
 ) {
   const minimumWidth = compactMode === "icons" ? 105 : 165;
   const rowHeight = compactMode === "icons" ? 116 : 158;
@@ -226,7 +221,7 @@ export function virtualInventoryWindowChanged(
   height: number,
   previousScrollTop: number,
   nextScrollTop: number,
-  compactMode: "icons" | "concise" | "detailed",
+  compactMode: CompactMode,
 ) {
   const previous = calculateVirtualInventoryWindow(
     itemCount,

@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
+import type { CompactMode } from "../../shared/ui-types.js";
 import type {
   InventoryItemDto,
   InventorySnapshot,
@@ -30,7 +31,7 @@ export interface InventoryGridProps {
   selectedItem: InventoryItemDto | undefined;
   selectedItemExplicit: boolean;
   selectedItemIds: string[];
-  compactMode: "icons" | "concise" | "detailed";
+  compactMode: CompactMode;
   marketPrices: ReadonlyMap<string, number>;
   onSelectItem: (
     item: InventoryItemDto,

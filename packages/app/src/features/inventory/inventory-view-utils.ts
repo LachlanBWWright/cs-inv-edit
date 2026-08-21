@@ -1,4 +1,5 @@
 import type { InventoryItemDto, RelatedItemDto } from "@cs-inv-edit/contracts";
+import type { InventorySort } from "../../shared/ui-types.js";
 
 export function rarityRank(rarity: string | undefined) {
   const value = rarity?.trim().toLowerCase() ?? "";
@@ -152,14 +153,7 @@ export function compactItemMeta(item: InventoryItemDto) {
     .join(" · ");
 }
 
-export type InventorySort =
-  | "name"
-  | "float-low"
-  | "float-high"
-  | "rarity-low"
-  | "rarity-high"
-  | "price-low"
-  | "price-high";
+export type { InventorySort } from "../../shared/ui-types.js";
 
 export function sortInventoryItems(
   items: InventoryItemDto[],

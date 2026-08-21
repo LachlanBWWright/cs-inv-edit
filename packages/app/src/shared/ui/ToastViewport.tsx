@@ -1,11 +1,12 @@
 import { For, Show } from "solid-js";
 import { Button } from "./Button.js";
+import type { StatusTone } from "../ui-types.js";
 
 export interface ToastItem {
   id: string;
   title: string;
   description?: string;
-  variant?: "default" | "success" | "warning" | "danger";
+  variant?: StatusTone;
 }
 
 export interface ToastViewportProps {

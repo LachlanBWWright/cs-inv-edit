@@ -5,6 +5,7 @@ import type {
   SteamAccountProfile,
 } from "@cs-inv-edit/contracts";
 import type { AppScreen } from "./view.js";
+import type { CompactMode } from "../../shared/ui-types.js";
 
 export type ShellKindFilter = "all" | InventoryItemDto["kind"];
 
@@ -17,8 +18,8 @@ export interface ShellController {
   setQuery: Setter<string>;
   kindFilter: Accessor<ShellKindFilter>;
   setKindFilter: Setter<ShellKindFilter>;
-  compactMode: Accessor<"icons" | "concise" | "detailed">;
-  setCompactMode: Setter<"icons" | "concise" | "detailed">;
+  compactMode: Accessor<CompactMode>;
+  setCompactMode: Setter<CompactMode>;
   accounts: Accessor<SteamAccountProfile[]>;
   setAccounts: Setter<SteamAccountProfile[]>;
   accountUsername: Accessor<string>;
@@ -35,7 +36,7 @@ export function createShellController(
   const [query, setQuery] = createSignal("");
   const [kindFilter, setKindFilter] = createSignal<ShellKindFilter>("all");
   const [compactMode, setCompactMode] = createSignal<
-    "icons" | "concise" | "detailed"
+    CompactMode
   >("concise");
   const [accounts, setAccounts] = createSignal<SteamAccountProfile[]>([]);
   const [accountUsername, setAccountUsername] = createSignal("");
