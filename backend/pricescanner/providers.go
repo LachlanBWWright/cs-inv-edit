@@ -19,6 +19,44 @@ type SteamProvider struct {
 	AppID   int
 }
 
+func (p *SteamProvider) Search(ctx context.Context, text string, appID int, limit int) (SearchResult, error) {
+	client := p.Client
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	if appID == 0 {
+		appID = p.AppID
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 24
+	}
+	params := url.Values{"query": {text}, "start": {"0"}, "count": {strconv.Itoa(limit)}, "search_descriptions": {"0"}, "appid": {strconv.Itoa(appID)}, "norender": {"1"}}
+	var payload struct {
+		Success bool `json:"success"`
+		Results []struct {
+			Name     string `json:"name"`
+			HashName string `json:"hash_name"`
+			Asset    struct {
+				IconURL string `json:"icon_url"`
+			} `json:"asset_description"`
+		} `json:"results"`
+	}
+	if err := getJSON(ctx, client, "https://steamcommunity.com/market/search/render/?"+params.Encode(), map[string]string{"Accept": "application/json"}, &payload); err != nil {
+		return SearchResult{}, err
+	}
+	if !payload.Success {
+		return SearchResult{}, fmt.Errorf("Steam Market search failed")
+	}
+	items := make([]SearchItem, 0, len(payload.Results))
+	for _, item := range payload.Results {
+		if item.HashName == "" {
+			continue
+		}
+		items = append(items, SearchItem{MarketName: item.HashName, Name: item.Name, ImageURL: item.Asset.IconURL})
+	}
+	return SearchResult{Items: items}, nil
+}
+
 func NewSteamProvider(client HTTPDoer) *SteamProvider {
 	return &SteamProvider{Client: client, BaseURL: "https://steamcommunity.com/market/priceoverview/", AppID: 730}
 }

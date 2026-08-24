@@ -90,6 +90,8 @@ export type Sticker = {
   slot?: number;
   stickerId?: number;
   wear?: number;
+  name?: string;
+  imageUrl?: string;
 };
 
 export type AppliedItem = {
@@ -143,6 +145,8 @@ export type ItemDebug = {
 
 export type InventoryItem = {
   id: string;
+  originalId?: string;
+  quantity?: number;
   name: string;
   marketName?: string;
   marketPrice?: string;
@@ -160,6 +164,8 @@ export type InventoryItem = {
     | "cs2_econ_item"
     | "unknown";
   defindex?: number;
+  paintKit?: number;
+  paintSeed?: number;
   paintWear?: number;
   paintWearMin?: number;
   paintWearMax?: number;
@@ -176,6 +182,10 @@ export type InventoryItem = {
   isActiveTerminal?: boolean;
   exterior?: string;
   rarity?: string;
+  qualityId?: number;
+  rarityId?: number;
+  customDescription?: string;
+  inventoryPosition?: number;
   storageLocation?: string;
   toolType?: string;
   requiredKeyDefIndexes?: Array<number>;
@@ -512,11 +522,13 @@ export type FeatureFlags = {
   enableTf2ItemUse: boolean;
   enableTf2Tools: boolean;
   enableTf2Crafting: boolean;
+  enableTf2Tradeups: boolean;
   enableTf2Unboxing: boolean;
   enableTf2Customization: boolean;
   enableDota2Inventory: boolean;
   enableSteamInventory: boolean;
   enableSteamTradeMutations?: boolean;
+  enablePriceAnalysis?: boolean;
 };
 
 export type SettingsData = {

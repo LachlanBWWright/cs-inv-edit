@@ -77,10 +77,12 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			optionalBoolSetting(next, "enableTf2ItemUse", &flags.EnableTF2ItemUse)
 			optionalBoolSetting(next, "enableTf2Tools", &flags.EnableTF2Tools)
 			optionalBoolSetting(next, "enableTf2Crafting", &flags.EnableTF2Crafting)
+			optionalBoolSetting(next, "enableTf2Tradeups", &flags.EnableTF2Tradeups)
 			optionalBoolSetting(next, "enableTf2Unboxing", &flags.EnableTF2Unboxing)
 			optionalBoolSetting(next, "enableTf2Customization", &flags.EnableTF2Customization)
 			optionalBoolSetting(next, "enableDota2Inventory", &flags.EnableDota2Inventory)
 			optionalBoolSetting(next, "enableSteamInventory", &flags.EnableSteamInventory)
+			optionalBoolSetting(next, "enablePriceAnalysis", &flags.EnablePriceAnalysis)
 			s.settings.FeatureFlags = flags
 			s.gcClient.SetProtocolTracing(flags.EnableProtocolConsole)
 			if !flags.EnableTF2Inventory {

@@ -60,6 +60,9 @@ const cs2ActivityFilters = [
   "missions",
 ] as const satisfies readonly CS2ActivityFilter[];
 
+const priceFeaturesEnabled = (props: SidebarProps) =>
+  props.settings?.featureFlags.enablePriceAnalysis === true;
+
 function OwnedGameOption(props: { game: { appId: number; name: string } }) {
   return (
     <option value={props.game.appId}>
@@ -143,7 +146,15 @@ export function SidebarContextControls(props: SidebarProps) {
             }}
           >
             <For each={inventorySortOptions}>
-              {([value, label]) => <option value={value}>{label}</option>}
+              {([value, label]) => (
+                <Show
+                  when={
+                    priceFeaturesEnabled(props) || !value.startsWith("price-")
+                  }
+                >
+                  <option value={value}>{label}</option>
+                </Show>
+              )}
             </For>
           </Select>
         </Show>
@@ -180,8 +191,10 @@ export function SidebarContextControls(props: SidebarProps) {
             <option value="name">Name: A to Z</option>
             <option value="quality-high">Quality: high to low</option>
             <option value="quality-low">Quality: low to high</option>
-            <option value="price-high">Price: high to low</option>
-            <option value="price-low">Price: low to high</option>
+            <Show when={priceFeaturesEnabled(props)}>
+              <option value="price-high">Price: high to low</option>
+              <option value="price-low">Price: low to high</option>
+            </Show>
             <option value="quantity-high">Quantity: high to low</option>
           </Select>
         </Show>
@@ -209,8 +222,10 @@ export function SidebarContextControls(props: SidebarProps) {
             }}
           >
             <option value="name">Name</option>
-            <option value="price-low">Price: low to high</option>
-            <option value="price-high">Price: high to low</option>
+            <Show when={priceFeaturesEnabled(props)}>
+              <option value="price-low">Price: low to high</option>
+              <option value="price-high">Price: high to low</option>
+            </Show>
           </Select>
         </Show>
       </Show>

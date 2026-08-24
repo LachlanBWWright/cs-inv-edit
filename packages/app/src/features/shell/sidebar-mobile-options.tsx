@@ -29,6 +29,9 @@ const commerceSorts = [
   "price-high",
 ] as const satisfies readonly CommerceSort[];
 
+const priceFeaturesEnabled = (props: SidebarProps) =>
+  props.settings?.featureFlags.enablePriceAnalysis === true;
+
 export interface MobileNavOptionsProps {
   open: boolean;
   onClose: () => void;
@@ -136,8 +139,10 @@ function EconomyInventorySection(props: { props: SidebarProps }) {
             <option value="name">Name · A to Z</option>
             <option value="quality-high">Quality · High to low</option>
             <option value="quality-low">Quality · Low to high</option>
-            <option value="price-high">Steam price · High to low</option>
-            <option value="price-low">Steam price · Low to high</option>
+            <Show when={priceFeaturesEnabled(props.props)}>
+              <option value="price-high">Steam price · High to low</option>
+              <option value="price-low">Steam price · Low to high</option>
+            </Show>
             <option value="quantity-high">Quantity · High to low</option>
           </Select>
         </label>
@@ -194,8 +199,10 @@ function CommerceSection(props: { props: SidebarProps }) {
           }}
         >
           <option value="name">Name</option>
-          <option value="price-low">Price: low to high</option>
-          <option value="price-high">Price: high to low</option>
+          <Show when={priceFeaturesEnabled(props.props)}>
+            <option value="price-low">Price: low to high</option>
+            <option value="price-high">Price: high to low</option>
+          </Show>
         </Select>
       </label>
     </section>

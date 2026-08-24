@@ -158,4 +158,8 @@ export const dataServicePaths = {
   readiness: "/readyz" satisfies GetReadinessData["url"],
   providers: "/v1/providers" satisfies ListProvidersData["url"],
   queryPrices: "/v1/prices/query" satisfies QueryPricesData["url"],
+  priceHistory: (marketName: string, currency: string, appId = 730) =>
+    `/v1/prices/history?marketName=${query(marketName)}&currency=${query(currency)}&appId=${query(appId)}`,
+  searchPrices: (search: string, appId = 730, limit = 24) =>
+    `/v1/prices/search?query=${query(search)}&appId=${query(appId)}&limit=${query(limit)}`,
 } as const;

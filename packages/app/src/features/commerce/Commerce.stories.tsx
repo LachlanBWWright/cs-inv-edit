@@ -1,5 +1,9 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import type { PriceScanResult } from "@cs-inv-edit/contracts";
+import type {
+  PriceHistoryResult,
+  PriceScanResult,
+} from "@cs-inv-edit/contracts";
+import { PriceAnalysisView } from "./PriceAnalysisView.js";
 import { ReturnEstimateCard } from "./ReturnEstimateCard.js";
 import { VendorPricePreview } from "./VendorPricePreview.js";
 
@@ -38,6 +42,35 @@ const prices: PriceScanResult = {
   ],
 };
 
+const priceHistory: PriceHistoryResult = {
+  marketName: "AK-47 | Slate (Field-Tested)",
+  appId: 730,
+  currency: "USD",
+  baselineSource: "steam",
+  observations: [
+    {
+      source: "steam",
+      marketName: "AK-47 | Slate (Field-Tested)",
+      currency: "USD",
+      amountMinor: 402,
+      displayPrice: "$4.02",
+      priceMultiplier: 1,
+      observedAt: "2026-08-11T00:00:00Z",
+    },
+    {
+      source: "csfloat",
+      marketName: "AK-47 | Slate (Field-Tested)",
+      currency: "USD",
+      amountMinor: 376,
+      displayPrice: "$3.76",
+      priceMultiplier: 0.8,
+      adjustedAmountMinor: 301,
+      adjustedDisplayPrice: "USD 3.01",
+      observedAt: "2026-08-13T00:00:00Z",
+    },
+  ],
+};
+
 function CommerceGallery(props: { loading?: boolean; stale?: boolean }) {
   const result = () =>
     props.stale ? { ...prices, cacheState: "stale" as const } : prices;
@@ -51,6 +84,7 @@ function CommerceGallery(props: { loading?: boolean; stale?: boolean }) {
         loading={!!props.loading}
       />
       <ReturnEstimateCard
+        enabled
         estimate={{
           expectedValueMinor: 812,
           costMinor: 624,
@@ -82,4 +116,27 @@ export const StalePrices: Story = {
 };
 export const Loading: Story = {
   render: () => <CommerceGallery loading />,
+};
+
+export const PriceAnalysis: Story = {
+  render: () => (
+    <PriceAnalysisView
+      initialMarketName="AK-47 | Slate (Field-Tested)"
+      initialItems={[
+        {
+          marketName: "AK-47 | Slate (Field-Tested)",
+          name: "AK-47 | Slate (Field-Tested)",
+        },
+        {
+          marketName: "AK-47 | Redline (Field-Tested)",
+          name: "AK-47 | Redline (Field-Tested)",
+        },
+      ]}
+      initialResult={prices}
+      initialHistory={priceHistory}
+      onSearchPrices={async () => ({ items: [] })}
+      onScanPrices={async () => prices}
+      onLoadHistory={async () => priceHistory}
+    />
+  ),
 };

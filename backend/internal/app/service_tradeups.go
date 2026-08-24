@@ -1,9 +1,11 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
@@ -114,7 +116,90 @@ func (s *Service) submitTradeUp(
 		receipt.State, receipt.Message = "failed", "send trade-up request: "+sendErr.Error()
 	} else {
 		receipt.State, receipt.Message = "awaiting_gc_confirmation", "trade-up request sent to CS2"
+		operationID := receipt.OperationID
+		before := cloneInventory(inventory)
+		go s.reconcileCS2TradeUp(operationID, before, ids)
 	}
 	s.addEvent(receipt, receipt.State, receipt.Message)
 	return receipt
+}
+
+func (s *Service) reconcileCS2TradeUp(operationID string, before domain.InventorySnapshot, consumedIDs []uint64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	response, err := s.gcClient.WaitForCS2CraftResponse(ctx)
+	if err != nil {
+		s.updateTradeUpReceipt(operationID, operations.StateReconcilingInventory, "CS2 craft was sent, but no craft response was received before timeout", map[string]any{"diagnostics": []string{err.Error()}})
+		return
+	}
+	result := map[string]any{
+		"recipe":          response.Recipe,
+		"gainedItemIds":   uint64Strings(response.GainedItemIDs),
+		"consumedItemIds": uint64Strings(consumedIDs),
+		"beforeItemCount": len(before.Items),
+	}
+	after, refreshErr := s.fetchInventory(ctx, nil)
+	if refreshErr != nil {
+		result["diagnostics"] = []string{"craft response received, but inventory refresh failed: " + refreshErr.Error()}
+		s.updateTradeUpReceipt(operationID, operations.StateReconcilingInventory, "CS2 craft response received; inventory reconciliation is still pending", result)
+		return
+	}
+	result["afterItemCount"] = len(after.Items)
+	consumedMissing := missingInventoryIDs(after, consumedIDs)
+	gainedPresent := presentInventoryIDs(after, response.GainedItemIDs)
+	result["consumedMissing"] = uint64Strings(consumedMissing)
+	result["gainedPresent"] = uint64Strings(gainedPresent)
+	s.mu.Lock()
+	s.inventory = after
+	s.mu.Unlock()
+	if response.Recipe != tradeUpRecipe || len(response.GainedItemIDs) == 0 || len(consumedMissing) != len(consumedIDs) || len(gainedPresent) != len(response.GainedItemIDs) {
+		result["diagnostics"] = []string{"CS2 returned a craft response, but the refreshed inventory does not yet match the consumed/output IDs"}
+		s.updateTradeUpReceipt(operationID, operations.StateReconcilingInventory, "CS2 craft response received; inventory reconciliation is still pending", result)
+		return
+	}
+	s.updateTradeUpReceipt(operationID, operations.StateCompleted, "CS2 trade-up completed and inventory reconciled", result)
+}
+
+func missingInventoryIDs(snapshot domain.InventorySnapshot, ids []uint64) []uint64 {
+	present := make(map[string]struct{}, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		present[item.ID] = struct{}{}
+	}
+	missing := make([]uint64, 0)
+	for _, id := range ids {
+		if _, ok := present[strconv.FormatUint(id, 10)]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+func presentInventoryIDs(snapshot domain.InventorySnapshot, ids []uint64) []uint64 {
+	present := make(map[string]struct{}, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		present[item.ID] = struct{}{}
+	}
+	found := make([]uint64, 0)
+	for _, id := range ids {
+		if _, ok := present[strconv.FormatUint(id, 10)]; ok {
+			found = append(found, id)
+		}
+	}
+	return found
+}
+
+func (s *Service) updateTradeUpReceipt(operationID string, state operations.State, message string, result map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index := range s.operations {
+		if s.operations[index].OperationID != operationID {
+			continue
+		}
+		s.operations[index].State = state
+		s.operations[index].Message = message
+		s.operations[index].Result = result
+		s.events = append(s.events, operations.NewEvent(s.operations[index], state, message))
+		s.lastOperation = s.operations[index]
+		return
+	}
 }

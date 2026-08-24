@@ -89,7 +89,7 @@ func (s *Service) submitTF2Operation(receipt operations.Receipt, operation strin
 
 func tf2OperationIsPermanent(operation string) bool {
 	switch operation {
-	case "tf2.items.use", "tf2.tools.strange-part", "tf2.tools.strange-restriction", "tf2.tools.strange-transfer", "tf2.tools.strange-remove", "tf2.tools.strange-reset", "tf2.crafting.craft", "tf2.crafting.stat-clock", "tf2.containers.open", "tf2.customization.decal-apply":
+	case "tf2.items.use", "tf2.tools.strange-part", "tf2.tools.strange-restriction", "tf2.tools.strange-transfer", "tf2.tools.strange-remove", "tf2.tools.strange-reset", "tf2.crafting.craft", "tf2.crafting.trade-up", "tf2.crafting.halloween-offering", "tf2.crafting.stat-clock", "tf2.containers.open", "tf2.customization.decal-apply":
 		return true
 	default:
 		return false
@@ -150,6 +150,8 @@ func tf2OperationEnabled(flags domain.FeatureFlags, featureFlag string) bool {
 		return flags.EnableTF2Tools
 	case "enableTf2Crafting":
 		return flags.EnableTF2Crafting
+	case "enableTf2Tradeups":
+		return flags.EnableTF2Tradeups
 	case "enableTf2Unboxing":
 		return flags.EnableTF2Unboxing
 	case "enableTf2Customization":
@@ -186,8 +188,17 @@ func (s *Service) validateTF2OwnedItems(steamID string, itemIDs []uint64) error 
 
 func (s *Service) validateTF2Compatibility(steamID, operation string, input map[string]any) error {
 	operationType := operations.Type(operation)
+	if operation == "tf2.crafting.craft" {
+		return s.validateTF2StandardRecipe(steamID, input)
+	}
+	if operation == "tf2.crafting.trade-up" {
+		return s.validateTF2TradeUpIngredients(steamID, input)
+	}
 	if operation == "tf2.crafting.stat-clock" {
 		return s.validateTF2StatClockIngredients(steamID, input)
+	}
+	if operation == "tf2.crafting.halloween-offering" {
+		return s.validateTF2HalloweenOffering(steamID, input)
 	}
 	if operationType != operations.TypeTF2StrangePart && operationType != operations.TypeTF2StrangeRestriction && operationType != operations.TypeTF2StrangeTransfer && operationType != operations.TypeTF2StrangeRemove && operationType != operations.TypeTF2StrangeReset {
 		return nil
@@ -233,6 +244,183 @@ func (s *Service) validateTF2Compatibility(steamID, operation string, input map[
 			if !strings.Contains(descriptor, expected) {
 				return fmt.Errorf("selected owned tool is not compatible with %s", operation)
 			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateTF2HalloweenOffering(steamID string, input map[string]any) error {
+	toolID, err := requiredUint64Input(input, "toolItemId")
+	if err != nil {
+		return err
+	}
+	itemIDs, err := requiredTF2ItemIDsAtLeast(input, 1)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	snapshot := s.gameInventories[gameInventoryKey(steamID, "tf2")]
+	s.mu.Unlock()
+	items := make(map[string]domain.EconomyInventoryItem, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		items[item.AssetID] = item
+	}
+	tool, found := items[strconv.FormatUint(toolID, 10)]
+	if !found {
+		return fmt.Errorf("Halloween Offering tool %d is not present in the current inventory", toolID)
+	}
+	descriptor := strings.ToLower(tool.Name + " " + tool.MarketName + " " + tool.Details.ToolType)
+	if !strings.Contains(descriptor, "halloween") && !strings.Contains(descriptor, "offering") {
+		return fmt.Errorf("selected tool is not a Halloween Offering")
+	}
+	for _, itemID := range itemIDs {
+		if itemID == toolID {
+			return fmt.Errorf("Halloween Offering tool cannot also be an offered item")
+		}
+		if _, found := items[strconv.FormatUint(itemID, 10)]; !found {
+			return fmt.Errorf("offered item %d is not present in the current inventory", itemID)
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateTF2StandardRecipe(steamID string, input map[string]any) error {
+	recipe, err := requiredTF2Recipe(input)
+	if err != nil {
+		return err
+	}
+	ids, err := requiredTF2ItemIDs(input, tf2StandardRecipeCounts[recipe])
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	snapshot := s.gameInventories[gameInventoryKey(steamID, "tf2")]
+	s.mu.Unlock()
+	items := make([]domain.EconomyInventoryItem, 0, len(ids))
+	byID := make(map[string]domain.EconomyInventoryItem, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		byID[item.AssetID] = item
+	}
+	for _, id := range ids {
+		items = append(items, byID[fmt.Sprintf("%d", id)])
+	}
+	isWeapon := func(item domain.EconomyInventoryItem) bool { return item.Details.CraftMaterialType == "weapon" }
+	isRefined := func(item domain.EconomyInventoryItem) bool { return item.Name == "Refined Metal" }
+	isClassToken := func(item domain.EconomyInventoryItem) bool { return item.Details.ItemClass == "class_token" }
+	isSlotToken := func(item domain.EconomyInventoryItem) bool { return item.Details.ItemClass == "slot_token" }
+	count := func(predicate func(domain.EconomyInventoryItem) bool) int {
+		result := 0
+		for _, item := range items {
+			if predicate(item) {
+				result++
+			}
+		}
+		return result
+	}
+	switch recipe {
+	case 3, 7:
+		if count(isWeapon) != len(items) || !sameTF2UsableClass(items) {
+			return fmt.Errorf("TF2 recipe %d requires weapons usable by the same class", recipe)
+		}
+	case 4:
+		if count(func(item domain.EconomyInventoryItem) bool { return item.Name == "Scrap Metal" }) != len(items) {
+			return fmt.Errorf("TF2 recipe 4 requires Scrap Metal")
+		}
+	case 5:
+		if count(func(item domain.EconomyInventoryItem) bool { return item.Name == "Reclaimed Metal" }) != len(items) {
+			return fmt.Errorf("TF2 recipe 5 requires Reclaimed Metal")
+		}
+	case 6:
+		if count(isRefined) != len(items) {
+			return fmt.Errorf("TF2 recipe 6 requires Refined Metal")
+		}
+	case 8:
+		if count(isWeapon) != len(items) || !sameTF2EquipSlot(items) {
+			return fmt.Errorf("TF2 recipe 8 requires weapons from the same slot")
+		}
+	case 9:
+		if count(func(item domain.EconomyInventoryItem) bool { return item.Details.CraftMaterialType == "hat" }) != len(items) {
+			return fmt.Errorf("TF2 recipe 9 requires craftable headgear")
+		}
+	case 10:
+		if count(isRefined) != 4 || count(isClassToken) != 1 {
+			return fmt.Errorf("TF2 recipe 10 requires four Refined Metal and one Class Token")
+		}
+	case 11:
+		if count(isRefined) != 3 || count(isClassToken) != 1 || count(isSlotToken) != 1 {
+			return fmt.Errorf("TF2 recipe 11 requires three Refined Metal, one Class Token, and one Slot Token")
+		}
+	case 13:
+		if count(isWeapon) != 1 || count(isClassToken) != 1 {
+			return fmt.Errorf("TF2 recipe 13 requires one weapon and one Class Token")
+		}
+	case 14:
+		if count(isWeapon) != 1 || count(isSlotToken) != 1 {
+			return fmt.Errorf("TF2 recipe 14 requires one weapon and one Slot Token")
+		}
+	case 15:
+		if count(func(item domain.EconomyInventoryItem) bool { return isClassToken(item) || isSlotToken(item) }) != len(items) {
+			return fmt.Errorf("TF2 recipe 15 requires three Class or Slot Tokens")
+		}
+	}
+	return nil
+}
+
+func sameTF2UsableClass(items []domain.EconomyInventoryItem) bool {
+	if len(items) == 0 || len(items[0].Details.UsableClasses) == 0 {
+		return false
+	}
+	for _, candidate := range items[1:] {
+		shared := false
+		for _, firstClass := range items[0].Details.UsableClasses {
+			for _, candidateClass := range candidate.Details.UsableClasses {
+				if firstClass == candidateClass {
+					shared = true
+				}
+			}
+		}
+		if !shared {
+			return false
+		}
+	}
+	return true
+}
+
+func sameTF2EquipSlot(items []domain.EconomyInventoryItem) bool {
+	if len(items) == 0 || items[0].Details.EquipSlot == "" {
+		return false
+	}
+	for _, item := range items[1:] {
+		if item.Details.EquipSlot != items[0].Details.EquipSlot {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Service) validateTF2TradeUpIngredients(steamID string, input map[string]any) error {
+	ids, err := requiredTF2ItemIDs(input, 10)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	snapshot := s.gameInventories[gameInventoryKey(steamID, "tf2")]
+	s.mu.Unlock()
+	items := make(map[string]domain.EconomyInventoryItem, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		items[item.AssetID] = item
+	}
+	first, found := items[fmt.Sprintf("%d", ids[0])]
+	if !found {
+		return fmt.Errorf("TF2 trade-up input %d is not present in the current inventory", ids[0])
+	}
+	for _, id := range ids {
+		item, found := items[fmt.Sprintf("%d", id)]
+		if !found || item.Details.Collection == "" || item.Details.Rarity == "" || len(item.Details.TradeUpItems) == 0 {
+			return fmt.Errorf("all TF2 trade-up inputs must be eligible collection items")
+		}
+		if item.Quality != first.Quality || item.Details.Rarity != first.Details.Rarity {
+			return fmt.Errorf("all TF2 trade-up inputs must have the same quality and grade")
 		}
 	}
 	return nil
@@ -289,6 +477,35 @@ func encodeTF2Operation(operation string, input map[string]any) ([]byte, []uint6
 		}
 		body, err := tf2tracking.MarshalFields("CMsgSortItems", map[string]any{"sort_type": sortType})
 		return body, nil, err
+	case "tf2.crafting.craft":
+		recipe, err := requiredTF2Recipe(input)
+		if err != nil {
+			return nil, nil, err
+		}
+		itemIDs, err := requiredTF2ItemIDs(input, tf2StandardRecipeCounts[recipe])
+		if err != nil {
+			return nil, nil, err
+		}
+		body, err := protocol.EncodeTF2CraftRequest(recipe, itemIDs)
+		return body, itemIDs, err
+	case "tf2.crafting.trade-up":
+		itemIDs, err := requiredTF2ItemIDs(input, 10)
+		if err != nil {
+			return nil, nil, err
+		}
+		body, err := tf2tracking.MarshalFields("CMsgCraftCollectionUpgrade", map[string]any{"item_id": itemIDs})
+		return body, itemIDs, err
+	case "tf2.crafting.halloween-offering":
+		toolID, err := requiredUint64Input(input, "toolItemId")
+		if err != nil {
+			return nil, nil, err
+		}
+		itemIDs, err := requiredTF2ItemIDsAtLeast(input, 1)
+		if err != nil {
+			return nil, nil, err
+		}
+		body, err := tf2tracking.MarshalFields("CMsgCraftHalloweenOffering", map[string]any{"tool_id": toolID, "item_id": itemIDs})
+		return body, append([]uint64{toolID}, itemIDs...), err
 	case "tf2.items.use":
 		itemID, err := requiredUint64Input(input, "itemId")
 		if err != nil {
@@ -358,6 +575,41 @@ func requiredTF2ItemIDs(input map[string]any, required int) ([]uint64, error) {
 		items = append(items, id)
 	}
 	return items, nil
+}
+
+func requiredTF2ItemIDsAtLeast(input map[string]any, minimum int) ([]uint64, error) {
+	values, ok := input["itemIds"].([]any)
+	if !ok || len(values) < minimum {
+		return nil, fmt.Errorf("itemIds must contain at least %d items", minimum)
+	}
+	items := make([]uint64, 0, len(values))
+	seen := make(map[uint64]bool, len(values))
+	for _, value := range values {
+		id, err := requiredUint64Input(map[string]any{"itemId": value}, "itemId")
+		if err != nil || id == 0 || seen[id] {
+			return nil, fmt.Errorf("itemIds must contain unique valid Steam item ids")
+		}
+		seen[id] = true
+		items = append(items, id)
+	}
+	return items, nil
+}
+
+var tf2StandardRecipeCounts = map[int16]int{
+	3: 2, 4: 3, 5: 3, 6: 3, 7: 3, 8: 3, 9: 2,
+	10: 5, 11: 5, 13: 2, 14: 2, 15: 3,
+}
+
+func requiredTF2Recipe(input map[string]any) (int16, error) {
+	value, ok := input["recipe"]
+	if !ok {
+		return 0, fmt.Errorf("recipe is required; wildcard TF2 recipes are not supported")
+	}
+	recipe, err := requiredUint64Input(map[string]any{"recipe": value}, "recipe")
+	if err != nil || recipe > uint64(^uint16(0)>>1) || tf2StandardRecipeCounts[int16(recipe)] == 0 {
+		return 0, fmt.Errorf("recipe %d is not a supported standard TF2 recipe", recipe)
+	}
+	return int16(recipe), nil
 }
 
 func encodeTF2PresetItem(input map[string]any) ([]byte, []uint64, error) {

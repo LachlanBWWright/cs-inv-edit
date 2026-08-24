@@ -21,7 +21,9 @@ function EstimateSummary(props: {
       </div>
       <Show when={hasCost}>
         <div>
-          <p class="text-xs text-slate-500">{props.costLabel ?? "Estimated cost"}</p>
+          <p class="text-xs text-slate-500">
+            {props.costLabel ?? "Estimated cost"}
+          </p>
           <p class="font-semibold text-slate-100">
             {formatUSDMinor(props.estimate.costMinor!)}
           </p>
@@ -42,14 +44,17 @@ function EstimateSummary(props: {
         <div>
           <p class="text-xs text-slate-500">Value per star</p>
           <p class="font-semibold text-amber-300">
-            {formatUSDMinor(props.estimate.expectedValueMinor / props.unitCost!)}
+            {formatUSDMinor(
+              props.estimate.expectedValueMinor / props.unitCost!,
+            )}
           </p>
         </div>
       </Show>
       <div>
         <p class="text-xs text-slate-500">Price coverage</p>
         <p class="text-slate-300">
-          {props.estimate.pricedOutcomes}/{props.estimate.totalOutcomes} outcomes
+          {props.estimate.pricedOutcomes}/{props.estimate.totalOutcomes}{" "}
+          outcomes
         </p>
       </div>
     </div>
@@ -57,12 +62,14 @@ function EstimateSummary(props: {
 }
 
 export function ReturnEstimateCard(props: {
+  enabled?: boolean;
   estimate?: ReturnEstimate;
   loading?: boolean;
   costLabel?: string;
   unitCost?: number;
   note?: string;
 }) {
+  if (props.enabled === false) return null;
   return (
     <section
       class="rounded-xl border border-emerald-500/25 bg-emerald-950 p-3"
@@ -74,7 +81,9 @@ export function ReturnEstimateCard(props: {
           Expected return
         </h4>
         <Show when={props.loading}>
-          <span class="animate-pulse text-xs text-sky-300">Loading prices…</span>
+          <span class="animate-pulse text-xs text-sky-300">
+            Loading prices…
+          </span>
         </Show>
       </div>
       <Show
@@ -85,10 +94,18 @@ export function ReturnEstimateCard(props: {
           </p>
         }
       >
-        {(estimate) => <EstimateSummary estimate={estimate()} costLabel={props.costLabel} unitCost={props.unitCost} />}
+        {(estimate) => (
+          <EstimateSummary
+            estimate={estimate()}
+            costLabel={props.costLabel}
+            unitCost={props.unitCost}
+          />
+        )}
       </Show>
       <Show when={props.note}>
-        <p class="mt-2 text-[11px] leading-relaxed text-slate-500">{props.note}</p>
+        <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
+          {props.note}
+        </p>
       </Show>
     </section>
   );

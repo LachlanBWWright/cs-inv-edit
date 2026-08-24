@@ -2,6 +2,7 @@ package dataservice
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,6 +14,14 @@ import (
 
 type Scanner interface {
 	Scan(context.Context, pricescanner.Query) (pricescanner.Result, error)
+}
+
+type providerLister interface {
+	ProviderIDs() []string
+}
+
+type searchProvider interface {
+	Search(context.Context, string, int, int) (pricescanner.SearchResult, error)
 }
 
 type cacheEntry struct {
@@ -30,6 +39,7 @@ type inflight struct {
 type PriceCache struct {
 	mu      sync.Mutex
 	scanner Scanner
+	store   ObservationStore
 	ttl     time.Duration
 	now     func() time.Time
 	entries map[string]cacheEntry
@@ -37,11 +47,15 @@ type PriceCache struct {
 }
 
 func NewPriceCache(scanner Scanner, ttl time.Duration) *PriceCache {
+	return NewPriceCacheWithStore(scanner, ttl, nil)
+}
+
+func NewPriceCacheWithStore(scanner Scanner, ttl time.Duration, store ObservationStore) *PriceCache {
 	if ttl <= 0 {
 		ttl = 5 * time.Minute
 	}
 	return &PriceCache{
-		scanner: scanner, ttl: ttl, now: time.Now,
+		scanner: scanner, store: store, ttl: ttl, now: time.Now,
 		entries: make(map[string]cacheEntry), active: make(map[string]*inflight),
 	}
 }
@@ -75,6 +89,9 @@ func (c *PriceCache) Query(ctx context.Context, query pricescanner.Query) (price
 	c.mu.Lock()
 	state := "fresh"
 	if err == nil {
+		if c.store != nil {
+			_ = c.store.Record(query.AppID, result)
+		}
 		freshUntil := c.now().Add(c.ttl)
 		c.entries[key] = cacheEntry{result: result, expiresAt: freshUntil, staleUntil: freshUntil.Add(6 * c.ttl)}
 	} else if hasStale && now.Before(stale.staleUntil) {
@@ -89,6 +106,20 @@ func (c *PriceCache) Query(ctx context.Context, query pricescanner.Query) (price
 	close(running.done)
 	c.mu.Unlock()
 	return withCacheState(result, query.MarketNames, state), err
+}
+
+func (c *PriceCache) ProviderIDs() []string {
+	if scanner, ok := c.scanner.(providerLister); ok {
+		return scanner.ProviderIDs()
+	}
+	return []string{}
+}
+
+func (c *PriceCache) Search(ctx context.Context, query string, appID int, limit int) (pricescanner.SearchResult, error) {
+	if scanner, ok := c.scanner.(searchProvider); ok {
+		return scanner.Search(ctx, query, appID, limit)
+	}
+	return pricescanner.SearchResult{}, fmt.Errorf("price search is not configured")
 }
 
 func cacheKey(query pricescanner.Query) string {

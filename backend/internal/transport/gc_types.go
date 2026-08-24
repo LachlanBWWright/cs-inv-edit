@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"cs-inv-edit/backend/internal/protocol"
 	"github.com/Lucino772/envelop/pkg/steam/steamlang"
 )
 
@@ -213,25 +214,26 @@ func (e steamResultError) Error() string {
 }
 
 type TestGCClient struct {
-	events                    chan GCEvent
-	state                     GCConnectionState
-	SentProtoMessages         []GCMessage
-	SendProtoFunc             func(context.Context, uint32, uint32, []byte) error
-	GameInventoryErr          error
-	GameInventoryFunc         func(context.Context, uint32) ([]GCInventoryItem, error)
-	SteamInventoryServiceFunc func(context.Context, uint32, uint64) (SteamInventoryServiceResponse, error)
-	ApplyTF2DecalFunc         func(context.Context, TF2DecalRequest) (TF2DecalResult, error)
-	OwnedGamesFunc            func(context.Context, uint64) ([]SteamOwnedGame, error)
-	InventoryFunc             func(context.Context) ([]GCInventoryItem, error)
-	WaitForNewCS2ItemFunc     func(context.Context, map[uint64]struct{}) (GCInventoryItem, error)
-	GamesPlayedCalls          [][]uint32
-	StorePurchaseCalls        []StorePurchaseRequest
-	StorePurchaseFunc         func(context.Context, StorePurchaseRequest) (StorePurchaseTransportResult, error)
-	StorePurchaseResult       StorePurchaseTransportResult
-	StorePurchaseErr          error
-	FinalizeStorePurchaseFunc func(context.Context, uint64) ([]uint64, error)
-	TF2FeatureResult          TF2FeatureSnapshot
-	CS2FeatureResult          CS2FeatureSnapshot
+	events                      chan GCEvent
+	state                       GCConnectionState
+	SentProtoMessages           []GCMessage
+	SendProtoFunc               func(context.Context, uint32, uint32, []byte) error
+	GameInventoryErr            error
+	GameInventoryFunc           func(context.Context, uint32) ([]GCInventoryItem, error)
+	SteamInventoryServiceFunc   func(context.Context, uint32, uint64) (SteamInventoryServiceResponse, error)
+	ApplyTF2DecalFunc           func(context.Context, TF2DecalRequest) (TF2DecalResult, error)
+	OwnedGamesFunc              func(context.Context, uint64) ([]SteamOwnedGame, error)
+	InventoryFunc               func(context.Context) ([]GCInventoryItem, error)
+	WaitForNewCS2ItemFunc       func(context.Context, map[uint64]struct{}) (GCInventoryItem, error)
+	WaitForCS2CraftResponseFunc func(context.Context) (protocol.CraftResponse, error)
+	GamesPlayedCalls            [][]uint32
+	StorePurchaseCalls          []StorePurchaseRequest
+	StorePurchaseFunc           func(context.Context, StorePurchaseRequest) (StorePurchaseTransportResult, error)
+	StorePurchaseResult         StorePurchaseTransportResult
+	StorePurchaseErr            error
+	FinalizeStorePurchaseFunc   func(context.Context, uint64) ([]uint64, error)
+	TF2FeatureResult            TF2FeatureSnapshot
+	CS2FeatureResult            CS2FeatureSnapshot
 }
 
 func (m *TestGCClient) TF2Features() TF2FeatureSnapshot { return m.TF2FeatureResult }
@@ -297,6 +299,13 @@ func (m *TestGCClient) WaitForNewCS2InventoryItem(ctx context.Context, knownIDs 
 		return m.WaitForNewCS2ItemFunc(ctx, knownIDs)
 	}
 	return GCInventoryItem{}, context.DeadlineExceeded
+}
+
+func (m *TestGCClient) WaitForCS2CraftResponse(ctx context.Context) (protocol.CraftResponse, error) {
+	if m.WaitForCS2CraftResponseFunc != nil {
+		return m.WaitForCS2CraftResponseFunc(ctx)
+	}
+	return protocol.CraftResponse{}, context.DeadlineExceeded
 }
 
 func (m *TestGCClient) RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error) {

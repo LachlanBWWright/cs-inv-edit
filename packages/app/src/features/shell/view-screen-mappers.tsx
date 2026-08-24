@@ -14,6 +14,7 @@ import {
 } from "../cs2/CS2FeaturesPanel.js";
 import { CS2LoadoutsView } from "../cs2/CS2LoadoutsView.js";
 import { TradesView } from "../trades/TradesView.js";
+import { PriceAnalysisView } from "../commerce/PriceAnalysisView.js";
 import { Alert } from "../../shared/ui/Alert.js";
 import { ToastViewport } from "../../shared/ui/ToastViewport.js";
 import type { CommerceSort } from "../commerce/commerce-view-utils.js";
@@ -285,6 +286,22 @@ function ScreenContent(props: ViewScreenMapperProps) {
           onRefresh={props.onTradesRefresh}
           onReconnect={() => props.setView("account")}
         />
+      </Match>
+      <Match when={props.view === "price-analysis"}>
+        <Show
+          when={props.settings?.featureFlags.enablePriceAnalysis === true}
+          fallback={
+            <Alert variant="warning">
+              Price analysis is disabled in this deployment.
+            </Alert>
+          }
+        >
+          <PriceAnalysisView
+            onSearchPrices={props.onSearchPrices}
+            onScanPrices={props.onScanPrices}
+            onLoadHistory={props.onLoadPriceHistory}
+          />
+        </Show>
       </Match>
     </Switch>
   );

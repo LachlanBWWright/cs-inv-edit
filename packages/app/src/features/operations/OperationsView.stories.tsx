@@ -47,3 +47,35 @@ export const Populated: Story = {
 export const Empty: Story = {
   args: { receipts: [], events: [] },
 };
+
+export const CS2CraftReconciled: Story = {
+  args: {
+    receipts: [
+      {
+        operationId: "op-craft-03",
+        type: "tradeups.execute",
+        state: "completed",
+        createdAt: "2026-08-24T01:15:00Z",
+        message: "CS2 trade-up completed and inventory reconciled",
+        result: {
+          recipe: 7,
+          gainedItemIds: ["9001"],
+          consumedItemIds: ["1001", "1002", "1003", "1004", "1005"],
+          consumedMissing: ["1001", "1002", "1003", "1004", "1005"],
+          gainedPresent: ["9001"],
+          beforeItemCount: 42,
+          afterItemCount: 38,
+        },
+      },
+    ],
+    events: [
+      {
+        operationId: "op-craft-03",
+        type: "inventory_reconciled",
+        state: "completed",
+        message: "Craft response matched consumed inputs and gained output.",
+        createdAt: "2026-08-24T01:15:04Z",
+      },
+    ],
+  },
+};

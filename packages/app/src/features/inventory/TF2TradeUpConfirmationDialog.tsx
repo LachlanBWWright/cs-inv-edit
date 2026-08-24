@@ -14,8 +14,10 @@ import {
   scanPriceMap,
   type ReturnEstimate,
 } from "../commerce/roi-utils.js";
-import { RelatedItemPreview } from "./RelatedItemPreview.js";
-import type { TF2TradeUpOutcome } from "./tf2-trade-up.js";
+import type {
+  TF2TradeUpCollectionBreakdown,
+  TF2TradeUpOutcome,
+} from "./tf2-trade-up.js";
 
 type TF2Item = Extract<EconomyInventoryItemDto, { game: "tf2" }>;
 const phrase = "TRADE UP";
@@ -24,12 +26,17 @@ export function TF2TradeUpConfirmationDialog(props: {
   open: boolean;
   items: TF2Item[];
   outcomes: TF2TradeUpOutcome[];
+  collectionBreakdown?: TF2TradeUpCollectionBreakdown[];
   title?: string;
   description?: string;
+  eligibility?: string;
+  deterministic?: boolean;
+  outputDescription?: string;
   requiredCount?: number;
   protocolWarning?: string;
   connected: boolean;
   enabled: boolean;
+  priceAnalysisEnabled?: boolean;
   marketPrices: ReadonlyMap<string, number>;
   scanPrices: Parameters<typeof scanPriceMap>[1];
   onOpenChange: (open: boolean) => void;
@@ -113,7 +120,7 @@ export function TF2TradeUpConfirmationDialog(props: {
           <div class="grid gap-2 sm:grid-cols-2">
             <For each={props.items}>
               {(item, index) => (
-                <article class="rounded-xl border border-slate-700 bg-slate-900 p-3">
+                <div class="border-b border-slate-800 py-2">
                   <div class="flex justify-between gap-2">
                     <p class="truncate text-sm">
                       {index() + 1}. {item.name}
@@ -128,30 +135,87 @@ export function TF2TradeUpConfirmationDialog(props: {
                   <p class="mt-1 text-xs text-slate-500">
                     {item.details.collection} · {item.details.rarity}
                   </p>
-                </article>
+                </div>
               )}
             </For>
           </div>
         </section>
         <section class="space-y-4">
-          <div class="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+          <Show when={props.eligibility || props.outputDescription}>
+            <div class="border-b border-slate-800 pb-3 text-xs text-slate-400">
+              <h3 class="text-sm font-semibold text-slate-200">
+                How this works
+              </h3>
+              <Show when={props.outputDescription}>
+                <p class="mt-1">Output: {props.outputDescription}</p>
+              </Show>
+              <Show when={props.eligibility}>
+                <p class="mt-1">Eligibility: {props.eligibility}</p>
+              </Show>
+              <Show when={props.deterministic !== undefined}>
+                <p class="mt-1">
+                  Result:{" "}
+                  {props.deterministic
+                    ? "deterministic"
+                    : "random from the eligible output pool"}
+                </p>
+              </Show>
+            </div>
+          </Show>
+          <Show when={props.collectionBreakdown?.length}>
+            <div class="border-b border-slate-800 pb-3">
+              <h3 class="text-sm font-semibold text-slate-200">
+                Collection and rarity odds
+              </h3>
+              <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                <For each={props.collectionBreakdown}>
+                  {(entry) => (
+                    <div class="text-xs text-slate-400">
+                      <div class="flex justify-between gap-2">
+                        <span class="truncate">{entry.collection}</span>
+                        <strong class="text-cyan-200">
+                          {Math.round(entry.probability * 100)}%
+                        </strong>
+                      </div>
+                      <p class="mt-1">
+                        Next rarity: {entry.rarity ?? "unknown"} ·{" "}
+                        {entry.outcomeCount} possible outputs
+                      </p>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+          <div class="max-h-80 overflow-y-auto">
             <For each={props.outcomes}>
               {(outcome) => (
-                <RelatedItemPreview
-                  item={outcome}
-                  probability={outcome.probability}
-                />
+                <div class="border-b border-slate-800 py-2">
+                  <div class="flex items-baseline justify-between gap-3">
+                    <p class="truncate text-sm font-medium text-slate-100">
+                      {outcome.name}
+                    </p>
+                    <strong class="shrink-0 text-sm text-cyan-200">
+                      {Math.round(outcome.probability * 100)}%
+                    </strong>
+                  </div>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {outcome.collection ?? "Unknown collection"} ·{" "}
+                    {outcome.rarity ?? "Unknown rarity"}
+                  </p>
+                </div>
               )}
             </For>
           </div>
           <ReturnEstimateCard
+            enabled={props.priceAnalysisEnabled === true}
             estimate={estimate()}
             costLabel="Selected input value"
             note="TF2 output prices use schema names where exact market names are unavailable; missing price coverage makes ROI incomplete."
           />
           <Show when={!props.enabled}>
             <Alert variant="warning">
-              TF2 crafting is disabled by the enableTf2Crafting feature flag.
+              This TF2 operation is disabled by its feature flag.
             </Alert>
           </Show>
           <Show when={props.protocolWarning !== ""}>
@@ -167,9 +231,7 @@ export function TF2TradeUpConfirmationDialog(props: {
             <input
               type="checkbox"
               checked={acknowledged()}
-              onChange={(event) =>
-                setAcknowledged(event.currentTarget.checked)
-              }
+              onChange={(event) => setAcknowledged(event.currentTarget.checked)}
             />
             I understand every selected input is permanently consumed and the
             craft cannot be undone.

@@ -1,6 +1,10 @@
 package transport
 
-import "context"
+import (
+	"context"
+
+	"cs-inv-edit/backend/internal/protocol"
+)
 
 type GCStoreData struct {
 	Result            int32
@@ -79,6 +83,7 @@ type GCClient interface {
 	SendProtoToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error
 	RequestInventory(ctx context.Context) ([]GCInventoryItem, error)
 	WaitForNewCS2InventoryItem(ctx context.Context, knownIDs map[uint64]struct{}) (GCInventoryItem, error)
+	WaitForCS2CraftResponse(ctx context.Context) (protocol.CraftResponse, error)
 	RequestGameInventory(ctx context.Context, appID uint32) ([]GCInventoryItem, error)
 	RequestSteamInventoryService(ctx context.Context, appID uint32, steamID uint64) (SteamInventoryServiceResponse, error)
 	ApplyTF2Decal(ctx context.Context, request TF2DecalRequest) (TF2DecalResult, error)

@@ -10,6 +10,7 @@ interface AccountRouteState {
 
 export function shouldShowAccountScreen(state: AccountRouteState): boolean {
   if (state.currentView === "account") return false;
+  if (state.currentView === "price-analysis") return false;
   if (state.connection?.state === "connected") return false;
   if (
     state.hasSignedInAccount &&

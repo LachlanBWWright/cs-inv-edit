@@ -96,19 +96,24 @@ function ResultCard(props: { item: RevealItem; compact?: boolean }) {
   const [imageFailed, setImageFailed] = createSignal(false);
   return (
     <div class={`reveal-item rarity-outline relative ${rarityBorderClass(props.item.rarity)} ${props.compact ? "is-compact" : ""}`}>
-      <Show when={props.item.isStatTrak}>
+      <Show when={props.item.isStatTrak && !props.compact}>
         <span class="absolute right-2 top-2 rounded bg-orange-950 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-300">StatTrak™</span>
       </Show>
-      <Show when={props.item.isSouvenir}>
+      <Show when={props.item.isSouvenir && !props.compact}>
         <span class="absolute right-2 top-2 rounded bg-amber-950 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">Souvenir</span>
       </Show>
       <Show when={props.item.imageUrl && !imageFailed()} fallback={<div class="reveal-item-placeholder">?</div>}>
         <img src={props.item.imageUrl} alt="" referrerpolicy="no-referrer" onError={() => setImageFailed(true)} />
       </Show>
-      <p>{props.item.name}</p>
-      <Show when={props.item.wear !== undefined}>
-        <WearRangeBar compact wear={props.item.wear!} min={props.item.wearMin} max={props.item.wearMax} />
-      </Show>
+      <p class="reveal-item-name">{props.item.name}</p>
+      <div class="reveal-item-wear" aria-hidden={props.item.wear === undefined}>
+        <WearRangeBar
+          compact
+          wear={props.item.wear}
+          min={props.item.wearMin}
+          max={props.item.wearMax}
+        />
+      </div>
     </div>
   );
 }

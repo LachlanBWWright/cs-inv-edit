@@ -3,11 +3,12 @@ package econ
 import "cs-inv-edit/backend/internal/domain"
 
 type TF2RelatedItem struct {
-	DefIndex uint32
-	Name     string
-	Rarity   string
-	PoolKind domain.TF2PoolKind
-	ImageURL string
+	DefIndex   uint32
+	Name       string
+	Collection string
+	Rarity     string
+	PoolKind   domain.TF2PoolKind
+	ImageURL   string
 }
 
 type TF2AttributeDefinition struct {

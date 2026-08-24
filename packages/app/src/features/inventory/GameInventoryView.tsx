@@ -1,6 +1,7 @@
-import { Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import type {
   EconomyInventorySource,
+  EconomyInventoryItemDto,
   GameInventorySnapshot,
   OperationReceipt,
   PriceScanResult,
@@ -24,6 +25,7 @@ import { createTF2TradeUp } from "./tf2-trade-up.js";
 import { TF2TradeUpConfirmationDialog } from "./TF2TradeUpConfirmationDialog.js";
 import { createTF2Crafting } from "./tf2-crafting-controller.js";
 import { TF2CraftingToolbar } from "./TF2CraftingToolbar.js";
+import { TF2HalloweenOfferingDialog } from "./TF2HalloweenOfferingDialog.js";
 
 function SelectedItemSummary(props: { name: string; subtitle: string }) {
   return (
@@ -76,6 +78,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
   } = model;
   const tradeUp = createTF2TradeUp(items);
   const crafting = createTF2Crafting(items);
+  const [halloweenOfferingOpen, setHalloweenOfferingOpen] = createSignal(false);
   const workflowActive = () => tradeUp.active() || crafting.active();
   const visibleItems = () =>
     tradeUp.active()
@@ -169,6 +172,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
                   props.setSelectedAssetId(undefined);
                   crafting.startStatClock();
                 }}
+                onStartHalloweenOffering={() => setHalloweenOfferingOpen(true)}
                 onCancel={crafting.reset}
                 onReview={() => crafting.setConfirmationOpen(true)}
               />
@@ -220,14 +224,19 @@ export function GameInventoryView(props: GameInventoryViewProps) {
         open={tradeUp.confirmationOpen()}
         items={tradeUp.selectedItems()}
         outcomes={tradeUp.outcomes()}
+        collectionBreakdown={tradeUp.collectionBreakdown()}
         connected={props.connected === true}
-        enabled={props.settings?.featureFlags.enableTf2Crafting ?? false}
+        enabled={props.settings?.featureFlags.enableTf2Tradeups ?? false}
+        priceAnalysisEnabled={
+          props.settings?.featureFlags.enablePriceAnalysis === true
+        }
+        protocolWarning=""
         marketPrices={marketPrices()}
         scanPrices={props.onScanPrices}
         onOpenChange={tradeUp.setConfirmationOpen}
         onRemove={tradeUp.toggle}
         onExecute={(itemIds) =>
-          submitTF2Operation("tf2.crafting.craft", {
+          submitTF2Operation("tf2.crafting.trade-up", {
             game: "tf2",
             itemIds,
             confirmed: true,
@@ -235,6 +244,28 @@ export function GameInventoryView(props: GameInventoryViewProps) {
         }
         onAccepted={() => {
           tradeUp.reset();
+          props.onRefresh();
+        }}
+      />
+      <TF2HalloweenOfferingDialog
+        open={halloweenOfferingOpen()}
+        items={items().filter(
+          (item): item is Extract<EconomyInventoryItemDto, { game: "tf2" }> =>
+            item.game === "tf2",
+        )}
+        connected={props.connected === true}
+        enabled={props.settings?.featureFlags.enableTf2Tradeups ?? false}
+        onOpenChange={setHalloweenOfferingOpen}
+        onExecute={({ toolItemId, itemIds, confirmed }) =>
+          submitTF2Operation("tf2.crafting.halloween-offering", {
+            game: "tf2",
+            toolItemId,
+            itemIds,
+            confirmed,
+          })
+        }
+        onAccepted={() => {
+          setHalloweenOfferingOpen(false);
           props.onRefresh();
         }}
       />
@@ -249,6 +280,16 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           crafting.statClock()
             ? "Five qualifying items will be consumed to create one Civilian Grade Stat Clock."
             : `${crafting.recipe()?.inputLabel ?? "The selected ingredients"} will be consumed to create ${crafting.recipe()?.outputName ?? "the recipe output"}.`
+        }
+        eligibility={crafting.recipe()?.eligibility}
+        deterministic={
+          crafting.recipe()?.deterministic ??
+          (crafting.statClock() ? true : undefined)
+        }
+        outputDescription={
+          crafting.statClock()
+            ? "One Civilian Grade Stat Clock"
+            : crafting.recipe()?.outputDescription
         }
         requiredCount={crafting.requiredCount()}
         items={crafting.selectedItems()}
@@ -265,8 +306,15 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           },
         ]}
         connected={props.connected === true}
-        enabled={props.settings?.featureFlags.enableTf2Crafting ?? false}
-        protocolWarning={crafting.statClock() ? "" : undefined}
+        enabled={
+          crafting.statClock()
+            ? (props.settings?.featureFlags.enableTf2Tradeups ?? false)
+            : (props.settings?.featureFlags.enableTf2Crafting ?? false)
+        }
+        priceAnalysisEnabled={
+          props.settings?.featureFlags.enablePriceAnalysis === true
+        }
+        protocolWarning=""
         marketPrices={marketPrices()}
         scanPrices={props.onScanPrices}
         onOpenChange={crafting.setConfirmationOpen}
@@ -279,7 +327,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
             {
               game: "tf2",
               itemIds,
-              recipeId: crafting.recipe()?.id,
+              recipe: crafting.recipe()?.id,
               confirmed: true,
             },
           )

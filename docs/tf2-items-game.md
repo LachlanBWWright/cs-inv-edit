@@ -36,10 +36,18 @@ All TF2 mutations are backend-gated and default off:
 - `enableTf2ItemUse`
 - `enableTf2Tools`
 - `enableTf2Crafting`
+- `enableTf2Tradeups`
 - `enableTf2Unboxing`
 - `enableTf2Customization`
 
-Ordinary crafting (`k_EMsgGCCraft`, `1002`) and crate unlocking (`k_EMsgGCUnlockCrate`, `1007`) have EMsg entries but no request protobuf in the current tracked source. They remain capture-gated even when their feature flag is enabled. Do not create guessed protobuf declarations or legacy structs. A sanitized, independently corroborated current-client fixture is required before either encoder can be enabled.
+TF2 crafting is split across several protocol families:
+
+- Ordinary recipe crafting uses the legacy raw `k_EMsgGCCraft` (`1002`) frame: signed recipe ID, item count, and little-endian item IDs.
+- Item-grade trade-ups use protobuf `CMsgCraftCollectionUpgrade` on `k_EMsgGCCraftCollectionUpgrade` (`2567`).
+- Halloween offerings use protobuf `CMsgCraftHalloweenOffering` on `k_EMsgGCCraftHalloweenOffering` (`2568`).
+- Civilian Stat Clock crafting uses protobuf `CMsgCraftCommonStatClock` on `k_EMsgGCCraftCommonStatClock` (`2574`).
+
+Standard recipe crafting is behind `enableTf2Crafting`. Collection trade-ups, Halloween offerings, and Civilian Stat Clock crafting are behind the separate `enableTf2Tradeups` flag. The app supports only the explicit standard recipe IDs `3–11` (excluding disabled `12`) and `13–15`; wildcard recipe selection and item-specific blueprints are not supported. All enabled operations validate against the authoritative GC-owned inventory and wait for SOCache reconciliation. Crate unlocking (`k_EMsgGCUnlockCrate`, `1007`) remains capture-gated because the current tracked source does not define its request body.
 
 No automated test may connect to a live Steam account or send a live GC mutation. Protocol tests use generated-message round trips, sanitized fixtures, and the in-memory test transport only.
 

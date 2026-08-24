@@ -2,11 +2,12 @@ import type { FeatureFlags, SettingsData } from "@cs-inv-edit/contracts";
 
 const defaultFeatureFlags: FeatureFlags = {
   enableStorageMutations: true,
-  enableContainerOpening: true,
+  enableContainerOpening: false,
   enableInventoryDebug: false,
   showStorageUnitItems: false,
+  enableProtocolConsole: false,
   enableTradeups: false,
-  enableNameTags: true,
+  enableNameTags: false,
   enableItemDeletion: false,
   enableStatTrakSwap: false,
   enableStrangeParts: false,
@@ -19,12 +20,15 @@ const defaultFeatureFlags: FeatureFlags = {
   enableTf2ItemUse: false,
   enableTf2Tools: false,
   enableTf2Crafting: false,
+  enableTf2Tradeups: false,
   enableTf2Unboxing: false,
   enableTf2Customization: false,
   enableDota2Inventory: false,
   enableSteamInventory: true,
   enableStoreRead: false,
-  enableStorePurchases: true,
+  enableStorePurchases: false,
+  enableArmoryRedemption: false,
+  enablePriceAnalysis: false,
 };
 
 export const defaultWasmSettings: SettingsData = {

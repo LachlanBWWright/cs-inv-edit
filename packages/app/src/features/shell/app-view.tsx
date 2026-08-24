@@ -9,6 +9,8 @@ export type { AppProps } from "./app-props.js";
 
 export function App(props: AppProps) {
   const controller = createAppController(props);
+  const priceFeaturesEnabled = () =>
+    controller.settings()?.featureFlags.enablePriceAnalysis === true;
 
   const handleConnect = async (input: {
     username?: string;
@@ -241,19 +243,57 @@ export function App(props: AppProps) {
       onSteamServiceRefresh={handleSteamServiceRefresh}
       onGameOperation={handleGameOperation}
       onArmoryRefresh={controller.refreshArmoryState}
-      onMarketPreview={controller.requestMarketPreview}
+      onMarketPreview={(marketName) =>
+        priceFeaturesEnabled()
+          ? controller.requestMarketPreview(marketName)
+          : Promise.resolve(undefined)
+      }
       onScanPrices={(marketNames, appId) =>
-        props.data.queryPrices({ marketNames, currency: "USD", appId }).match(
-          (result) => result,
-          (error) => {
-            controller.pushToast({
-              title: "Vendor prices unavailable",
-              description: error.message,
-              variant: "warning",
-            });
-            return undefined;
-          },
-        )
+        priceFeaturesEnabled()
+          ? props.data
+              .queryPrices({ marketNames, currency: "USD", appId })
+              .match(
+                (result) => result,
+                (error) => {
+                  controller.pushToast({
+                    title: "Vendor prices unavailable",
+                    description: error.message,
+                    variant: "warning",
+                  });
+                  return undefined;
+                },
+              )
+          : Promise.resolve(undefined)
+      }
+      onLoadPriceHistory={(marketName, currency, appId) =>
+        priceFeaturesEnabled()
+          ? props.data.priceHistory(marketName, currency, appId).match(
+              (history) => history,
+              (error) => {
+                controller.pushToast({
+                  title: "Price history unavailable",
+                  description: error.message,
+                  variant: "warning",
+                });
+                return undefined;
+              },
+            )
+          : Promise.resolve(undefined)
+      }
+      onSearchPrices={(query, appId) =>
+        priceFeaturesEnabled()
+          ? props.data.searchPrices(query, appId).match(
+              (result) => result,
+              (error) => {
+                controller.pushToast({
+                  title: "Item search unavailable",
+                  description: error.message,
+                  variant: "warning",
+                });
+                return undefined;
+              },
+            )
+          : Promise.resolve(undefined)
       }
       onArmoryRedeem={handleArmoryRedeem}
       onStoreRefresh={controller.refreshStoreState}

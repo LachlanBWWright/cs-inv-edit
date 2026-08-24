@@ -181,16 +181,24 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 		}
 		inventoryItem := domain.InventoryItem{
 			ID:                    fmt.Sprintf("%d", item.ID),
+			OriginalID:            fmt.Sprintf("%d", item.OriginalID),
+			Quantity:              item.Quantity,
 			Name:                  itemMetadata.Name,
 			MarketName:            itemMetadata.MarketName,
 			ImageURL:              itemMetadata.ImageURL,
 			InspectURL:            pending.inspectURL,
 			Kind:                  itemMetadata.Kind,
 			Defindex:              &defIndex,
+			PaintKit:              uint32Pointer(item.PaintKit),
+			PaintSeed:             attributePointer(item.Attributes, 7),
 			PaintWear:             item.PaintWear,
 			PaintWearMin:          itemMetadata.PaintWearMin,
 			PaintWearMax:          itemMetadata.PaintWearMax,
 			Rarity:                itemMetadata.Rarity,
+			QualityID:             uint32Pointer(item.Quality),
+			RarityID:              uint32Pointer(item.Rarity),
+			CustomDescription:     item.CustomDesc,
+			InventoryPosition:     uint32Pointer(item.Inventory),
 			Collection:            itemMetadata.Collection,
 			CollectionItems:       domainRelatedItems(itemMetadata.CollectionItems),
 			TradeUpItems:          domainTradeUpItems(itemMetadata.TradeUpItems, item, itemMetadata.PaintWearMin, itemMetadata.PaintWearMax, marketDescriptions),
@@ -211,6 +219,7 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			Marketable:    itemMetadata.Marketable,
 			TradableAfter: itemMetadata.TradableAfter,
 		}
+		inventoryItem.Stickers = domainStickers(item.Attributes, metadata.AppliedItems(item.DefIndex, item.Attributes))
 		storageEligible, storageReason := storageEligibility(item, inventoryItem)
 		inventoryItem.StorageEligible = &storageEligible
 		inventoryItem.StorageIneligibleReason = storageReason

@@ -256,6 +256,41 @@ func debugForGCItem(item transport.GCInventoryItem, descriptionMatched bool, mar
 	}
 }
 
+func uint32Pointer(value uint32) *uint32 {
+	if value == 0 {
+		return nil
+	}
+	return &value
+}
+
+func attributePointer(attributes map[uint32]uint32, id uint32) *uint32 {
+	return uint32Pointer(attributes[id])
+}
+
+func domainStickers(attributes map[uint32]uint32, applied []econ.AppliedItem) []domain.Sticker {
+	stickers := make([]domain.Sticker, 0, 5)
+	for slot := uint32(0); slot < 5; slot++ {
+		id, ok := attributes[113+slot*4]
+		if !ok || id == 0 {
+			continue
+		}
+		sticker := domain.Sticker{Slot: &slot, StickerID: &id}
+		if wearBits, ok := attributes[114+slot*4]; ok {
+			wear := float64(math.Float32frombits(wearBits))
+			sticker.Wear = &wear
+		}
+		for _, item := range applied {
+			if item.Kind == domain.ItemKindSticker && item.Slot == slot {
+				sticker.Name = item.Name
+				sticker.ImageURL = item.ImageURL
+				break
+			}
+		}
+		stickers = append(stickers, sticker)
+	}
+	return stickers
+}
+
 func inventoryItemDiagnostics(item transport.GCInventoryItem, metadata econ.Metadata, descriptionMatched bool, marketDescriptionUsed bool, descriptionErr error, marketErr error) []string {
 	diagnostics := []string{fmt.Sprintf(
 		"GC identity: id=%d, original_id=%d, defindex=%d, inventory=%d, quantity=%d, quality=%d, rarity=%d, paint_kit=%d",

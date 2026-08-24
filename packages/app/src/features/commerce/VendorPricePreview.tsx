@@ -31,6 +31,14 @@ export function vendorIdsForAppId(appId: number) {
   ).map((vendor) => vendor.id);
 }
 
+function providerLabel(id: string) {
+  return id
+    .split(/[-_]/u)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function priceFreshnessLabel(result: PriceScanResult | undefined) {
   return result?.cacheState === "stale" ? "Last known prices" : undefined;
 }
@@ -100,6 +108,11 @@ function VendorRow(props: {
     return (
       <span class="text-right">
         <VendorQuote quote={props.quote} />
+        <Show when={props.quote.priceMultiplier !== 1}>
+          <span class="ml-2 text-xs text-slate-500" title="Raw provider price before Steam-baseline conversion">
+            raw {props.quote.displayPrice}
+          </span>
+        </Show>
         <Show when={props.quote.listingCount !== undefined}>
           <span class="ml-2 text-xs text-slate-500">
             {props.quote.listingCount} listings
@@ -125,13 +138,20 @@ export function VendorPricePreview(props: {
   loading: boolean;
   appearance?: "card" | "plain";
 }) {
-  const vendors = () =>
-    vendorsByAppId[props.appId] ?? [
-      { id: "steam", label: "Steam Community Market" },
-    ];
   const quotes = () =>
     props.result?.items.find((item) => item.marketName === props.marketName)
       ?.quotes ?? [];
+  const vendors = () => {
+    const known = vendorsByAppId[props.appId] ?? [
+      { id: "steam", label: "Steam Community Market" },
+    ];
+    const knownIds = new Set(known.map((vendor) => vendor.id));
+    const discovered = quotes()
+      .map((quote) => quote.source)
+      .filter((source) => !knownIds.has(source))
+      .map((id) => ({ id, label: providerLabel(id) }));
+    return [...known, ...discovered];
+  };
   const errorFor = (source: string) =>
     props.result?.errors.find((error) => error.source === source)?.message;
   const quoteFor = (source: string) =>
@@ -159,6 +179,9 @@ export function VendorPricePreview(props: {
           <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-400">
             Market prices
           </h4>
+          <span class="text-xs text-slate-500">
+            Steam-equivalent baseline
+          </span>
           <Show
             when={props.loading}
             fallback={<PriceFreshness result={props.result} />}

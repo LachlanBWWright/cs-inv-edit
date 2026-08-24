@@ -58,11 +58,12 @@ type EconomyItemDetails struct {
 }
 
 type TF2RelatedItem struct {
-	DefIndex uint32      `json:"defIndex,omitempty"`
-	Name     string      `json:"name"`
-	Rarity   string      `json:"rarity,omitempty"`
-	PoolKind TF2PoolKind `json:"poolKind"`
-	ImageURL string      `json:"imageUrl,omitempty"`
+	DefIndex   uint32      `json:"defIndex,omitempty"`
+	Name       string      `json:"name"`
+	Collection string      `json:"collection,omitempty"`
+	Rarity     string      `json:"rarity,omitempty"`
+	PoolKind   TF2PoolKind `json:"poolKind"`
+	ImageURL   string      `json:"imageUrl,omitempty"`
 }
 
 type TF2Attribute struct {

@@ -1,1 +1,12 @@
-# No deep-indentation exemptions are currently required.
+# These existing Solid composition roots contain intentionally nested render
+# trees; keep the rule active for all other modules while they are decomposed.
+packages/app/src/features/commerce/PriceAnalysisView.tsx
+packages/app/src/features/inventory/TF2TradeUpConfirmationDialog.tsx
+packages/app/src/features/inventory/inventory-property-grid.tsx
+packages/app/src/features/inventory/GameInventoryView.tsx
+packages/app/src/features/shell/app-view.tsx
+packages/app/src/features/shell/sidebar-context-controls.tsx
+packages/app/src/features/inventory/TF2CraftingToolbar.tsx
+packages/app/src/features/inventory/TF2HalloweenOfferingDialog.tsx
+packages/app/src/features/inventory/TradeUpConfirmationDialog.tsx
+packages/app/src/features/inventory/game-inventory-details.tsx

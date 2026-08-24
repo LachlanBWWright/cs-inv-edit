@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { Button } from "../../shared/ui/Button.js";
 import {
   tf2CraftingRecipes,
@@ -12,6 +12,7 @@ export function TF2CraftingToolbar(props: {
   requiredCount: number;
   onStartRecipe: (recipe: TF2CraftingRecipe) => void;
   onStartStatClock: () => void;
+  onStartHalloweenOffering: () => void;
   onCancel: () => void;
   onReview: () => void;
 }) {
@@ -24,6 +25,9 @@ export function TF2CraftingToolbar(props: {
     );
     if (recipe) props.onStartRecipe(recipe);
   };
+  const selectedRecipe = createMemo(() =>
+    tf2CraftingRecipes.find((recipe) => recipe.id === Number(recipeId())),
+  );
   return (
     <div class="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-700 bg-slate-950 p-2.5">
       <Show
@@ -48,6 +52,20 @@ export function TF2CraftingToolbar(props: {
             <Button variant="action" onClick={props.onStartStatClock}>
               Craft Stat Clock
             </Button>
+            <Button variant="action" onClick={props.onStartHalloweenOffering}>
+              Halloween Offering
+            </Button>
+            <Show when={selectedRecipe()}>
+              {(recipe) => (
+                <div class="basis-full border-t border-slate-800 pt-2 text-xs text-slate-400">
+                  <p class="font-semibold text-slate-200">{recipe().name}</p>
+                  <p class="mt-1">Inputs: <For each={recipe().requiredInputs}>{(input, index) => <>{index() ? " · " : ""}{input}</>}</For></p>
+                  <p class="mt-1">Output: {recipe().outputDescription}</p>
+                  <p class="mt-1">Eligibility: {recipe().eligibility}</p>
+                  <p class="mt-1">Result: {recipe().deterministic ? "deterministic" : "random from the eligible output pool"}</p>
+                </div>
+              )}
+            </Show>
           </>
         }
       >

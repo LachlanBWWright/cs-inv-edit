@@ -166,6 +166,11 @@ export function createAppViewState(props: AppViewProps) {
   });
   let requestedPriceNames = "";
   createEffect(() => {
+    if (props.settings?.featureFlags.enablePriceAnalysis !== true) {
+      requestedPriceNames = "";
+      setMarketPrices(new Map());
+      return;
+    }
     const names = [
       ...new Set(
         (props.inventory?.items ?? [])

@@ -32,14 +32,13 @@ func TestTF2PermanentOperationsAreBackendBlockedByDefault(t *testing.T) {
 	}
 }
 
-func TestTF2LegacyPermanentOperationCannotSendEvenWhenFlagEnabled(t *testing.T) {
+func TestTF2UnverifiedPermanentOperationCannotSendEvenWhenFlagEnabled(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		operation string
 		enable    func(*domain.FeatureFlags)
 	}{
 		{name: "unboxing", operation: "tf2.containers.open", enable: func(flags *domain.FeatureFlags) { flags.EnableTF2Unboxing = true }},
-		{name: "crafting", operation: "tf2.crafting.craft", enable: func(flags *domain.FeatureFlags) { flags.EnableTF2Crafting = true }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service := NewService()

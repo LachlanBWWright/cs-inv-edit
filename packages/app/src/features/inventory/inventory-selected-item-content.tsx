@@ -133,6 +133,9 @@ export function SelectedItemContent(props: {
         onPreview={props.panelProps.onPreviewTradeUp}
         returnEstimate={props.panelProps.tradeUpReturnEstimate}
         returnEstimateLoading={props.panelProps.tradeUpReturnLoading}
+        priceAnalysisEnabled={
+          props.panelProps.settings?.featureFlags.enablePriceAnalysis === true
+        }
       />
       <TerminalItemSection
         selected={props.selected}

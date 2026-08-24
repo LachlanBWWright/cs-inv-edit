@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +17,16 @@ func main() {
 	if address == "" {
 		address = "127.0.0.1:7332"
 	}
-	scanner := pricescanner.New(
+	multipliers := map[string]float64{}
+	if configured := strings.TrimSpace(os.Getenv("CSINV_PRICE_MULTIPLIERS")); configured != "" {
+		if err := json.Unmarshal([]byte(configured), &multipliers); err != nil {
+			log.Fatalf("invalid CSINV_PRICE_MULTIPLIERS: %v", err)
+		}
+	}
+	scanner := pricescanner.NewWithValuationPolicy(pricescanner.ValuationPolicy{
+		BaselineSource: "steam",
+		Multipliers:    multipliers,
+	},
 		pricescanner.NewSteamProvider(nil),
 		pricescanner.NewSkinportProvider(nil),
 		pricescanner.NewCSFloatProvider(nil, os.Getenv("CSFLOAT_API_KEY")),
@@ -29,7 +39,17 @@ func main() {
 	if configured := strings.TrimSpace(os.Getenv("CSINV_DATA_ALLOWED_ORIGINS")); configured != "" {
 		origins = strings.Split(configured, ",")
 	}
-	handler := dataservice.NewHandlerWithOrigins(dataservice.NewPriceCache(scanner, 5*time.Minute), origins)
+	var store dataservice.ObservationStore
+	historyPath := strings.TrimSpace(os.Getenv("CSINV_PRICE_HISTORY_PATH"))
+	if historyPath == "" {
+		historyPath = "data/price-observations.jsonl"
+	}
+	createdStore, err := dataservice.NewJSONLObservationStore(historyPath)
+	if err != nil {
+		log.Fatalf("initialize price history: %v", err)
+	}
+	store = createdStore
+	handler := dataservice.NewHandlerWithOrigins(dataservice.NewPriceCacheWithStore(scanner, 5*time.Minute, store), origins)
 	log.Printf("data-service listening on http://%s", address)
 	if err := http.ListenAndServe(address, handler); err != nil {
 		log.Fatal(err)

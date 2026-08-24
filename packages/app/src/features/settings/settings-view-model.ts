@@ -172,11 +172,13 @@ export const featureFlagKeys = [
   "enableTf2ItemUse",
   "enableTf2Tools",
   "enableTf2Crafting",
+  "enableTf2Tradeups",
   "enableTf2Unboxing",
   "enableTf2Customization",
   "enableDota2Inventory",
   "enableSteamInventory",
   "enableSteamTradeMutations",
+  "enablePriceAnalysis",
 ] as const satisfies readonly (keyof FeatureFlags)[];
 
 export function settingsEqual(

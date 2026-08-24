@@ -756,6 +756,8 @@ components:
         wear:
           type: number
           format: double
+        name: { type: string }
+        imageUrl: { type: string }
     AppliedItem:
       type: object
       additionalProperties: false
@@ -895,6 +897,8 @@ components:
         - kind
       properties:
         id: { type: string }
+        originalId: { type: string }
+        quantity: { type: integer, format: uint32, minimum: 0 }
         name: { type: string }
         marketName: { type: string }
         marketPrice: { type: string }
@@ -916,6 +920,8 @@ components:
             - cs2_econ_item
             - unknown
         defindex: { type: integer, format: uint32, minimum: 0 }
+        paintKit: { type: integer, format: uint32, minimum: 0 }
+        paintSeed: { type: integer, format: uint32, minimum: 0 }
         paintWear: { type: number, format: double }
         paintWearMin: { type: number, format: double }
         paintWearMax: { type: number, format: double }
@@ -940,6 +946,10 @@ components:
         isActiveTerminal: { type: boolean }
         exterior: { type: string }
         rarity: { type: string }
+        qualityId: { type: integer, format: uint32, minimum: 0 }
+        rarityId: { type: integer, format: uint32, minimum: 0 }
+        customDescription: { type: string }
+        inventoryPosition: { type: integer, format: uint32, minimum: 0 }
         storageLocation: { type: string }
         toolType: { type: string }
         requiredKeyDefIndexes:
@@ -1458,6 +1468,7 @@ components:
         - enableTf2ItemUse
         - enableTf2Tools
         - enableTf2Crafting
+        - enableTf2Tradeups
         - enableTf2Unboxing
         - enableTf2Customization
         - enableDota2Inventory
@@ -1488,11 +1499,13 @@ components:
         enableTf2ItemUse: { type: boolean, default: false }
         enableTf2Tools: { type: boolean, default: false }
         enableTf2Crafting: { type: boolean, default: false }
+        enableTf2Tradeups: { type: boolean, default: false }
         enableTf2Unboxing: { type: boolean, default: false }
         enableTf2Customization: { type: boolean, default: false }
         enableDota2Inventory: { type: boolean, default: false }
         enableSteamInventory: { type: boolean, default: true }
         enableSteamTradeMutations: { type: boolean, default: false }
+        enablePriceAnalysis: { type: boolean, default: false }
     SettingsData:
       type: object
       additionalProperties: false

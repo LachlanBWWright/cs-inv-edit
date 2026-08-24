@@ -56,6 +56,12 @@ export function Sidebar(props: SidebarProps) {
       detail: "Low to high",
     },
   ];
+  const visibleSortOptions = () =>
+    sortOptions.filter(
+      (option) =>
+        props.settings?.featureFlags.enablePriceAnalysis === true ||
+        !option.value.startsWith("price-"),
+    );
   return (
     <header class="sticky top-0 z-20 flex flex-nowrap items-center gap-2 border-b border-slate-800 bg-slate-950 px-2 py-2 sm:px-3 lg:flex-wrap lg:px-4">
       <div class="flex min-w-0 flex-1 items-center gap-2 lg:flex-wrap">
@@ -110,7 +116,7 @@ export function Sidebar(props: SidebarProps) {
         open={mobileOptionsOpen()}
         onClose={() => setMobileOptionsOpen(false)}
         activeFilterCount={activeFilterCount()}
-        sortOptions={sortOptions}
+        sortOptions={visibleSortOptions()}
         props={props}
       />
     </header>

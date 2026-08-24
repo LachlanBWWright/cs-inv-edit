@@ -68,6 +68,9 @@ function ArmoryOfferEntry(props: {
       quantity={quantity()}
       estimate={props.list.offerEstimates[armoryOfferKey(props.offer)]}
       estimateLoading={props.list.offerEstimatesLoading}
+      priceAnalysisEnabled={
+        props.list.settings?.featureFlags.enablePriceAnalysis === true
+      }
       canBuy={props.list.redemptionEnabled && props.list.ready && affordable()}
       buyDisabledReason={purchaseDisabledReason(
         props.list,

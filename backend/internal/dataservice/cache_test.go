@@ -3,6 +3,7 @@ package dataservice
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,27 @@ type countingScanner struct {
 	mu    sync.Mutex
 	calls int
 	gate  chan struct{}
+}
+
+func TestJSONLObservationStoreFiltersAndLimitsHistory(t *testing.T) {
+	store, err := NewJSONLObservationStore(filepath.Join(t.TempDir(), "prices.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, two := int64(100), int64(125)
+	if err := store.Record(730, pricescanner.Result{BaselineSource: "steam", Listings: []pricescanner.Quote{
+		{Source: "steam", MarketName: "Item", Currency: "USD", AmountMinor: &one, ObservedAt: "2026-01-01T00:00:00Z"},
+		{Source: "steam", MarketName: "Item", Currency: "USD", AmountMinor: &two, ObservedAt: "2026-01-02T00:00:00Z"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	observations, err := store.History(HistoryFilter{MarketName: "Item", AppID: 730, Currency: "USD", Source: "steam", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observations) != 1 || observations[0].AmountMinor == nil || *observations[0].AmountMinor != 125 {
+		t.Fatalf("observations=%#v", observations)
+	}
 }
 
 func (s *countingScanner) Scan(context.Context, pricescanner.Query) (pricescanner.Result, error) {

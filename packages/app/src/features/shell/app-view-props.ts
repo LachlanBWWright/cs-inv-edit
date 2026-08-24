@@ -9,6 +9,8 @@ import type {
   OperationReceipt,
   OpenContainerRequest,
   PriceScanResult,
+  PriceHistoryResult,
+  PriceSearchResult,
   ProtocolTraceEntry,
   RemoveItemNameRequest,
   RelatedItemDto,
@@ -100,6 +102,15 @@ export interface AppViewProps {
     marketNames: string[],
     appId?: number,
   ) => Promise<PriceScanResult | undefined>;
+  onLoadPriceHistory: (
+    marketName: string,
+    currency: string,
+    appId: number,
+  ) => Promise<PriceHistoryResult | undefined>;
+  onSearchPrices: (
+    query: string,
+    appId?: number,
+  ) => Promise<PriceSearchResult | undefined>;
   onArmoryRedeem: (input: ArmoryRedeemRequest) => Promise<OperationReceipt>;
   onStoreRefresh: () => Promise<unknown>;
   onTF2StoreRefresh: () => Promise<unknown>;
@@ -127,8 +138,6 @@ export interface AppViewProps {
     casketId: string;
     itemId: string;
   }) => Promise<OperationReceipt>;
-  onExecuteTradeUp: (input: {
-    itemIds: string[];
-  }) => Promise<OperationReceipt>;
+  onExecuteTradeUp: (input: { itemIds: string[] }) => Promise<OperationReceipt>;
   onSaveSettings: (next: SettingsData) => Promise<UIActionOutcome>;
 }

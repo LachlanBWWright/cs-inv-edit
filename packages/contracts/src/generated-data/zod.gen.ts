@@ -44,6 +44,7 @@ export const zProviderError = z.object({
 });
 
 export const zPriceResult = z.object({
+  baselineSource: z.string().optional(),
   currency: z.string(),
   items: z.array(zPriceItemResult),
   listings: z.array(zPriceQuote),
@@ -51,6 +52,24 @@ export const zPriceResult = z.object({
   scannedAt: z.iso.datetime(),
   servedAt: z.iso.datetime().optional(),
   cacheState: z.enum(["fresh", "stale"]).optional(),
+});
+
+export const zPriceHistoryResult = z.object({
+  marketName: z.string(),
+  appId: z.int(),
+  currency: z.string(),
+  baselineSource: z.string(),
+  observations: z.array(zPriceQuote),
+});
+
+export const zPriceSearchItem = z.object({
+  marketName: z.string(),
+  name: z.string(),
+  imageUrl: z.string().optional(),
+});
+
+export const zPriceSearchResult = z.object({
+  items: z.array(zPriceSearchItem),
 });
 
 export const zErrorResponse = z.object({
@@ -78,3 +97,29 @@ export const zQueryPricesBody = zPriceQuery;
  * Aggregated prices
  */
 export const zQueryPricesResponse = zPriceResult;
+
+export const zGetPriceHistoryQuery = z.object({
+  marketName: z.string().min(1),
+  currency: z.string().min(1),
+  appId: z.int().gte(0).optional(),
+  source: z.string().optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
+  limit: z.int().gte(1).lte(1000).optional().default(200),
+});
+
+/**
+ * Historical price observations
+ */
+export const zGetPriceHistoryResponse = zPriceHistoryResult;
+
+export const zSearchPricesQuery = z.object({
+  query: z.string().min(1),
+  appId: z.int().gte(0).optional(),
+  limit: z.int().gte(1).lte(50).optional().default(24),
+});
+
+/**
+ * Searchable market items
+ */
+export const zSearchPricesResponse = zPriceSearchResult;

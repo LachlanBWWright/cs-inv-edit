@@ -4,7 +4,15 @@ import type { EconomyInventoryItemDto, TF2RelatedItem } from "@cs-inv-edit/contr
 type TF2Item = Extract<EconomyInventoryItemDto, { game: "tf2" }>;
 export interface TF2TradeUpOutcome extends TF2RelatedItem {
   probability: number;
+  collectionProbability?: number;
   marketName?: string;
+}
+
+export interface TF2TradeUpCollectionBreakdown {
+  collection: string;
+  probability: number;
+  rarity?: string;
+  outcomeCount: number;
 }
 
 const eligible = (item: EconomyInventoryItemDto): item is TF2Item =>
@@ -15,19 +23,49 @@ const eligible = (item: EconomyInventoryItemDto): item is TF2Item =>
 
 function outcomes(items: TF2Item[]): TF2TradeUpOutcome[] {
   const result = new Map<string, TF2TradeUpOutcome>();
+  const collectionCounts = new Map<string, number>();
+  for (const item of items) {
+    const collection = item.details.collection ?? "Unknown collection";
+    collectionCounts.set(collection, (collectionCounts.get(collection) ?? 0) + 1);
+  }
   for (const item of items) {
     const candidates = item.details.tradeUpItems ?? [];
+    const collection = item.details.collection ?? "Unknown collection";
+    const collectionProbability = (collectionCounts.get(collection) ?? 0) / items.length;
     for (const candidate of candidates) {
-      const key = String(candidate.defIndex ?? candidate.name);
+      const key = `${candidate.collection || collection}:${String(candidate.defIndex ?? candidate.name)}`;
       const probability = 1 / items.length / candidates.length;
       const current = result.get(key);
-      if (current) current.probability += probability;
-      else result.set(key, { ...candidate, marketName: candidate.name, probability });
+      if (current) {
+        current.probability += probability;
+        current.collectionProbability = Math.max(current.collectionProbability ?? 0, collectionProbability);
+      } else {
+        result.set(key, { ...candidate, collection: candidate.collection || collection, marketName: candidate.name, probability, collectionProbability });
+      }
     }
   }
   return [...result.values()].sort((left, right) =>
     right.probability - left.probability || left.name.localeCompare(right.name),
   );
+}
+
+function collectionBreakdown(items: TF2Item[]): TF2TradeUpCollectionBreakdown[] {
+  const groups = new Map<string, TF2TradeUpCollectionBreakdown>();
+  for (const item of items) {
+    const collection = item.details.collection ?? "Unknown collection";
+    const existing = groups.get(collection);
+    if (existing) {
+      existing.probability += 1 / items.length;
+      continue;
+    }
+    groups.set(collection, {
+      collection,
+      probability: 1 / items.length,
+      rarity: item.details.tradeUpItems?.[0]?.rarity,
+      outcomeCount: item.details.tradeUpItems?.length ?? 0,
+    });
+  }
+  return [...groups.values()].sort((left, right) => right.probability - left.probability);
 }
 
 export function createTF2TradeUp(allItems: () => EconomyInventoryItemDto[]) {
@@ -73,6 +111,7 @@ export function createTF2TradeUp(allItems: () => EconomyInventoryItemDto[]) {
     filterItems,
     toggle,
     outcomes: createMemo(() => outcomes(selectedItems())),
+    collectionBreakdown: createMemo(() => collectionBreakdown(selectedItems())),
     start: () => {
       setSelectedIds([]);
       setActive(true);

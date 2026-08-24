@@ -76,6 +76,20 @@ export type TF2OperationRequest =
       game: "tf2";
       itemIds: string[];
       recipeId?: number;
+      recipe?: number;
+      confirmed?: boolean;
+    }
+  | {
+      type: "tf2.crafting.trade-up";
+      game: "tf2";
+      itemIds: string[];
+      confirmed?: boolean;
+    }
+  | {
+      type: "tf2.crafting.halloween-offering";
+      game: "tf2";
+      toolItemId: string;
+      itemIds: string[];
       confirmed?: boolean;
     }
   | {
@@ -180,6 +194,7 @@ export interface TF2ItemDetails extends EconomyItemDetailsBase {
 export interface TF2RelatedItem {
   defIndex?: number;
   name: string;
+  collection?: string;
   rarity?: string;
   poolKind: "primary" | "bonus" | "unresolved";
   imageUrl?: string;

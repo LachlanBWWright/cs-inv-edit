@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import { mkdir, readdir, unlink } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
-const port = 6006;
+const port = Number(process.env.STORYBOOK_PORT ?? "6106");
 const baseUrl = `http://127.0.0.1:${port}`;
 const outputDirectory = "artifacts/storybook";
 const server = spawn(
-  "pnpm",
-  ["exec", "storybook", "dev", "--ci", "--no-open", "-p", String(port)],
+  resolve(process.cwd(), "node_modules/.bin/storybook"),
+  ["dev", "--ci", "--no-open", "-p", String(port)],
   { detached: process.platform !== "win32", stdio: "inherit" },
 );
 
@@ -16,7 +17,11 @@ function stopServer() {
     server.kill("SIGTERM");
     return;
   }
-  process.kill(-server.pid, "SIGTERM");
+  try {
+    process.kill(-server.pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
 }
 
 async function waitForStorybook(attempts = 60) {

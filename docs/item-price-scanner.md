@@ -58,12 +58,30 @@ cache entries contain canonical raw observations and use a multiplier of `1`.
 Personal fee, discount, or cash-value policies belong in the client and must not
 alter shared cache identity.
 
+The shared data service treats Steam Community Market as the valuation baseline.
+`adjustedAmountMinor` is therefore a Steam-equivalent value, not a claim that
+the provider's own currency is interchangeable with Steam wallet funds. A
+provider multiplier converts one unit of that provider's quoted currency into
+baseline value; for example, if 1.5 trading-site dollars are judged equivalent
+to 1 Steam dollar, configure that provider with a multiplier of `0.6666667`.
+Set `CSINV_PRICE_MULTIPLIERS` to a JSON object such as
+`{"waxpeer":0.6666667}`. Steam is always forced to a multiplier of `1`.
+Raw provider values remain in `displayPrice` and adjusted values are shown as
+Steam-equivalent values in the UI.
+
 Providers are data-source adapters only. The Shared Data Service applies a
 five-minute in-memory TTL and coalesces concurrent identical requests. An
 expired observation remains eligible as explicit `cacheState: "stale"` data for
 up to thirty additional minutes when refresh fails. Provider errors remain
 partial results. `observedAt` identifies upstream observation time, while
 `servedAt` identifies when the shared response was served.
+
+Successful observations are also appended to the JSONL history store configured
+by `CSINV_PRICE_HISTORY_PATH` (default `data/price-observations.jsonl`). The
+`GET /v1/prices/history` endpoint filters by AppID, market name, currency,
+provider, and optional RFC3339 time bounds. This is durable raw observation
+history; chart aggregation, retention compaction, and scheduled background
+refresh are not yet included.
 
 Run the service with `pnpm build:data-service && ./bin/data-service`. It listens
 on `127.0.0.1:7332` by default; override this with `CSINV_DATA_ADDR`. The service

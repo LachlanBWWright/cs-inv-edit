@@ -21,10 +21,17 @@ func TestTF2ExtensionMappingsUseAuthoritativeMessageIDs(t *testing.T) {
 }
 
 func TestTF2PermanentLegacyOperationsRemainUnverified(t *testing.T) {
-	for _, operation := range []string{"tf2.crafting.craft", "tf2.containers.open"} {
+	for _, operation := range []string{"tf2.containers.open"} {
 		mapping, ok := TF2OperationMapping(operation)
 		if !ok || mapping.Verified || mapping.Protobuf || mapping.FeatureFlag == "" {
 			t.Fatalf("unsafe TF2 mapping for %s: %#v", operation, mapping)
 		}
+	}
+}
+
+func TestTF2CraftingUsesTheLegacyCraftMessage(t *testing.T) {
+	mapping, ok := TF2OperationMapping("tf2.crafting.craft")
+	if !ok || mapping.EMsg != TF2EMsgCraft || mapping.Protobuf || !mapping.Verified || mapping.FeatureFlag != "enableTf2Crafting" {
+		t.Fatalf("unexpected TF2 crafting mapping: %#v, ok=%t", mapping, ok)
 	}
 }

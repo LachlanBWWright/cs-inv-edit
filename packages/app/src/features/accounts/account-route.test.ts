@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { shouldShowAccountScreen } from "./account-route.js";
 
 describe("shouldShowAccountScreen", () => {
+  it("keeps price analysis available while signed out", () => {
+    expect(
+      shouldShowAccountScreen({
+        currentView: "price-analysis",
+        connection: undefined,
+        connectionLoading: true,
+        hasSignedInAccount: false,
+      }),
+    ).toBe(false);
+  });
+
   it("opens sign-in immediately when no account is signed in", () => {
     expect(
       shouldShowAccountScreen({

@@ -375,13 +375,16 @@ export function InventoryView(props: InventoryViewProps) {
         items={tradeUp.selectedItems()}
         outcomes={tradeUp.outcomes()}
         executionEnabled={props.settings?.featureFlags.enableTradeups ?? false}
+        priceAnalysisEnabled={
+          props.settings?.featureFlags.enablePriceAnalysis === true
+        }
         connected={connected()}
         requiredCount={tradeUp.requiredCount()}
         marketPrices={props.marketPrices}
         scanPrices={props.marketActions.scanPrices}
         onOpenChange={tradeUp.setConfirmationOpen}
         onRemove={tradeUp.toggle}
-        onExecute={props.tradeUpActions.execute}
+        onExecute={(itemIds) => props.tradeUpActions.execute({ itemIds })}
         onAccepted={() => {
           tradeUp.reset();
           props.onRefresh();

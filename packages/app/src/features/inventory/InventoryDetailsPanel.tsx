@@ -376,6 +376,9 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
         containerReturnLoading={containerReturnLoading}
         contentsOdds={contentsOdds}
         onMarketPreview={props.onMarketPreview}
+        priceAnalysisEnabled={
+          props.settings?.featureFlags.enablePriceAnalysis === true
+        }
       />
     </>
   );

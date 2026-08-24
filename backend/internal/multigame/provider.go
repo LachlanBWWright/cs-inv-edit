@@ -241,13 +241,13 @@ func (p *Provider) EnrichOwned(ctx context.Context, steamID string, game Game, o
 				if description, ok := tf2Images[related.Name]; ok {
 					imageURL = firstNonEmpty(description.IconURLLarge, description.IconURL)
 				}
-				item.Details.ContainerItems[index] = domain.TF2RelatedItem{DefIndex: related.DefIndex, Name: related.Name, Rarity: related.Rarity, PoolKind: related.PoolKind, ImageURL: imageURL}
+				item.Details.ContainerItems[index] = domain.TF2RelatedItem{DefIndex: related.DefIndex, Name: related.Name, Collection: related.Collection, Rarity: related.Rarity, PoolKind: related.PoolKind, ImageURL: imageURL}
 			}
 			item.Details.TradeUpItems = make([]domain.TF2RelatedItem, len(definition.TradeUpItems))
 			for index, related := range definition.TradeUpItems {
 				item.Details.TradeUpItems[index] = domain.TF2RelatedItem{
 					DefIndex: related.DefIndex, Name: related.Name,
-					Rarity: related.Rarity, PoolKind: related.PoolKind,
+					Collection: related.Collection, Rarity: related.Rarity, PoolKind: related.PoolKind,
 				}
 			}
 		}

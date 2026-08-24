@@ -44,9 +44,11 @@ func defaultSettings() domain.Settings {
 			EnableTF2ItemUse:       false,
 			EnableTF2Tools:         false,
 			EnableTF2Crafting:      false,
+			EnableTF2Tradeups:      false,
 			EnableTF2Unboxing:      false,
 			EnableTF2Customization: false,
 			EnableSteamInventory:   true,
+			EnablePriceAnalysis:    false,
 		},
 	}
 }

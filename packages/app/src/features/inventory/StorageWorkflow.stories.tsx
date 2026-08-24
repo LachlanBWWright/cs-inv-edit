@@ -1,4 +1,7 @@
-import type { InventoryItemDto, InventorySnapshot } from "@cs-inv-edit/contracts";
+import type {
+  InventoryItemDto,
+  InventorySnapshot,
+} from "@cs-inv-edit/contracts";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { InventoryGrid } from "./inventory-view-content-grid.js";
 
@@ -80,6 +83,12 @@ const baseArgs = {
   onRetrieveAllFromStorage: noOp,
   onCancelMoveIntoStorage: noOp,
   onConfirmMoveIntoStorage: noOp,
+  tradeUpActive: false,
+  tradeUpSelectedCount: 0,
+  tradeUpRequiredCount: 10,
+  onStartTradeUp: noOp,
+  onCancelTradeUp: noOp,
+  onReviewTradeUp: noOp,
 };
 
 const meta = {

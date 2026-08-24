@@ -48,6 +48,10 @@ export const modeDetails: Record<
     label: "Dota 2",
     description: "View your Dota inventory",
   },
+  "price-analysis": {
+    label: "Price analysis",
+    description: "Compare provider prices and Steam-equivalent history",
+  },
 };
 
 export const modeGroups: { label: string; accent: string; modes: AppMode[] }[] =
@@ -74,4 +78,5 @@ export const modeGroups: { label: string; accent: string; modes: AppMode[] }[] =
       ],
     },
     { label: "Dota 2", accent: "bg-violet-400", modes: ["dota2-inventory"] },
+    { label: "Market data", accent: "bg-emerald-400", modes: ["price-analysis"] },
   ];

@@ -8,6 +8,7 @@ import {
   ItemImage,
   marketUrl,
   SteamItemDiagnostics,
+  TF2ItemAttributes,
   TF2ItemDiagnostics,
 } from "./game-inventory-elements.js";
 import { VendorPricePreview } from "../commerce/VendorPricePreview.js";
@@ -55,7 +56,7 @@ function InventoryDetailHeader(props: {
 
 function OptionalDetailField(props: {
   label: string;
-  value: string | undefined;
+  value: string | number | undefined;
 }) {
   return (
     <Show when={props.value} keyed>
@@ -238,6 +239,28 @@ export function InventoryDetailBody(props: {
             value={tf2Details()?.collection}
           />
           <OptionalDetailField
+            label="Craft class"
+            value={tf2Details()?.craftClass}
+          />
+          <OptionalDetailField
+            label="Craft material"
+            value={tf2Details()?.craftMaterialType}
+          />
+          <OptionalDetailField label="Tool type" value={tf2Details()?.toolType} />
+          <OptionalDetailField
+            label="Schema tags"
+            value={tf2Details()?.schemaTags?.join(", ")}
+          />
+          <OptionalDetailField
+            label="Allowed level"
+            value={
+              tf2Details()?.minLevel !== undefined &&
+              tf2Details()?.maxLevel !== undefined
+                ? `${tf2Details()?.minLevel}–${tf2Details()?.maxLevel}`
+                : undefined
+            }
+          />
+          <OptionalDetailField
             label="Equip regions"
             value={tf2Details()?.equipRegions?.join(", ")}
           />
@@ -295,6 +318,14 @@ export function InventoryDetailBody(props: {
         <p class="text-sm text-slate-400">
           {props.selectedTF2Details()?.description}
         </p>
+      </Show>
+      <Show when={tf2Details()?.customDescription}>
+        <p class="whitespace-pre-wrap text-sm text-slate-400">
+          {tf2Details()?.customDescription}
+        </p>
+      </Show>
+      <Show when={tf2Details()?.decodedAttributes?.length}>
+        <TF2ItemAttributes attributes={tf2Details()?.decodedAttributes ?? []} />
       </Show>
       <GameInventoryTF2Actions
         props={props.viewProps}

@@ -6,9 +6,12 @@
 package dataapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for DataServiceHealthService.
@@ -78,6 +81,15 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// PriceHistoryResult defines model for PriceHistoryResult.
+type PriceHistoryResult struct {
+	AppId          int          `json:"appId"`
+	BaselineSource string       `json:"baselineSource"`
+	Currency       string       `json:"currency"`
+	MarketName     string       `json:"marketName"`
+	Observations   []PriceQuote `json:"observations"`
+}
+
 // PriceItemResult defines model for PriceItemResult.
 type PriceItemResult struct {
 	MarketName string       `json:"marketName"`
@@ -108,17 +120,30 @@ type PriceQuote struct {
 
 // PriceResult defines model for PriceResult.
 type PriceResult struct {
-	CacheState *PriceResultCacheState `json:"cacheState,omitempty"`
-	Currency   string                 `json:"currency"`
-	Errors     []ProviderError        `json:"errors"`
-	Items      []PriceItemResult      `json:"items"`
-	Listings   []PriceQuote           `json:"listings"`
-	ScannedAt  time.Time              `json:"scannedAt"`
-	ServedAt   *time.Time             `json:"servedAt,omitempty"`
+	BaselineSource *string                `json:"baselineSource,omitempty"`
+	CacheState     *PriceResultCacheState `json:"cacheState,omitempty"`
+	Currency       string                 `json:"currency"`
+	Errors         []ProviderError        `json:"errors"`
+	Items          []PriceItemResult      `json:"items"`
+	Listings       []PriceQuote           `json:"listings"`
+	ScannedAt      time.Time              `json:"scannedAt"`
+	ServedAt       *time.Time             `json:"servedAt,omitempty"`
 }
 
 // PriceResultCacheState defines model for PriceResult.CacheState.
 type PriceResultCacheState string
+
+// PriceSearchItem defines model for PriceSearchItem.
+type PriceSearchItem struct {
+	ImageUrl   *string `json:"imageUrl,omitempty"`
+	MarketName string  `json:"marketName"`
+	Name       string  `json:"name"`
+}
+
+// PriceSearchResult defines model for PriceSearchResult.
+type PriceSearchResult struct {
+	Items []PriceSearchItem `json:"items"`
+}
 
 // ProviderError defines model for ProviderError.
 type ProviderError struct {
@@ -129,6 +154,24 @@ type ProviderError struct {
 // ProviderList defines model for ProviderList.
 type ProviderList struct {
 	Providers []string `json:"providers"`
+}
+
+// GetPriceHistoryParams defines parameters for GetPriceHistory.
+type GetPriceHistoryParams struct {
+	MarketName string     `form:"marketName" json:"marketName"`
+	Currency   string     `form:"currency" json:"currency"`
+	AppId      *int       `form:"appId,omitempty" json:"appId,omitempty"`
+	Source     *string    `form:"source,omitempty" json:"source,omitempty"`
+	From       *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To         *time.Time `form:"to,omitempty" json:"to,omitempty"`
+	Limit      *int       `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// SearchPricesParams defines parameters for SearchPrices.
+type SearchPricesParams struct {
+	Query string `form:"query" json:"query"`
+	AppId *int   `form:"appId,omitempty" json:"appId,omitempty"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // QueryPricesJSONRequestBody defines body for QueryPrices for application/json ContentType.
@@ -143,8 +186,14 @@ type ServerInterface interface {
 	// (GET /readyz)
 	GetReadiness(w http.ResponseWriter, r *http.Request)
 
+	// (GET /v1/prices/history)
+	GetPriceHistory(w http.ResponseWriter, r *http.Request, params GetPriceHistoryParams)
+
 	// (POST /v1/prices/query)
 	QueryPrices(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/prices/search)
+	SearchPrices(w http.ResponseWriter, r *http.Request, params SearchPricesParams)
 
 	// (GET /v1/providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
@@ -187,11 +236,181 @@ func (siw *ServerInterfaceWrapper) GetReadiness(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetPriceHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetPriceHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPriceHistoryParams
+
+	// ------------- Required query parameter "marketName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "marketName", r.URL.Query(), &params.MarketName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "marketName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "marketName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "currency" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "currency", r.URL.Query(), &params.Currency, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "currency"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "currency", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "appId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "appId", r.URL.Query(), &params.AppId, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "appId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPriceHistory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // QueryPrices operation middleware
 func (siw *ServerInterfaceWrapper) QueryPrices(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.QueryPrices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchPrices operation middleware
+func (siw *ServerInterfaceWrapper) SearchPrices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchPricesParams
+
+	// ------------- Required query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "appId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "appId", r.URL.Query(), &params.AppId, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "appId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchPrices(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -339,6 +558,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/readyz", wrapper.GetReadiness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/providers", wrapper.ListProviders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/prices/query", wrapper.QueryPrices)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/prices/history", wrapper.GetPriceHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/prices/search", wrapper.SearchPrices)
 
 	return m
 }

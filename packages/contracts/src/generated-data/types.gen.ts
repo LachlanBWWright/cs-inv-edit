@@ -46,6 +46,7 @@ export type ProviderError = {
 };
 
 export type PriceResult = {
+  baselineSource?: string;
   currency: string;
   items: Array<PriceItemResult>;
   listings: Array<PriceQuote>;
@@ -53,6 +54,24 @@ export type PriceResult = {
   scannedAt: string;
   servedAt?: string;
   cacheState?: "fresh" | "stale";
+};
+
+export type PriceHistoryResult = {
+  marketName: string;
+  appId: number;
+  currency: string;
+  baselineSource: string;
+  observations: Array<PriceQuote>;
+};
+
+export type PriceSearchItem = {
+  marketName: string;
+  name: string;
+  imageUrl?: string;
+};
+
+export type PriceSearchResult = {
+  items: Array<PriceSearchItem>;
 };
 
 export type ErrorResponse = {
@@ -134,3 +153,68 @@ export type QueryPricesResponses = {
 
 export type QueryPricesResponse =
   QueryPricesResponses[keyof QueryPricesResponses];
+
+export type GetPriceHistoryData = {
+  body?: never;
+  path?: never;
+  query: {
+    marketName: string;
+    currency: string;
+    appId?: number;
+    source?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  };
+  url: "/v1/prices/history";
+};
+
+export type GetPriceHistoryErrors = {
+  /**
+   * Invalid history query
+   */
+  400: ErrorResponse;
+};
+
+export type GetPriceHistoryError =
+  GetPriceHistoryErrors[keyof GetPriceHistoryErrors];
+
+export type GetPriceHistoryResponses = {
+  /**
+   * Historical price observations
+   */
+  200: PriceHistoryResult;
+};
+
+export type GetPriceHistoryResponse =
+  GetPriceHistoryResponses[keyof GetPriceHistoryResponses];
+
+export type SearchPricesData = {
+  body?: never;
+  path?: never;
+  query: {
+    query: string;
+    appId?: number;
+    limit?: number;
+  };
+  url: "/v1/prices/search";
+};
+
+export type SearchPricesErrors = {
+  /**
+   * Invalid search query
+   */
+  400: ErrorResponse;
+};
+
+export type SearchPricesError = SearchPricesErrors[keyof SearchPricesErrors];
+
+export type SearchPricesResponses = {
+  /**
+   * Searchable market items
+   */
+  200: PriceSearchResult;
+};
+
+export type SearchPricesResponse =
+  SearchPricesResponses[keyof SearchPricesResponses];

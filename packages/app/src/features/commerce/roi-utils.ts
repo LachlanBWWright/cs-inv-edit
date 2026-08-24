@@ -8,12 +8,11 @@ export interface ReturnEstimate {
   totalOutcomes: number;
 }
 
-export function steamPriceMap(result: PriceScanResult | undefined) {
+export function baselinePriceMap(result: PriceScanResult | undefined) {
   return new Map(
     (result?.items ?? []).flatMap((item) => {
       const quote =
-        item.quotes.find((candidate) => candidate.source === "steam") ??
-        item.quotes[0];
+        item.quotes.find((candidate) => candidate.source === "steam") ?? item.quotes[0];
       const amount = quote?.adjustedAmountMinor ?? quote?.amountMinor;
       return amount === undefined ? [] : [[item.marketName, amount] as const];
     }),
@@ -35,7 +34,7 @@ export async function scanPriceMap(
   const results = await Promise.all(batches.map((batch) => scan(batch, 730)));
   const prices = new Map<string, number>();
   for (const result of results) {
-    for (const [name, amount] of steamPriceMap(result))
+    for (const [name, amount] of baselinePriceMap(result))
       prices.set(name, amount);
   }
   return prices;

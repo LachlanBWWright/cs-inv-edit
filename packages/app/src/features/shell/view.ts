@@ -18,7 +18,8 @@ export type AppMode =
   | "tf2-store"
   | "armory"
   | "store"
-  | "trades";
+  | "trades"
+  | "price-analysis";
 export type AppScreen = AppMode | "account";
 
 const tf2FeatureModes: readonly TF2FeatureMode[] = ["tf2-loadouts"];
@@ -37,6 +38,7 @@ const appModes: readonly AppMode[] = [
   "tf2-campaigns",
   "tf2-store",
   "dota2-inventory",
+  "price-analysis",
 ];
 
 export function isAppMode(value: string | null): value is AppMode {
@@ -49,6 +51,7 @@ export function availableModes(flags?: {
   enableTf2Inventory: boolean;
   enableTf2Store?: boolean;
   enableDota2Inventory: boolean;
+  enablePriceAnalysis?: boolean;
 }): AppMode[] {
   const modes: AppMode[] = [
     "inventory",
@@ -57,6 +60,7 @@ export function availableModes(flags?: {
     "armory",
     "store",
   ];
+  if (flags?.enablePriceAnalysis === true) modes.push("price-analysis");
   if (flags?.enableCs2Loadouts) modes.push("cs2-loadouts");
   if (flags?.enableTf2Inventory)
     modes.push(

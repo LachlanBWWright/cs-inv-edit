@@ -79,6 +79,8 @@ export const zSticker = z.object({
     })
     .optional(),
   wear: z.number().optional(),
+  name: z.string().optional(),
+  imageUrl: z.string().optional(),
 });
 
 export const zAppliedItem = z.object({
@@ -202,6 +204,14 @@ export const zItemDebug = z.object({
 
 export const zInventoryItem = z.object({
   id: z.string(),
+  originalId: z.string().optional(),
+  quantity: z
+    .int()
+    .gte(0)
+    .max(4294967295, {
+      error: "Invalid value: Expected uint32 to be <= 4294967295",
+    })
+    .optional(),
   name: z.string(),
   marketName: z.string().optional(),
   marketPrice: z.string().optional(),
@@ -225,6 +235,20 @@ export const zInventoryItem = z.object({
     "unknown",
   ]),
   defindex: z
+    .int()
+    .gte(0)
+    .max(4294967295, {
+      error: "Invalid value: Expected uint32 to be <= 4294967295",
+    })
+    .optional(),
+  paintKit: z
+    .int()
+    .gte(0)
+    .max(4294967295, {
+      error: "Invalid value: Expected uint32 to be <= 4294967295",
+    })
+    .optional(),
+  paintSeed: z
     .int()
     .gte(0)
     .max(4294967295, {
@@ -265,6 +289,28 @@ export const zInventoryItem = z.object({
   isActiveTerminal: z.boolean().optional(),
   exterior: z.string().optional(),
   rarity: z.string().optional(),
+  qualityId: z
+    .int()
+    .gte(0)
+    .max(4294967295, {
+      error: "Invalid value: Expected uint32 to be <= 4294967295",
+    })
+    .optional(),
+  rarityId: z
+    .int()
+    .gte(0)
+    .max(4294967295, {
+      error: "Invalid value: Expected uint32 to be <= 4294967295",
+    })
+    .optional(),
+  customDescription: z.string().optional(),
+  inventoryPosition: z
+    .int()
+    .gte(0)
+    .max(4294967295, {
+      error: "Invalid value: Expected uint32 to be <= 4294967295",
+    })
+    .optional(),
   storageLocation: z.string().optional(),
   toolType: z.string().optional(),
   requiredKeyDefIndexes: z
@@ -815,11 +861,13 @@ export const zFeatureFlags = z.object({
   enableTf2ItemUse: z.boolean().default(false),
   enableTf2Tools: z.boolean().default(false),
   enableTf2Crafting: z.boolean().default(false),
+  enableTf2Tradeups: z.boolean().default(false),
   enableTf2Unboxing: z.boolean().default(false),
   enableTf2Customization: z.boolean().default(false),
   enableDota2Inventory: z.boolean().default(false),
   enableSteamInventory: z.boolean().default(true),
   enableSteamTradeMutations: z.boolean().optional().default(false),
+  enablePriceAnalysis: z.boolean().optional().default(false),
 });
 
 export const zSettingsData = z.object({

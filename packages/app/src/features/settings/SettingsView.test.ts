@@ -33,6 +33,7 @@ const settings: SettingsData = {
     enableTf2ItemUse: false,
     enableTf2Tools: false,
     enableTf2Crafting: false,
+    enableTf2Tradeups: false,
     enableTf2Unboxing: false,
     enableTf2Customization: false,
     enableDota2Inventory: false,

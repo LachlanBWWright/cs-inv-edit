@@ -1,4 +1,4 @@
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import type { OperationEvent, OperationReceipt } from "@cs-inv-edit/contracts";
 import { Card, CardContent } from "../../shared/ui/Card.js";
 import { formatState, formatTimestamp } from "../../shared/lib/format.js";
@@ -23,6 +23,20 @@ function ReceiptCard(props: { receipt: OperationReceipt }) {
       <p class="mt-1 text-xs text-slate-400">
         {formatTimestamp(props.receipt.createdAt)}
       </p>
+      <Show when={props.receipt.result?.gainedItemIds || props.receipt.result?.consumedItemIds}>
+        <div class="mt-3 border-t border-slate-800 pt-2 text-xs text-slate-400">
+          <p class="font-semibold text-slate-200">Craft reconciliation</p>
+          <Show when={props.receipt.result?.gainedItemIds}>
+            <p class="mt-1">Gained: {String(props.receipt.result?.gainedItemIds)}</p>
+          </Show>
+          <Show when={props.receipt.result?.consumedMissing}>
+            <p class="mt-1">Consumed confirmed: {String(props.receipt.result?.consumedMissing)}</p>
+          </Show>
+          <Show when={props.receipt.result?.gainedPresent}>
+            <p class="mt-1">Outputs confirmed: {String(props.receipt.result?.gainedPresent)}</p>
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 }

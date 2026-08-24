@@ -94,6 +94,8 @@ type Sticker struct {
 	Slot      *uint32  `json:"slot,omitempty"`
 	StickerID *uint32  `json:"stickerId,omitempty"`
 	Wear      *float64 `json:"wear,omitempty"`
+	Name      string   `json:"name,omitempty"`
+	ImageURL  string   `json:"imageUrl,omitempty"`
 }
 
 type AppliedItem struct {
@@ -107,6 +109,8 @@ type AppliedItem struct {
 
 type InventoryItem struct {
 	ID                      string          `json:"id"`
+	OriginalID              string          `json:"originalId,omitempty"`
+	Quantity                uint32          `json:"quantity,omitempty"`
 	Name                    string          `json:"name"`
 	MarketName              string          `json:"marketName,omitempty"`
 	MarketPrice             string          `json:"marketPrice,omitempty"`
@@ -117,6 +121,8 @@ type InventoryItem struct {
 	InspectURL              string          `json:"inspectUrl,omitempty"`
 	Kind                    ItemKind        `json:"kind"`
 	Defindex                *uint32         `json:"defindex,omitempty"`
+	PaintKit                *uint32         `json:"paintKit,omitempty"`
+	PaintSeed               *uint32         `json:"paintSeed,omitempty"`
 	PaintWear               *float64        `json:"paintWear,omitempty"`
 	PaintWearMin            *float64        `json:"paintWearMin,omitempty"`
 	PaintWearMax            *float64        `json:"paintWearMax,omitempty"`
@@ -142,6 +148,10 @@ type InventoryItem struct {
 	IsActiveTerminal        bool            `json:"isActiveTerminal,omitempty"`
 	Exterior                string          `json:"exterior,omitempty"`
 	Rarity                  string          `json:"rarity,omitempty"`
+	QualityID               *uint32         `json:"qualityId,omitempty"`
+	RarityID                *uint32         `json:"rarityId,omitempty"`
+	CustomDescription       string          `json:"customDescription,omitempty"`
+	InventoryPosition       *uint32         `json:"inventoryPosition,omitempty"`
 	StorageLocation         string          `json:"storageLocation,omitempty"`
 	ToolType                string          `json:"toolType,omitempty"`
 	RequiredKeyDefIndexes   []uint32        `json:"requiredKeyDefIndexes,omitempty"`
@@ -292,11 +302,13 @@ type FeatureFlags struct {
 	EnableTF2ItemUse          bool `json:"enableTf2ItemUse"`
 	EnableTF2Tools            bool `json:"enableTf2Tools"`
 	EnableTF2Crafting         bool `json:"enableTf2Crafting"`
+	EnableTF2Tradeups         bool `json:"enableTf2Tradeups"`
 	EnableTF2Unboxing         bool `json:"enableTf2Unboxing"`
 	EnableTF2Customization    bool `json:"enableTf2Customization"`
 	EnableDota2Inventory      bool `json:"enableDota2Inventory"`
 	EnableSteamInventory      bool `json:"enableSteamInventory"`
 	EnableSteamTradeMutations bool `json:"enableSteamTradeMutations"`
+	EnablePriceAnalysis       bool `json:"enablePriceAnalysis"`
 }
 
 type Settings struct {

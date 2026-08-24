@@ -140,6 +140,7 @@ function OfferDetailsSummary(props: {
   quantity: number;
   estimate?: ReturnEstimate;
   estimateLoading: boolean;
+  priceAnalysisEnabled: boolean;
 }) {
   return (
     <div>
@@ -153,22 +154,24 @@ function OfferDetailsSummary(props: {
         )}
         )
       </span>
-      <Show
-        when={props.estimateLoading}
-        fallback={
-          <Show when={props.estimate}>
-            {(estimate) => (
-              <EstimateSummary
-                estimate={estimate()}
-                quantity={props.quantity}
-              />
-            )}
-          </Show>
-        }
-      >
-        <p class="mt-1 animate-pulse text-xs text-sky-300">
-          Calculating expected return…
-        </p>
+      <Show when={props.priceAnalysisEnabled}>
+        <Show
+          when={props.estimateLoading}
+          fallback={
+            <Show when={props.estimate}>
+              {(estimate) => (
+                <EstimateSummary
+                  estimate={estimate()}
+                  quantity={props.quantity}
+                />
+              )}
+            </Show>
+          }
+        >
+          <p class="mt-1 animate-pulse text-xs text-sky-300">
+            Calculating expected return…
+          </p>
+        </Show>
       </Show>
     </div>
   );
@@ -263,6 +266,7 @@ export function OfferCard(props: {
   quantity: number;
   estimate?: ReturnEstimate;
   estimateLoading: boolean;
+  priceAnalysisEnabled: boolean;
   canBuy: boolean;
   buyDisabledReason?: string;
   busy: boolean;
@@ -304,6 +308,7 @@ export function OfferCard(props: {
           quantity={props.quantity}
           estimate={props.estimate}
           estimateLoading={props.estimateLoading}
+          priceAnalysisEnabled={props.priceAnalysisEnabled}
         />
         <OfferQuantityControls
           quantity={props.quantity}

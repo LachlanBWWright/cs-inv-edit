@@ -337,7 +337,12 @@ button:disabled,
 
 .reveal-item.is-compact {
   width: 176px;
+  height: 176px;
   min-height: 176px;
+  max-height: 176px;
+  box-sizing: border-box;
+  gap: 0.5rem;
+  overflow: hidden;
   font-size: 0.8rem;
 }
 .reveal-item img {
@@ -346,7 +351,24 @@ button:disabled,
   object-fit: contain;
 }
 .reveal-item.is-compact img {
-  height: 90px;
+  height: 72px;
+}
+.reveal-item-name {
+  display: -webkit-box;
+  width: 100%;
+  min-height: 2.4em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.2;
+  text-align: center;
+}
+.reveal-item-wear {
+  width: 100%;
+  min-height: 12px;
+}
+.reveal-item-wear[aria-hidden="true"] {
+  visibility: hidden;
 }
 .reveal-item-placeholder {
   display: grid;

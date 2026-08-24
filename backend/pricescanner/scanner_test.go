@@ -53,6 +53,29 @@ func TestScannerRetainsPartialQuotesAlongsideProviderFailure(t *testing.T) {
 	}
 }
 
+func TestScannerAppliesSteamBaselineValuationPolicy(t *testing.T) {
+	steamAmount, tradingAmount := int64(100), int64(150)
+	scanner := NewWithValuationPolicy(ValuationPolicy{
+		BaselineSource: "steam",
+		Multipliers:    map[string]float64{"trading-site": 2.0 / 3.0},
+	},
+		stubProvider{id: "steam", quotes: []Quote{{Source: "steam", MarketName: "Item", Currency: "USD", AmountMinor: &steamAmount}}},
+		stubProvider{id: "trading-site", quotes: []Quote{{Source: "trading-site", MarketName: "Item", Currency: "USD", AmountMinor: &tradingAmount}}},
+	)
+	result, err := scanner.Scan(context.Background(), Query{MarketNames: []string{"Item"}, Currency: "USD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BaselineSource != "steam" {
+		t.Fatalf("baseline=%q", result.BaselineSource)
+	}
+	for _, quote := range result.Listings {
+		if quote.Source == "trading-site" && (quote.AdjustedAmountMinor == nil || *quote.AdjustedAmountMinor != 100) {
+			t.Fatalf("trading-site quote=%#v", quote)
+		}
+	}
+}
+
 func TestScannerValidatesInput(t *testing.T) {
 	if _, err := New().Scan(context.Background(), Query{}); err == nil {
 		t.Fatal("expected empty query to fail")

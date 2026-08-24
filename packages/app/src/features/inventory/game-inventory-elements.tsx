@@ -78,6 +78,24 @@ function DecodedAttributes(props: {
   );
 }
 
+export function TF2ItemAttributes(props: {
+  attributes: NonNullable<
+    Extract<
+      EconomyInventoryItemDto,
+      { game: "tf2" }
+    >["details"]["decodedAttributes"]
+  >;
+}) {
+  return (
+    <section class="border-t border-slate-800 pt-3">
+      <h4 class="font-medium text-slate-200">Item attributes</h4>
+      <dl class="mt-2 space-y-2 text-sm">
+        <DecodedAttributes attributes={props.attributes} />
+      </dl>
+    </section>
+  );
+}
+
 function AttributeValueList(props: {
   label: string;
   entries: Array<[string, unknown]>;

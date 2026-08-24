@@ -349,7 +349,7 @@ func resolveTF2LootList(name string, lists kvObject, definitions map[string]TF2D
 			continue
 		}
 		if definition, ok := definitions[strings.ToLower(entry)]; ok {
-			out = append(out, TF2RelatedItem{DefIndex: definition.DefIndex, Name: definition.Name, Rarity: definition.Rarity, PoolKind: domain.TF2PoolKindPrimary})
+			out = append(out, TF2RelatedItem{DefIndex: definition.DefIndex, Name: definition.Name, Collection: definition.Collection, Rarity: definition.Rarity, PoolKind: domain.TF2PoolKindPrimary})
 			continue
 		}
 		out = append(out, TF2RelatedItem{Name: humanizeIdentifier(entry), PoolKind: domain.TF2PoolKindUnresolved})
@@ -388,7 +388,8 @@ func applyTF2TradeUpItems(definitions map[uint32]TF2Definition) {
 		if definition.Collection != "" {
 			byCollectionRarity[key] = append(byCollectionRarity[key], TF2RelatedItem{
 				DefIndex: definition.DefIndex, Name: definition.Name,
-				Rarity: definition.Rarity, PoolKind: domain.TF2PoolKindPrimary,
+				Collection: definition.Collection,
+				Rarity:     definition.Rarity, PoolKind: domain.TF2PoolKindPrimary,
 			})
 		}
 	}

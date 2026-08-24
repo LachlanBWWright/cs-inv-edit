@@ -19,6 +19,7 @@ describe("application mode", () => {
     expect(isAppMode("tf2-matches")).toBe(true);
     expect(isAppMode("tf2-campaigns")).toBe(true);
     expect(isAppMode("tf2-store")).toBe(true);
+    expect(isAppMode("price-analysis")).toBe(true);
     expect(isAppMode("account")).toBe(false);
     expect(isAppMode("unknown")).toBe(false);
     expect(isAppMode(null)).toBe(false);
@@ -52,6 +53,14 @@ describe("application mode", () => {
 
 describe("availableModes", () => {
   it("keeps default modes when optional inventories are absent", () => {
+    expect(availableModes()).not.toContain("price-analysis");
+    expect(
+      availableModes({
+        enablePriceAnalysis: true,
+        enableTf2Inventory: true,
+        enableDota2Inventory: false,
+      }),
+    ).toContain("price-analysis");
     expect(availableModes()).toEqual([
       "inventory",
       "cs2-features",

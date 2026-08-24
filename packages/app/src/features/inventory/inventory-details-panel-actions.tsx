@@ -29,6 +29,7 @@ export interface TradeUpOutcomesProps {
   onPreview?: (item: InventoryItemDto) => void;
   returnEstimate?: ReturnEstimate;
   returnEstimateLoading?: boolean;
+  priceAnalysisEnabled?: boolean;
 }
 
 function TradeUpOutcomeCard(props: { outcome: RelatedItemDto }) {
@@ -113,6 +114,7 @@ export function TradeUpOutcomes(props: TradeUpOutcomesProps) {
         </p>
         <div class="mt-3">
           <ReturnEstimateCard
+            enabled={props.priceAnalysisEnabled === true}
             estimate={props.returnEstimate}
             loading={props.returnEstimateLoading}
             costLabel="Identical-copy inputs"
@@ -286,8 +288,9 @@ export function ActionBar(props: ActionBarProps) {
             class="w-full rounded-xl py-3"
             onClick={() => props.onBeginMoveIntoStorage(props.selected)}
             disabled={
-              props.pending || (props.selected.storageCount ?? 0) >= 1000
-              || !props.storageMutationsEnabled
+              props.pending ||
+              (props.selected.storageCount ?? 0) >= 1000 ||
+              !props.storageMutationsEnabled
             }
           >
             Move items into unit

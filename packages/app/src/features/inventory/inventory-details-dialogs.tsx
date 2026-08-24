@@ -1,12 +1,20 @@
 import { For, Show, type Accessor, type Setter } from "solid-js";
 import type { RelatedItemDto } from "@cs-inv-edit/contracts";
 import { Dialog } from "../../shared/ui/Dialog.js";
-import { RelatedItemPreview, type RelatedItemPreviewContext } from "./RelatedItemPreview.js";
+import {
+  RelatedItemPreview,
+  type RelatedItemPreviewContext,
+} from "./RelatedItemPreview.js";
 import { sortRelatedItemsByRarity } from "./inventory-view-utils.js";
 import { ReturnEstimateCard } from "../commerce/ReturnEstimateCard.js";
 import type { ReturnEstimate } from "../commerce/roi-utils.js";
 
-type ContentsDialog = { title: string; description: string; items: RelatedItemDto[]; context: RelatedItemPreviewContext };
+type ContentsDialog = {
+  title: string;
+  description: string;
+  items: RelatedItemDto[];
+  context: RelatedItemPreviewContext;
+};
 
 function ContentsDialogPanel(props: {
   contentsDialog: Accessor<ContentsDialog | undefined>;
@@ -15,13 +23,16 @@ function ContentsDialogPanel(props: {
   containerReturnLoading: Accessor<boolean>;
   contentsOdds: Accessor<Map<RelatedItemDto, number>>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
+  priceAnalysisEnabled?: boolean;
   setNestedCollection: Setter<RelatedItemDto | undefined>;
 }) {
   const dialog = () => props.contentsDialog();
   const items = () => sortRelatedItemsByRarity(dialog()?.items ?? []);
   const hasItems = () => (dialog()?.items.length ?? 0) > 0;
   const probability = (item: RelatedItemDto) =>
-    dialog()?.context === "container" ? props.contentsOdds().get(item) : undefined;
+    dialog()?.context === "container"
+      ? props.contentsOdds().get(item)
+      : undefined;
 
   return (
     <Dialog
@@ -35,6 +46,7 @@ function ContentsDialogPanel(props: {
       <Show when={dialog()?.context === "container"}>
         <div class="mb-3">
           <ReturnEstimateCard
+            enabled={props.priceAnalysisEnabled === true}
             estimate={props.containerReturn()}
             loading={props.containerReturnLoading()}
             costLabel="Container + key"
@@ -90,7 +102,8 @@ function NestedCollectionDialogPanel(props: {
         when={hasItems()}
         fallback={
           <p class="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-            CS2 identifies this rare-special collection, but does not publish its individual contents in the client item schema.
+            CS2 identifies this rare-special collection, but does not publish
+            its individual contents in the client item schema.
           </p>
         }
       >
@@ -119,6 +132,7 @@ export function InventoryDetailsDialogs(props: {
   containerReturnLoading: Accessor<boolean>;
   contentsOdds: Accessor<Map<RelatedItemDto, number>>;
   onMarketPreview: (marketName: string) => Promise<RelatedItemDto | undefined>;
+  priceAnalysisEnabled?: boolean;
 }) {
   return (
     <>
@@ -129,6 +143,7 @@ export function InventoryDetailsDialogs(props: {
         containerReturnLoading={props.containerReturnLoading}
         contentsOdds={props.contentsOdds}
         onMarketPreview={props.onMarketPreview}
+        priceAnalysisEnabled={props.priceAnalysisEnabled}
         setNestedCollection={props.setNestedCollection}
       />
       <NestedCollectionDialogPanel

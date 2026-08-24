@@ -1,5 +1,8 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
-import type { InventoryItemDto, OperationReceipt } from "@cs-inv-edit/contracts";
+import type {
+  InventoryItemDto,
+  OperationReceipt,
+} from "@cs-inv-edit/contracts";
 import { Alert } from "../../shared/ui/Alert.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Dialog } from "../../shared/ui/Dialog.js";
@@ -22,6 +25,7 @@ export function TradeUpConfirmationDialog(props: {
   items: InventoryItemDto[];
   outcomes: TradeUpOutcome[];
   executionEnabled: boolean;
+  priceAnalysisEnabled?: boolean;
   connected: boolean;
   requiredCount: number;
   marketPrices: ReadonlyMap<string, number>;
@@ -146,6 +150,7 @@ export function TradeUpConfirmationDialog(props: {
             </div>
           </div>
           <ReturnEstimateCard
+            enabled={props.priceAnalysisEnabled === true}
             estimate={estimate()}
             loading={pricesLoading()}
             costLabel="Selected input value"

@@ -68,6 +68,8 @@ export type {
   PriceQuery as PriceScanRequest,
   PriceQuote as PriceQuoteDto,
   PriceResult as PriceScanResult,
+  PriceHistoryResult,
+  PriceSearchResult,
 } from "./generated-data/types.gen.js";
 
 export type PurchaseSessionStatus = PurchaseSession["status"];
