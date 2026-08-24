@@ -30,7 +30,14 @@ import { backendSchemas, localAgentPaths } from "@cs-inv-edit/contracts";
 import "@cs-inv-edit/app/styles.css";
 import { createWasmBackendClient } from "./wasm-backend.js";
 
-const backendBase = "http://127.0.0.1:7331";
+const webBackendEnvironment = (
+  import.meta as ImportMeta & {
+    env: { VITE_BACKEND_URL?: string };
+  }
+).env;
+const backendBase =
+  webBackendEnvironment.VITE_BACKEND_URL ?? "http://127.0.0.1:7331";
+const backendWebSocketBase = backendBase.replace(/^http/, "ws");
 const requestedBackendMode = new URLSearchParams(window.location.search).get(
   "backend",
 );
@@ -41,9 +48,9 @@ const webEnvironment = (
 ).env;
 const configuredBackendMode = webEnvironment.VITE_BACKEND_MODE;
 const backendMode =
-  configuredBackendMode ??
-  requestedBackendMode ??
-  (webEnvironment.PROD ? "wasm" : "http");
+  webEnvironment.PROD
+    ? "wasm"
+    : (configuredBackendMode ?? requestedBackendMode ?? "http");
 const dataServiceUrl =
   (import.meta as ImportMeta & { env?: { VITE_DATA_SERVICE_URL?: string } }).env
     ?.VITE_DATA_SERVICE_URL ?? "http://127.0.0.1:7332";
@@ -272,7 +279,7 @@ function createHttpBackendClient(): LocalAgentClient {
     watchSteamStatus: (listener) => {
       const parse = fromThrowable(JSON.parse, (cause) => cause);
       return watchSteamStatusWithRecovery({
-        socketUrl: `ws://127.0.0.1:7331${localAgentPaths.steamStatusWebSocket}`,
+        socketUrl: `${backendWebSocketBase}${localAgentPaths.steamStatusWebSocket}`,
         readStatus: () =>
           createRequestResult<ConnectionStatus>(
             localAgentPaths.steamStatus,

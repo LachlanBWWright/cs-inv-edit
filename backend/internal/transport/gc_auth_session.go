@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Lucino772/envelop/pkg/steam/steamcm"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
+	"cs-inv-edit/backend/internal/steamcm"
+	"cs-inv-edit/backend/internal/steamlang"
 )
 
 func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials, allowTryAnotherCM bool) (LogonResult, error) {

@@ -2,11 +2,11 @@ package transport
 
 import (
 	"bytes"
+	"cs-inv-edit/backend/internal/proto/steampb"
+	"cs-inv-edit/backend/internal/steamcm"
+	"cs-inv-edit/backend/internal/steamlang"
+	"cs-inv-edit/backend/internal/steammsg"
 	"fmt"
-	"github.com/Lucino772/envelop/pkg/steam/steamcm"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
-	"github.com/Lucino772/envelop/pkg/steam/steammsg"
-	"github.com/Lucino772/envelop/pkg/steam/steampb"
 	"io"
 	"log"
 	"sync/atomic"

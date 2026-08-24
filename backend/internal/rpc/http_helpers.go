@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -35,7 +36,7 @@ func parseBody(r *http.Request) (map[string]any, error) {
 func (h *Handler) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
+		if isAllowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
@@ -47,6 +48,18 @@ func (h *Handler) withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isAllowedOrigin(origin string) bool {
+	if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
+		return true
+	}
+	for _, configured := range strings.Split(os.Getenv("CS2_BACKEND_CORS_ORIGINS"), ",") {
+		if strings.TrimSpace(configured) == origin {
+			return true
+		}
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, value any) {

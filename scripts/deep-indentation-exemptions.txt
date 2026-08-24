@@ -10,3 +10,4 @@ packages/app/src/features/inventory/TF2CraftingToolbar.tsx
 packages/app/src/features/inventory/TF2HalloweenOfferingDialog.tsx
 packages/app/src/features/inventory/TradeUpConfirmationDialog.tsx
 packages/app/src/features/inventory/game-inventory-details.tsx
+apps/web/src/wasm-backend.ts

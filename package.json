@@ -7,7 +7,7 @@
     "dev:desktop": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop dev",
     "dev:web": "pnpm --filter @cs-inv-edit/web dev",
     "build": "pnpm -r --if-present build && pnpm build:services",
-    "build:backend": "go build -o bin/cs2-backend ./backend/cmd/cs2-backend",
+    "build:backend": "bash ./scripts/build-desktop-backend.sh",
     "build:data-service": "go build -o bin/data-service ./backend/cmd/data-service",
     "build:services": "pnpm build:backend && pnpm build:data-service",
     "build:repo": "./scripts/build.sh",
@@ -31,7 +31,9 @@
     "build:wasm-backend": "mkdir -p apps/web/public/wasm && wasm_exec=\"$(go env GOROOT)/lib/wasm/wasm_exec.js\" && if [ ! -f \"$wasm_exec\" ]; then wasm_exec=\"$(go env GOROOT)/misc/wasm/wasm_exec.js\"; fi && rm -f apps/web/public/wasm/wasm_exec.js && cp \"$wasm_exec\" apps/web/public/wasm/wasm_exec.js && GOOS=js GOARCH=wasm go build -o apps/web/public/wasm/cs2-backend.wasm ./backend/cmd/wasm-backend",
     "build:wasm-web": "pnpm build:wasm-backend && pnpm --filter @cs-inv-edit/web build",
     "build:android": "pnpm build:wasm-web && cap sync android && cd android && ./gradlew assembleDebug bundleRelease",
-    "build:mac": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop package:mac"
+    "build:linux": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop package:linux",
+    "build:mac": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop package:mac",
+    "build:win": "pnpm build:backend && pnpm --filter @cs-inv-edit/desktop package:win"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",

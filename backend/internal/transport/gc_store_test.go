@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"cs-inv-edit/backend/internal/proto/gametracking"
-	"github.com/Lucino772/envelop/pkg/steam/steampb"
+	"cs-inv-edit/backend/internal/proto/steampb"
 	"google.golang.org/protobuf/proto"
 )
 

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Lucino772/envelop/pkg/steam"
-	"github.com/Lucino772/envelop/pkg/steam/steamcm"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
-	"github.com/Lucino772/envelop/pkg/steam/steammsg"
+	"cs-inv-edit/backend/internal/steam"
+	"cs-inv-edit/backend/internal/steamcm"
+	"cs-inv-edit/backend/internal/steamlang"
+	"cs-inv-edit/backend/internal/steammsg"
 	"google.golang.org/protobuf/proto"
 )
 

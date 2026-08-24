@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"cs-inv-edit/backend/internal/protocol"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
+	"cs-inv-edit/backend/internal/steamlang"
 )
 
 var ErrNotConnected = errors.New("steam gc transport is not connected")

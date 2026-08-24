@@ -11,10 +11,10 @@ import (
 	"math/big"
 	"runtime"
 
-	"github.com/Lucino772/envelop/pkg/steam"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
-	"github.com/Lucino772/envelop/pkg/steam/steammsg"
-	"github.com/Lucino772/envelop/pkg/steam/steampb"
+	"cs-inv-edit/backend/internal/proto/steampb"
+	"cs-inv-edit/backend/internal/steam"
+	"cs-inv-edit/backend/internal/steamlang"
+	"cs-inv-edit/backend/internal/steammsg"
 	"google.golang.org/protobuf/proto"
 )
 

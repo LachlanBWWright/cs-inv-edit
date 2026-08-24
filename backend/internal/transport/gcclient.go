@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/Lucino772/envelop/pkg/steam/steamcm"
+	"cs-inv-edit/backend/internal/steamcm"
 )
 
 type SteamGCClient struct {
@@ -88,8 +89,15 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 	s.mu.Unlock()
 
 	errCh := make(chan error, 1)
+	connectAttempts := 3
+	if runtime.GOOS == "js" {
+		// A browser WebSocket is asynchronous. Retrying the same endpoint here
+		// only creates duplicate sockets; the browser transport reports its
+		// connection result through the request path instead.
+		connectAttempts = 1
+	}
 	go func() {
-		errCh <- connectSteamCMWithRetry(conn, diagnostics, 3, 750*time.Millisecond)
+		errCh <- connectSteamCMWithRetry(conn, diagnostics, connectAttempts, 750*time.Millisecond)
 	}()
 
 	select {
@@ -104,7 +112,12 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 			wrapped := fmt.Errorf("steam cm connect failed (%s): %w", diagnostics.String(), err)
 			return DiagnosticError{err: wrapped, lines: append(diagnostics.Lines, wrapped.Error())}
 		}
-	case <-time.After(250 * time.Millisecond):
+	}
+
+	if runtime.GOOS == "js" {
+		s.setState("connected")
+		s.events <- GCEvent{Type: "gc.connected", Payload: "Steam CM WebSocket ready"}
+		return nil
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, steamCMHandshakeTimeout)
@@ -272,6 +285,36 @@ func diagnoseSteamCM() (steamCMDiagnostics, error) {
 		if len(records) == 0 {
 			wrapped := fmt.Errorf("steam cm directory and DNS fallback returned no connectable servers")
 			return steamCMDiagnostics{RecordCount: 0, TCPProbe: "not_run", Lines: lines}, DiagnosticError{err: wrapped, lines: append(lines, wrapped.Error())}
+		}
+	}
+	if runtime.GOOS == "js" {
+		for _, candidate := range records {
+			if candidate == nil || candidate.Host == "" {
+				continue
+			}
+			if candidate.WebSocket {
+				lines = append(lines, fmt.Sprintf("steam cm selected WebSocket candidate=%s:%d", candidate.Host, candidate.Port))
+				return steamCMDiagnostics{
+					RecordCount: len(records),
+					Endpoint:    fmt.Sprintf("%s:%d", candidate.Host, candidate.Port),
+					Host:        candidate.Host,
+					Port:        candidate.Port,
+					TCPProbe:    "not_applicable_wasm",
+					Lines:       lines,
+				}, nil
+			}
+		}
+		candidate := records[0]
+		if candidate != nil && candidate.Host != "" {
+			lines = append(lines, fmt.Sprintf("steam cm selected fallback WebSocket candidate=%s:%d", candidate.Host, candidate.Port))
+			return steamCMDiagnostics{
+				RecordCount: len(records),
+				Endpoint:    fmt.Sprintf("%s:%d", candidate.Host, candidate.Port),
+				Host:        candidate.Host,
+				Port:        candidate.Port,
+				TCPProbe:    "not_applicable_wasm",
+				Lines:       lines,
+			}, nil
 		}
 	}
 

@@ -3,15 +3,23 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "A desktop client for managing Counter-Strike 2 and Team Fortress 2 inventories.",
+  "homepage": "https://github.com/LachlanBWWright/cs-inv-edit",
+  "author": {
+    "name": "CS Inventory Edit",
+    "email": "noreply@github.com"
+  },
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "pnpm build:electron && concurrently -k \"vite --host 127.0.0.1 --port 5173\" \"wait-on http://127.0.0.1:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "pnpm build:electron && vite build",
     "build:electron": "tsup --config tsup.config.ts",
+    "package:linux": "pnpm build && electron-builder --linux AppImage deb --publish never",
     "package:mac": "pnpm build && electron-builder --mac dmg zip --publish never",
+    "package:win": "pnpm build && electron-builder --win nsis zip --publish never",
+    "test": "vitest run --config vitest.config.ts",
     "lint": "eslint src",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit"
   },
   "dependencies": {
     "@cs-inv-edit/app": "workspace:*",
@@ -33,6 +41,7 @@
   "build": {
     "appId": "com.lachlanbwwright.csinvedit",
     "productName": "CS Inventory Edit",
+    "executableName": "cs-inv-edit",
     "directories": {
       "output": "release"
     },
@@ -42,8 +51,11 @@
     ],
     "extraResources": [
       {
-        "from": "../../bin/cs2-backend",
-        "to": "bin/cs2-backend"
+        "from": "../../bin",
+        "to": "bin",
+        "filter": [
+          "cs2-backend*"
+        ]
       }
     ],
     "mac": {
@@ -51,6 +63,19 @@
       "identity": null,
       "target": [
         "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
         "zip"
       ]
     },

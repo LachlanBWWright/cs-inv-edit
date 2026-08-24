@@ -97,6 +97,80 @@ jobs:
             apps/desktop/release/*.zip
           if-no-files-found: error
 
+  linux-app:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build installable Linux app
+        run: pnpm build:linux
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: cs-inv-edit-linux-${{ runner.arch }}
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: error
+
+  windows-app:
+    needs: quality
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build installable Windows app
+        run: pnpm build:win
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: cs-inv-edit-windows-${{ runner.arch }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.zip
+          if-no-files-found: error
+
   android-app:
     needs: quality
     runs-on: ubuntu-latest

@@ -11,7 +11,7 @@ import (
 	"cs-inv-edit/backend/internal/proto/tf2tracking"
 	"cs-inv-edit/backend/internal/proto/tracking"
 	"cs-inv-edit/backend/internal/protocol"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
+	"cs-inv-edit/backend/internal/steamlang"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )

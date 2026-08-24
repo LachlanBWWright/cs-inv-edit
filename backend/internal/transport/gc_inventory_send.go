@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"cs-inv-edit/backend/internal/proto/steampb"
 	"cs-inv-edit/backend/internal/protocol"
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
-	"github.com/Lucino772/envelop/pkg/steam/steampb"
+	"cs-inv-edit/backend/internal/steamlang"
 )
 
 func (s *SteamGCClient) SendToGC(ctx context.Context, appID uint32, emsg uint32, body []byte) error {

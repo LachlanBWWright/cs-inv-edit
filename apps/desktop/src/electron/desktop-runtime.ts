@@ -8,15 +8,19 @@ import {
   backendUrl,
   registerBackendIpcHandlers,
 } from "./backend-ipc-handlers.js";
+import { resolveBackendPath } from "./backend-path.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export let backend: ChildProcess | undefined;
 
 function backendPath() {
-  const defaultPath = app.isPackaged
-    ? path.join(process.resourcesPath, "bin", "cs2-backend")
-    : path.resolve(__dirname, "../../../../bin/cs2-backend");
-  return process.env.CS2_BACKEND_BIN ?? defaultPath;
+  return resolveBackendPath({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    developmentDirectory: __dirname,
+    override: process.env.CS2_BACKEND_BIN,
+  });
 }
 
 export function startBackend() {

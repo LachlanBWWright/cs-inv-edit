@@ -5,3 +5,21 @@ backend/pricescanner/providers.go
 backend/internal/econ/tf2_schema.go
 packages/app/src/features/inventory/InventoryView.tsx
 backend/internal/app/service_inventory_mapping.go
+# Generated authoritative Steam protobuf bindings.
+backend/internal/proto/steampb/enums.pb.go
+backend/internal/proto/steampb/enums_clientserver.pb.go
+backend/internal/proto/steampb/steammessages_auth.steamclient.pb.go
+backend/internal/proto/steampb/steammessages_base.pb.go
+backend/internal/proto/steampb/steammessages_client_objects.pb.go
+backend/internal/proto/steampb/steammessages_clientserver.pb.go
+backend/internal/proto/steampb/steammessages_clientserver_2.pb.go
+backend/internal/proto/steampb/steammessages_clientserver_friends.pb.go
+backend/internal/proto/steampb/steammessages_clientserver_login.pb.go
+backend/internal/proto/steampb/steammessages_cloud.steamclient.pb.go
+backend/internal/proto/steampb/steammessages_inventory.steamclient.pb.go
+backend/internal/proto/steampb/steammessages_player.steamclient.pb.go
+backend/internal/proto/steampb/steammessages_useraccount.steamclient.pb.go
+# Repository-owned Steam protocol enum table copied from the authoritative definitions.
+backend/internal/steamlang/emsg.go
+# Unified transport client currently combines the native and browser session paths.
+backend/internal/transport/gcclient.go

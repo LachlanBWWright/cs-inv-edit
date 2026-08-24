@@ -11,7 +11,7 @@ import (
 	"cs-inv-edit/backend/internal/econ"
 	"cs-inv-edit/backend/internal/transport"
 
-	"github.com/Lucino772/envelop/pkg/steam/steamlang"
+	"cs-inv-edit/backend/internal/steamlang"
 )
 
 func gcItemGraffitiCharges(item transport.GCInventoryItem, toolType string) *uint32 {

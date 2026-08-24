@@ -6,16 +6,14 @@ import {
   errAsync,
   fromThrowable,
   ok,
-  okAsync,
 } from "neverthrow";
-import { healthStatusSchema, type HealthStatus } from "@cs-inv-edit/contracts";
 import {
-  createWasmConnectionStatus as createConnectionStatus,
-  createWasmEvents as createEvents,
-  createWasmInventorySnapshot as createInventorySnapshot,
-  createWasmReceipt as createReceipt,
-} from "./wasm-backend-state.js";
-import { defaultWasmSettings } from "./wasm-backend-settings.js";
+  backendSchemas,
+  healthStatusSchema,
+  localAgentPaths,
+  type ConnectionStatus,
+  type HealthStatus,
+} from "@cs-inv-edit/contracts";
 declare global {
   interface Window {
     Go: new () => {
@@ -24,6 +22,7 @@ declare global {
     };
     csInvEditWasmBackend?: {
       health?: () => string;
+      request?: (method: string, path: string, body?: string) => Promise<string>;
     };
   }
 }
@@ -33,18 +32,44 @@ const wasmAssetPaths = {
   wasm: `${wasmAssetBasePath}wasm/cs2-backend.wasm`,
   loader: `${wasmAssetBasePath}wasm/wasm_exec.js`,
 } as const;
-function unavailableInWasm(message: string) {
-  return errAsync({ message });
+type WasmResponseEnvelope = { status: number; body: string };
+type WasmSchema<T> = {
+  safeParse: (
+    value: unknown,
+  ) => { success: true; data: T } | { success: false };
+};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
-function requiresConnectionResponse<T extends object>(
-  message: string,
-  value: T,
-) {
-  return okAsync({
-    ...value,
-    status: "requires_connection" as const,
-    message,
-    refreshedAt: new Date().toISOString(),
+
+function decodeWasmEnvelope(raw: string) {
+  return fromThrowable(
+    (value: string): unknown => JSON.parse(value),
+    (cause) => createAppError("Invalid WASM backend response", undefined, cause),
+  )(raw).andThen((value) => {
+    if (
+      !isRecord(value) ||
+      typeof value.status !== "number" ||
+      typeof value.body !== "string"
+    ) {
+      return err(createAppError("Invalid WASM backend response envelope"));
+    }
+    return ok({
+      status: value.status,
+      body: value.body,
+    } satisfies WasmResponseEnvelope);
+  });
+}
+
+function decodeWasmBody<T>(raw: string, schema: WasmSchema<T>) {
+  return fromThrowable(
+    (value: string): unknown => JSON.parse(value),
+    (cause) => createAppError("Invalid WASM API JSON", undefined, cause),
+  )(raw).andThen((value) => {
+    const parsed = schema.safeParse(value);
+    return parsed.success
+      ? ok(parsed.data)
+      : err(createAppError("WASM API response did not match its contract"));
   });
 }
 function createDefaultHealthStatus(): HealthStatus {
@@ -114,6 +139,44 @@ export function createWasmBackendClient(): LocalAgentClient {
     return runtimePromise;
   };
 
+  function requestResult<T>(
+    method: string,
+    path: string,
+    schema: WasmSchema<T>,
+    input?: unknown,
+  ): ResultAsync<T, ReturnType<typeof createAppError>> {
+    return ResultAsync.fromPromise<void, ReturnType<typeof createAppError>>(
+      ensureRuntime(),
+      (cause) =>
+      createAppError("Failed to load WASM runtime", undefined, cause),
+    ).andThen<T, ReturnType<typeof createAppError>>(() => {
+      const request = window.csInvEditWasmBackend?.request;
+      if (!request) {
+        return errAsync(createAppError("WASM backend request bridge unavailable"));
+      }
+      return ResultAsync.fromPromise(
+        request(method, path, input === undefined ? "" : JSON.stringify(input)),
+        (cause) => createAppError("WASM backend request failed", undefined, cause),
+      ).andThen((rawResponse) => {
+        return decodeWasmEnvelope(rawResponse).asyncAndThen((envelope) => {
+          if (envelope.status < 200 || envelope.status >= 300) {
+            return errAsync(
+              createAppError(
+                `WASM backend request failed (${envelope.status})`,
+                undefined,
+                envelope.body,
+              ),
+            );
+          }
+          return ResultAsync.fromPromise(
+            Promise.resolve(decodeWasmBody(envelope.body, schema)),
+            (cause) => createAppError("WASM API response decode failed", undefined, cause),
+          ).andThen((decoded) => decoded);
+        });
+      });
+    });
+  }
+
   return {
     health: () =>
       ResultAsync.fromPromise(ensureRuntime(), (cause) =>
@@ -122,279 +185,97 @@ export function createWasmBackendClient(): LocalAgentClient {
         const runtime = window.csInvEditWasmBackend;
         return decodeHealthStatus(runtime?.health?.());
       }),
-    inventory: () => okAsync(createInventorySnapshot()),
+    inventory: () =>
+      requestResult("GET", localAgentPaths.inventory, backendSchemas.inventory),
     refreshInventory: () =>
-      okAsync(
-        createReceipt(
-          "inventory.refresh",
-          "completed",
-          "WASM inventory refresh completed.",
-        ),
-      ),
+      requestResult("POST", localAgentPaths.refreshInventory, backendSchemas.receipt),
     gameInventory: (game) =>
-      unavailableInWasm(`${game} inventory is unavailable in WASM mode`),
+      requestResult("GET", localAgentPaths.gameInventory(game), backendSchemas.gameInventory),
     refreshGameInventory: (game) =>
-      unavailableInWasm(`${game} inventory is unavailable in WASM mode`),
+      requestResult("POST", localAgentPaths.refreshGameInventory(game), backendSchemas.receipt),
     tf2Features: () =>
-      unavailableInWasm(
-        "TF2 coordinator features are unavailable in WASM mode",
-      ),
+      requestResult("GET", localAgentPaths.tf2Features, backendSchemas.tf2Features),
     cs2Features: () =>
-      unavailableInWasm(
-        "CS2 coordinator features are unavailable in WASM mode",
-      ),
+      requestResult("GET", localAgentPaths.cs2Features, backendSchemas.cs2Features),
     steamInventoryService: (appId) =>
-      unavailableInWasm(
-        `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
-      ),
+      requestResult("GET", localAgentPaths.steamInventoryService(appId), backendSchemas.gameInventory),
     steamInventoryServiceGames: () =>
-      unavailableInWasm("Steam owned games are unavailable in WASM mode"),
+      requestResult("GET", localAgentPaths.steamInventoryServiceGames, backendSchemas.steamInventoryServiceGames),
     refreshSteamInventoryService: (appId) =>
-      unavailableInWasm(
-        `Steam Inventory Service AppID ${appId} is unavailable in WASM mode`,
-      ),
-    armory: () =>
-      okAsync({
-        balance: 0,
-        generationTime: 0,
-        itemIds: [],
-        offers: [],
-        refreshedAt: new Date().toISOString(),
-        status: "requires_connection" as const,
-      }),
-    marketPreview: () =>
-      errAsync({
-        message: "Steam Market previews are unavailable in WASM mode",
-      }),
-    refreshArmory: () =>
-      okAsync(
-        createReceipt(
-          "armory.refresh",
-          "failed",
-          "WASM mode cannot read live GC Armory state.",
-        ),
-      ),
-    redeemArmory: () =>
-      okAsync(
-        createReceipt(
-          "armory.redeem",
-          "blocked_by_feature_flag",
-          "WASM mode cannot purchase Armory items.",
-        ),
-      ),
-    store: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        offers: [],
-        refreshedAt: new Date().toISOString(),
-        message:
-          "Store catalogue unavailable in WASM mode. Steam purchases require the connected backend.",
-      }),
-    refreshStore: () =>
-      okAsync(
-        createReceipt(
-          "store.refresh",
-          "requires_connection",
-          "Store catalogue unavailable in WASM mode.",
-        ),
-      ),
-    tf2Store: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        offers: [],
-        refreshedAt: new Date().toISOString(),
-        message: "TF2 Store catalogue requires the connected backend.",
-      }),
-    refreshTF2Store: () =>
-      okAsync(
-        createReceipt(
-          "tf2.store.refresh",
-          "requires_connection",
-          "TF2 Store catalogue requires the connected backend.",
-        ),
-      ),
-    initializeTF2StorePurchase: () =>
-      okAsync({
-        id: "tf2-store-unavailable",
-        status: "failed" as const,
-        offerId: "",
-        defIndex: 0,
-        name: "",
-        quantity: 1,
-        currency: "",
-        amountMinor: 0,
-        formattedAmount: "",
-        createdAt: new Date().toISOString(),
-        message: "TF2 Store purchases require the connected backend.",
-      }),
-    trades: () =>
-      requiresConnectionResponse(
-        "Steam trades require the connected backend.",
-        {
-          received: [],
-          sent: [],
-          history: [],
-        },
-      ),
-    refreshTrades: () =>
-      requiresConnectionResponse(
-        "Steam trades require the connected backend.",
-        {
-          received: [],
-          sent: [],
-          history: [],
-        },
-      ),
-    refreshTradeAccounts: () =>
-      okAsync({ accounts: [], refreshedAt: new Date().toISOString() }),
-    tradeAccounts: () =>
-      okAsync({ accounts: [], refreshedAt: new Date().toISOString() }),
-    createTradeOffer: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        message: "Steam trade mutations require the connected backend.",
-      }),
-    acceptTradeOffer: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        message: "Steam trade mutations require the connected backend.",
-      }),
-    counterTradeOffer: () =>
-      okAsync({
-        status: "requires_connection" as const,
-        message: "Steam trade mutations require the connected backend.",
-      }),
-    initializeStorePurchase: () =>
-      errAsync({ message: "Steam purchases require the connected backend." }),
-    storePurchase: () =>
-      errAsync({ message: "Steam purchases require the connected backend." }),
-    reconcileStorePurchase: () =>
-      errAsync({ message: "Steam purchases require the connected backend." }),
-    submitOperation: (_type, _input) =>
-      okAsync(
-        createReceipt(
-          _type,
-          "completed",
-          "WASM mode accepts the request and returns a placeholder receipt.",
-        ),
-      ),
-    operations: () => okAsync([]),
-    events: () => okAsync(createEvents()),
-    settings: () => okAsync(defaultWasmSettings),
+      requestResult("POST", localAgentPaths.refreshSteamInventoryService(appId), backendSchemas.receipt),
+    armory: () => requestResult("GET", localAgentPaths.armory, backendSchemas.armory),
+    marketPreview: (marketName) => requestResult("GET", localAgentPaths.marketPreview(marketName), backendSchemas.marketPreview),
+    refreshArmory: () => requestResult("POST", localAgentPaths.refreshArmory, backendSchemas.receipt),
+    redeemArmory: (input) => requestResult("POST", localAgentPaths.redeemArmory, backendSchemas.receipt, input),
+    store: () => requestResult("GET", localAgentPaths.store, backendSchemas.store),
+    refreshStore: () => requestResult("POST", localAgentPaths.refreshStore, backendSchemas.receipt),
+    tf2Store: () => requestResult("GET", localAgentPaths.tf2Store, backendSchemas.store),
+    refreshTF2Store: () => requestResult("POST", localAgentPaths.refreshTf2Store, backendSchemas.receipt),
+    initializeTF2StorePurchase: (input) =>
+      requestResult("POST", localAgentPaths.initializeTf2StorePurchase, backendSchemas.purchaseSession, input),
+    trades: () => requestResult("GET", localAgentPaths.trades, backendSchemas.trades),
+    refreshTrades: () => requestResult("POST", localAgentPaths.refreshTrades, backendSchemas.trades),
+    refreshTradeAccounts: (steamId) => requestResult("POST", localAgentPaths.refreshTradeAccounts(steamId), backendSchemas.tradeAccounts),
+    tradeAccounts: () => requestResult("GET", localAgentPaths.tradeAccounts, backendSchemas.tradeAccounts),
+    createTradeOffer: (input) => requestResult("POST", localAgentPaths.createTradeOffer, backendSchemas.tradeMutation, input),
+    acceptTradeOffer: (id) => requestResult("POST", localAgentPaths.acceptTradeOffer(id), backendSchemas.tradeMutation),
+    counterTradeOffer: (id, input) => requestResult("POST", localAgentPaths.counterTradeOffer(id), backendSchemas.tradeMutation, input),
+    initializeStorePurchase: (input) =>
+      requestResult("POST", localAgentPaths.initializeStorePurchase, backendSchemas.purchaseSession, input),
+    storePurchase: (id) =>
+      requestResult("POST", localAgentPaths.storePurchase(id), backendSchemas.purchaseSession),
+    reconcileStorePurchase: (id) =>
+      requestResult("POST", localAgentPaths.reconcileStorePurchase(id), backendSchemas.purchaseSession),
+    submitOperation: (type, input) =>
+      requestResult("POST", localAgentPaths.submitOperation(type), backendSchemas.receipt, input),
+    operations: () =>
+      requestResult("GET", localAgentPaths.operations, backendSchemas.receipts),
+    events: () =>
+      requestResult("GET", localAgentPaths.events, backendSchemas.events),
+    settings: () =>
+      requestResult("GET", localAgentPaths.settings, backendSchemas.settings),
     steamStatus: () =>
-      okAsync(
-        createConnectionStatus(
-          "disconnected",
-          "WASM mode does not connect to Steam.",
-        ),
+      requestResult<ConnectionStatus>(
+        "GET",
+        localAgentPaths.steamStatus,
+        backendSchemas.connection,
       ),
-    connectSteam: () =>
-      okAsync(
-        createConnectionStatus(
-          "connected",
-          "WASM mode simulates a connected Steam session.",
-        ),
+    connectSteam: (input) =>
+      requestResult<ConnectionStatus>(
+        "POST",
+        localAgentPaths.connectSteam,
+        backendSchemas.connection,
+        input,
       ),
     startSteamQR: () =>
-      okAsync(
-        createConnectionStatus(
-          "error",
-          "QR login is unavailable in WASM mode.",
-        ),
+      requestResult<ConnectionStatus>(
+        "POST",
+        localAgentPaths.startSteamQr,
+        backendSchemas.connection,
+        {},
       ),
-    submitSteamGuard: () =>
-      okAsync(
-        createConnectionStatus(
-          "connected",
-          "WASM mode does not require Steam Guard.",
-        ),
+    submitSteamGuard: (input) =>
+      requestResult<ConnectionStatus>(
+        "POST",
+        localAgentPaths.submitSteamGuard,
+        backendSchemas.connection,
+        input,
       ),
     disconnectSteam: () =>
-      okAsync(
-        createConnectionStatus(
-          "disconnected",
-          "WASM mode disconnected the simulated session.",
-        ),
+      requestResult<ConnectionStatus>(
+        "POST",
+        localAgentPaths.disconnectSteam,
+        backendSchemas.connection,
       ),
-    applyNameTag: (input) =>
-      okAsync(
-        createReceipt(
-          "nametags.apply",
-          "completed",
-          `Applied custom name for ${input.subjectItemId}`,
-        ),
-      ),
-    removeNameTag: (input) =>
-      okAsync(
-        createReceipt(
-          "nametags.remove",
-          "completed",
-          `Removed custom name for ${input.itemId}`,
-        ),
-      ),
-    deleteItem: (input) =>
-      okAsync(
-        createReceipt(
-          "items.delete",
-          "completed",
-          `Delete request queued for ${input.itemId}`,
-        ),
-      ),
-    applyStatTrakSwap: (input) =>
-      okAsync(
-        createReceipt(
-          "stattrak.swap",
-          "completed",
-          `StatTrak swap queued for ${input.item1ItemId}`,
-        ),
-      ),
-    applyStrangePart: (input) =>
-      okAsync(
-        createReceipt(
-          "strange-parts.apply",
-          "completed",
-          `Strange part request queued for ${input.itemItemId}`,
-        ),
-      ),
-    useItem: (input) =>
-      okAsync(
-        createReceipt(
-          "items.use",
-          "completed",
-          `Item use queued for ${input.itemId}`,
-        ),
-      ),
-    useMultipleItems: (input) =>
-      okAsync(
-        createReceipt(
-          "items.use-multiple",
-          "completed",
-          `Batch use queued for ${input.itemIds.join(",")}`,
-        ),
-      ),
-    applyToolToItem: (input) =>
-      okAsync(
-        createReceipt(
-          "tools.apply",
-          "completed",
-          `Tool application queued for ${input.subjectItemId}`,
-        ),
-      ),
-    applyToolToBaseItem: (input) =>
-      okAsync(
-        createReceipt(
-          "tools.apply-base",
-          "completed",
-          `Tool application queued for defindex ${input.baseitemDefIndex}`,
-        ),
-      ),
-    giftItem: (input) =>
-      okAsync(
-        createReceipt(
-          "gifts.send",
-          "completed",
-          `Gift queued for ${input.itemId}`,
-        ),
-      ),
+    applyNameTag: (input) => requestResult("POST", localAgentPaths.applyNameTag, backendSchemas.receipt, input),
+    removeNameTag: (input) => requestResult("POST", localAgentPaths.removeNameTag, backendSchemas.receipt, input),
+    deleteItem: (input) => requestResult("POST", localAgentPaths.deleteItem, backendSchemas.receipt, input),
+    applyStatTrakSwap: (input) => requestResult("POST", localAgentPaths.applyStatTrakSwap, backendSchemas.receipt, input),
+    applyStrangePart: (input) => requestResult("POST", localAgentPaths.applyStrangePart, backendSchemas.receipt, input),
+    useItem: (input) => requestResult("POST", localAgentPaths.useItem, backendSchemas.receipt, input),
+    useMultipleItems: (input) => requestResult("POST", localAgentPaths.useMultipleItems, backendSchemas.receipt, input),
+    applyToolToItem: (input) => requestResult("POST", localAgentPaths.applyToolToItem, backendSchemas.receipt, input),
+    applyToolToBaseItem: (input) => requestResult("POST", localAgentPaths.applyToolToBaseItem, backendSchemas.receipt, input),
+    giftItem: (input) => requestResult("POST", localAgentPaths.sendGift, backendSchemas.receipt, input),
   };
 }
