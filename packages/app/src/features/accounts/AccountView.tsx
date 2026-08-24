@@ -8,6 +8,7 @@ import type { UIActionOutcome } from "../../shared/lib/ui-action-outcome.js";
 
 export interface AccountViewProps {
   connection: ConnectionStatus | undefined;
+  connectionLoading: boolean;
   initialUsername?: string;
   loginOnly?: boolean;
   onConnect: (input: {
@@ -17,6 +18,20 @@ export interface AccountViewProps {
   onStartSteamQR: () => Promise<UIActionOutcome>;
   onSubmitSteamGuard: (input: { code: string }) => Promise<UIActionOutcome>;
   onDisconnect: () => Promise<UIActionOutcome>;
+}
+
+export function shouldStartSteamQR(
+  connection: ConnectionStatus | undefined,
+  connectionLoading: boolean,
+): boolean {
+  if (connectionLoading) return false;
+  return ![
+    "connected",
+    "session_conflict",
+    "needs_steam_guard",
+    "awaiting_qr",
+    "connecting",
+  ].includes(connection?.state ?? "");
 }
 
 export function AccountView(props: AccountViewProps) {
@@ -82,15 +97,15 @@ export function AccountView(props: AccountViewProps) {
   });
 
   createEffect(() => {
-    const state = connectionState();
-    if (
-      state === "connected" ||
-      state === "session_conflict" ||
-      state === "needs_steam_guard" ||
-      state === "awaiting_qr" ||
-      state === "connecting"
-    )
-      return;
+    // Wait for the authoritative initial status before requesting a QR
+    // session. Otherwise the first render can race status restoration and
+    // leave the UI waiting for a challenge that the watcher never observes.
+    if (!shouldStartSteamQR(props.connection, props.connectionLoading)) return;
+
+    // Use the actual connection state here. `connectionState()` intentionally
+    // hides connected state in login-only mode for presentation purposes, but
+    // that must not trigger a new QR login.
+    const state = props.connection?.state;
     if (state === "error") {
       const retryTimer = window.setTimeout(startQR, 1_500);
       onCleanup(() => window.clearTimeout(retryTimer));

@@ -4,7 +4,6 @@ import { createOperationApi } from "../../shared/lib/api.js";
 import type { EconomyGame } from "../../shared/ui-types.js";
 import { createAppController } from "./app-controller.js";
 import type { AppProps } from "./app-props.js";
-
 export type { AppProps } from "./app-props.js";
 
 export function App(props: AppProps) {
@@ -191,6 +190,7 @@ export function App(props: AppProps) {
       statusMessage=""
       health={controller.health()}
       connection={controller.connection()}
+      connectionLoading={controller.connection.loading}
       accounts={controller.accounts()}
       accountUsername={controller.accountUsername()}
       accountLoginOnly={controller.accountLoginOnly()}

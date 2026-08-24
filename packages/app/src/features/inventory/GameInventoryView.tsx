@@ -141,7 +141,12 @@ export function GameInventoryView(props: GameInventoryViewProps) {
           onRefresh={props.onRefresh}
         >
           <Show when={props.game === "tf2"}>
-            <Show when={!crafting.active()}>
+            <Show
+              when={
+                (props.settings?.featureFlags.enableTf2Tradeups ?? false) &&
+                !crafting.active()
+              }
+            >
               <InventoryTradeUpToolbar
                 active={tradeUp.active()}
                 selectedCount={tradeUp.selectedItems().length}

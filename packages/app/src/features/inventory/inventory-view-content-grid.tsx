@@ -51,6 +51,7 @@ export interface InventoryGridProps {
   onCancelMoveIntoStorage: () => void;
   onConfirmMoveIntoStorage: () => Promise<void> | void;
   alerts: JSX.Element;
+  tradeUpsEnabled?: boolean;
   tradeUpActive: boolean;
   tradeUpSelectedCount: number;
   tradeUpRequiredCount: number;
@@ -104,7 +105,13 @@ export function InventoryGrid(props: InventoryGridProps) {
       </Show>
       <div class="flex min-h-0 flex-col lg:order-2">
         <div class="mb-4 grid gap-4 empty:hidden">{props.alerts}</div>
-        <Show when={!props.browsingStorageUnit && !props.movingIntoStorageUnit}>
+        <Show
+          when={
+            (props.tradeUpsEnabled ?? false) &&
+            !props.browsingStorageUnit &&
+            !props.movingIntoStorageUnit
+          }
+        >
           <InventoryTradeUpToolbar
             active={props.tradeUpActive}
             selectedCount={props.tradeUpSelectedCount}

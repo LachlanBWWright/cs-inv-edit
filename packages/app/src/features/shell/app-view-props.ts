@@ -38,6 +38,7 @@ export interface AppViewProps {
   statusMessage: string;
   health: HealthStatus | undefined;
   connection: ConnectionStatus | undefined;
+  connectionLoading: boolean;
   accounts: SteamAccountProfile[];
   accountUsername: string;
   accountLoginOnly: boolean;

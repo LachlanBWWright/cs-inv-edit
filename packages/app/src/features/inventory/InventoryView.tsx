@@ -355,6 +355,7 @@ export function InventoryView(props: InventoryViewProps) {
           setStorageFailures([]);
         }}
         onConfirmMoveIntoStorage={moveIntoStorage}
+        tradeUpsEnabled={props.settings?.featureFlags.enableTradeups ?? false}
         tradeUpActive={tradeUp.active()}
         tradeUpSelectedCount={tradeUp.selectedItems().length}
         tradeUpRequiredCount={tradeUp.requiredCount()}

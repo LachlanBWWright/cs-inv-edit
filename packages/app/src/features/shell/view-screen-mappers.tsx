@@ -182,6 +182,7 @@ function ScreenContent(props: ViewScreenMapperProps) {
       <Match when={props.view === "account"}>
         <AccountView
           connection={props.connection}
+          connectionLoading={props.connectionLoading}
           initialUsername={props.accountUsername}
           loginOnly={props.accountLoginOnly}
           onConnect={props.onConnect}

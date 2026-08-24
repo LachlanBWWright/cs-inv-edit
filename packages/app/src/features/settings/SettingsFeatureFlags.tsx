@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import type { FeatureFlags, SettingsData } from "@cs-inv-edit/contracts";
+import { Alert } from "../../shared/ui/Alert.js";
 
 function FeatureFlagRow(props: {
   flag: keyof FeatureFlags;
@@ -30,6 +31,11 @@ export function SettingsFeatureFlags(props: {
   return (
     <section class="border-b border-slate-800 pb-5 last:border-b-0 last:pb-0">
       <h4 class="text-sm font-semibold text-slate-100">Feature flags</h4>
+      <Alert class="mt-3" variant="warning">
+        Some flags enable irreversible actions. Trade-ups, crafting, item use,
+        purchases, and inventory mutations may consume items or change your
+        Steam inventory. Enable only the features you intend to use.
+      </Alert>
       <div class="mt-3 divide-y divide-slate-800 text-sm text-slate-400">
         <For each={props.keys}>
           {(key) => (

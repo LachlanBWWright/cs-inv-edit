@@ -28,7 +28,11 @@ export interface InventoryViewContentProps {
   selectedItemKey: string | undefined;
   statusMessage: string;
   terminalOfferState:
-    | { terminalId: string; state: import("../../shared/ui-types.js").LoadingState; message: string }
+    | {
+        terminalId: string;
+        state: import("../../shared/ui-types.js").LoadingState;
+        message: string;
+      }
     | undefined;
   containerStatusMessage: string;
   renameOpen: boolean;
@@ -87,6 +91,7 @@ export interface InventoryViewContentProps {
   onSelectedToolChange: (value: string) => void;
   onSelectedContainerKeyChange: (value: string) => void;
   onRefresh: () => void;
+  tradeUpsEnabled: boolean;
   tradeUpActive: boolean;
   tradeUpSelectedCount: number;
   tradeUpRequiredCount: number;
@@ -289,6 +294,7 @@ export function InventoryViewContent(props: InventoryViewContentProps) {
         onRetrieveAllFromStorage={props.onRetrieveAllFromStorage}
         onCancelMoveIntoStorage={props.onCancelMoveIntoStorage}
         onConfirmMoveIntoStorage={props.onConfirmMoveIntoStorage}
+        tradeUpsEnabled={props.tradeUpsEnabled}
         tradeUpActive={props.tradeUpActive}
         tradeUpSelectedCount={props.tradeUpSelectedCount}
         tradeUpRequiredCount={props.tradeUpRequiredCount}
