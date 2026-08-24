@@ -46,6 +46,7 @@ jobs:
       - name: Build browser WASM application
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_BACKEND_MODE: wasm
         run: pnpm build:wasm-web
 
       - name: Upload Pages artifact

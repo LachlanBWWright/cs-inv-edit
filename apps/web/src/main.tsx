@@ -31,7 +31,19 @@ import "@cs-inv-edit/app/styles.css";
 import { createWasmBackendClient } from "./wasm-backend.js";
 
 const backendBase = "http://127.0.0.1:7331";
-const backendMode = new URLSearchParams(window.location.search).get("backend");
+const requestedBackendMode = new URLSearchParams(window.location.search).get(
+  "backend",
+);
+const webEnvironment = (
+  import.meta as ImportMeta & {
+    env: { PROD: boolean; VITE_BACKEND_MODE?: string };
+  }
+).env;
+const configuredBackendMode = webEnvironment.VITE_BACKEND_MODE;
+const backendMode =
+  configuredBackendMode ??
+  requestedBackendMode ??
+  (webEnvironment.PROD ? "wasm" : "http");
 const dataServiceUrl =
   (import.meta as ImportMeta & { env?: { VITE_DATA_SERVICE_URL?: string } }).env
     ?.VITE_DATA_SERVICE_URL ?? "http://127.0.0.1:7332";
