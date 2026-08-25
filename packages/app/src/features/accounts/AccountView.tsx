@@ -34,6 +34,22 @@ export function shouldStartSteamQR(
   ].includes(connection?.state ?? "");
 }
 
+export function steamQrLoadingText(
+  connection: ConnectionStatus | undefined,
+  requestPending: boolean,
+  requestSlow: boolean,
+): string {
+  if (connection?.qrChallengeUrl) return "Rendering secure QR code…";
+  if (connection?.state === "connecting")
+    return connection.detail ?? "Finishing Steam sign-in…";
+  if (requestSlow) return "Still waiting for Steam to create a sign-in session…";
+  if (requestPending)
+    return "Connecting to Steam and requesting a sign-in session…";
+  if (connection?.state === "error")
+    return connection.detail ?? "Steam could not create a QR sign-in session.";
+  return "Preparing QR sign-in…";
+}
+
 export function AccountView(props: AccountViewProps) {
   const connectionState = () =>
     props.loginOnly && props.connection?.state === "connected"
@@ -123,21 +139,12 @@ export function AccountView(props: AccountViewProps) {
     onCleanup(() => window.clearTimeout(slowTimer));
   });
 
-  const qrLoadingText = () => {
-    if (props.connection?.qrChallengeUrl) return "Rendering secure QR code…";
-    if (props.connection?.state === "connecting")
-      return props.connection.detail ?? "Finishing Steam sign-in…";
-    if (qrRequestSlow())
-      return "Still waiting for Steam to create a sign-in session…";
-    if (qrRequestPending())
-      return "Connecting to Steam and requesting a sign-in session…";
-    if (props.connection?.state === "error")
-      return (
-        props.connection.detail ??
-        "Steam could not create a QR sign-in session."
-      );
-    return "Preparing QR sign-in…";
-  };
+  const qrLoadingText = () =>
+    steamQrLoadingText(
+      props.connection,
+      qrRequestPending(),
+      qrRequestSlow(),
+    );
 
   const handleConnect = async (e: Event) => {
     e.preventDefault();

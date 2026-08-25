@@ -13,20 +13,20 @@ import (
 )
 
 type browserWebSocket struct {
-	socket  js.Value
-	readCh  chan []byte
-	closeCh chan struct{}
-	onData  js.Func
-	onOpen  js.Func
-	onError js.Func
-	onClose js.Func
-	openCh  chan struct{}
-	openMu  sync.Mutex
-	openErr error
+	socket   js.Value
+	readCh   chan []byte
+	closeCh  chan struct{}
+	onData   js.Func
+	onOpen   js.Func
+	onError  js.Func
+	onClose  js.Func
+	openCh   chan struct{}
+	openMu   sync.Mutex
+	openErr  error
 	openOnce sync.Once
-	readMu  sync.Mutex
-	readBuf []byte
-	closed  bool
+	readMu   sync.Mutex
+	readBuf  []byte
+	closed   bool
 }
 
 func (transport *browserWebSocket) signalOpen(err error) {
@@ -70,22 +70,29 @@ func connectTransport(server *ServerRecord) (interface {
 	Write([]byte) (int, error)
 	Close() error
 }, error) {
-	if server.Port == 0 {
-		return nil, errors.New("Steam CM WebSocket endpoint has no port")
-	}
-	ports := []uint16{server.Port}
-	if server.Port != 443 {
-		ports = append(ports, 443)
+	candidates := []*ServerRecord{server}
+	if fallback, err := fallbackServers(); err == nil {
+		candidates = append(candidates, fallback...)
 	}
 	var lastErr error
-	for _, port := range ports {
-		transport, err := connectTransportAtPort(server.Host, port)
-		if err == nil {
-			return transport, nil
+	for _, candidate := range candidates {
+		if candidate == nil || candidate.Host == "" || candidate.Port == 0 {
+			lastErr = errors.New("Steam CM WebSocket endpoint is missing a host or port")
+			continue
 		}
-		lastErr = err
+		ports := []uint16{candidate.Port}
+		if candidate.Port != 443 {
+			ports = append(ports, 443)
+		}
+		for _, port := range ports {
+			transport, err := connectTransportAtPort(candidate.Host, port)
+			if err == nil {
+				return transport, nil
+			}
+			lastErr = err
+		}
 	}
-	return nil, fmt.Errorf("Steam CM WebSocket connection failed for %s: %w", server.Host, lastErr)
+	return nil, fmt.Errorf("Steam CM WebSocket connection failed for all candidates: %w", lastErr)
 }
 
 func connectTransportAtPort(host string, port uint16) (interface {
@@ -133,6 +140,10 @@ func connectTransportAtPort(host string, port uint16) (interface {
 	socket.Call("addEventListener", "open", transport.onOpen)
 	socket.Call("addEventListener", "error", transport.onError)
 	socket.Call("addEventListener", "close", transport.onClose)
+	if err := transport.waitOpen(); err != nil {
+		transport.close()
+		return nil, err
+	}
 	return transport, nil
 }
 
