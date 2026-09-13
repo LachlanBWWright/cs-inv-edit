@@ -23,6 +23,17 @@ type Snapshot struct {
 	Message     string  `json:"message,omitempty"`
 }
 
+func NewSnapshot(status, refreshedAt, message string) Snapshot {
+	return Snapshot{
+		Status:      status,
+		Received:    []Trade{},
+		Sent:        []Trade{},
+		History:     []Trade{},
+		RefreshedAt: refreshedAt,
+		Message:     message,
+	}
+}
+
 // AccountSnapshot keeps the account identity attached to the data it owns.
 type AccountSnapshot struct {
 	SteamID     string   `json:"steamId"`

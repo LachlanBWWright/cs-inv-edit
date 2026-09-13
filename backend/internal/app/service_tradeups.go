@@ -91,7 +91,7 @@ func (s *Service) submitTradeUp(
 ) operations.Receipt {
 	s.mu.Lock()
 	enabled := s.settings.FeatureFlags.EnableTradeups
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	inventory := cloneInventory(s.inventory)
 	_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 	s.mu.Unlock()

@@ -21,6 +21,7 @@ import {
   writeTF2DismissedActivity,
 } from "./game-inventory-elements.js";
 import type { GameInventoryViewProps } from "./GameInventoryView.js";
+import { uniqueSortedStrings } from "../../shared/lib/collections.js";
 
 export function createGameInventoryModel(props: GameInventoryViewProps) {
   const [operationStatus, setOperationStatus] = createSignal("");
@@ -271,17 +272,11 @@ export function createGameInventoryModel(props: GameInventoryViewProps) {
       requestedPriceNames.clear();
       setMarketPrices(new Map());
     }
-    const names = [
-      ...new Set(
-        items()
-          .filter((item) => item.marketable)
-          .map((item) => item.marketName)
-          .filter(
-            (value): value is string =>
-              !!value && !requestedPriceNames.has(value),
-          ),
-      ),
-    ];
+    const names = uniqueSortedStrings(
+      items()
+        .filter((item) => item.marketable)
+        .map((item) => item.marketName),
+    ).filter((value) => !requestedPriceNames.has(value));
     if (names.length === 0) return;
     for (const name of names) requestedPriceNames.add(name);
     void props.onScanPrices(names, current?.appId).then((result) => {

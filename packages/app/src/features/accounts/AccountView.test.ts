@@ -6,8 +6,14 @@ describe("shouldStartSteamQR", () => {
     expect(shouldStartSteamQR(undefined, true)).toBe(false);
   });
 
-  it("does not start a second QR session for a connected login-only view", () => {
-    expect(shouldStartSteamQR({ state: "connected" }, false)).toBe(false);
+  it("does not start a second QR session for the connected account", () => {
+    expect(shouldStartSteamQR({ state: "connected" }, false, false)).toBe(
+      false,
+    );
+  });
+
+  it("allows the initial QR session when switching accounts from a connected session", () => {
+    expect(shouldStartSteamQR({ state: "connected" }, false, true)).toBe(true);
   });
 
   it.each([
@@ -47,6 +53,16 @@ describe("steamQrLoadingText", () => {
         false,
       ),
     ).toBe("Connecting to a Steam CM…");
+  });
+
+  it("shows the backend detail while waiting for a QR challenge", () => {
+    expect(
+      steamQrLoadingText(
+        { state: "awaiting_qr", detail: "Creating the current QR code…" },
+        false,
+        false,
+      ),
+    ).toBe("Creating the current QR code…");
   });
 
   it("uses the default connecting message when no detail is supplied", () => {

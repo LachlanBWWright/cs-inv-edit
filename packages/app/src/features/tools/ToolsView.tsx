@@ -6,8 +6,7 @@ import type {
   ApplyToolToItemRequest,
   OperationReceipt,
 } from "@cs-inv-edit/contracts";
-import { formatState } from "../../shared/lib/format.js";
-import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import { runOperationAction } from "../../shared/lib/operation-actions.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Input } from "../../shared/ui/Input.js";
 import { PageHeader } from "../../shared/ui/PageHeader.js";
@@ -97,14 +96,12 @@ export function ToolsView(props: ToolsViewProps) {
   };
 
   const run = async (execute: () => Promise<OperationReceipt>) => {
-    setPending(true);
-    await fromAppPromise(execute(), "Tool request failed").match(
-      (receipt) => {
-        setStatus(`${receipt.type}: ${formatState(receipt.state)}`);
-      },
-      (error) => setStatus(appErrorMessage(error, "Request failed")),
-    );
-    setPending(false);
+    await runOperationAction({
+      execute,
+      setPending,
+      setStatus,
+      errorMessage: "Tool request failed",
+    });
   };
 
   return (

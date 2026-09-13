@@ -267,26 +267,20 @@ func attributePointer(attributes map[uint32]uint32, id uint32) *uint32 {
 	return uint32Pointer(attributes[id])
 }
 
-func domainStickers(attributes map[uint32]uint32, applied []econ.AppliedItem) []domain.Sticker {
-	stickers := make([]domain.Sticker, 0, 5)
-	for slot := uint32(0); slot < 5; slot++ {
-		id, ok := attributes[113+slot*4]
-		if !ok || id == 0 {
+func domainStickers(applied []econ.AppliedItem) []domain.Sticker {
+	stickers := make([]domain.Sticker, 0, len(applied))
+	for _, item := range applied {
+		if item.Kind != domain.ItemKindSticker || item.ID == 0 {
 			continue
 		}
-		sticker := domain.Sticker{Slot: &slot, StickerID: &id}
-		if wearBits, ok := attributes[114+slot*4]; ok {
-			wear := float64(math.Float32frombits(wearBits))
-			sticker.Wear = &wear
-		}
-		for _, item := range applied {
-			if item.Kind == domain.ItemKindSticker && item.Slot == slot {
-				sticker.Name = item.Name
-				sticker.ImageURL = item.ImageURL
-				break
-			}
-		}
-		stickers = append(stickers, sticker)
+		slot, id := item.Slot, item.ID
+		stickers = append(stickers, domain.Sticker{
+			Slot:      &slot,
+			StickerID: &id,
+			Wear:      item.Wear,
+			Name:      item.Name,
+			ImageURL:  item.ImageURL,
+		})
 	}
 	return stickers
 }

@@ -19,6 +19,7 @@ import (
 	"cs-inv-edit/backend/internal/protocol"
 	"cs-inv-edit/backend/internal/rpc"
 	"cs-inv-edit/backend/internal/sessionstore"
+	"cs-inv-edit/backend/internal/transport"
 )
 
 type encodeResult struct {
@@ -59,18 +60,19 @@ func configureSessionPersistence(service *app.Service) {
 		return
 	}
 	path := os.Getenv("CSINV_STEAM_SESSION_FILE")
-	if path == "" {
-		defaultPath, err := sessionstore.DefaultPath()
-		if err != nil {
-			log.Printf("Steam session persistence unavailable: %v", err)
-			return
-		}
-		path = defaultPath
+	var store interface {
+		Load() (transport.LogonCredentials, error)
+		Save(transport.LogonCredentials) error
+		Clear() error
 	}
-	store := sessionstore.NewFile(path)
+	if path != "" {
+		store = sessionstore.NewFile(path)
+	} else {
+		store = sessionstore.NewKeyring()
+	}
 	service.ConfigureSteamSessionPersistence(store.Save, store.Clear)
 	credentials, err := store.Load()
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) || sessionstore.IsNotFound(err) {
 		return
 	}
 	if err != nil {

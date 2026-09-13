@@ -81,14 +81,15 @@ func (s *Service) StartSteamQR() domain.ConnectionStatus {
 	epoch := s.authEpoch
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	s.authCancel = cancel
+	client := s.gcClient
 	s.connection = domain.ConnectionStatus{State: "connecting", Detail: "Connecting to Steam and creating a QR sign-in session"}
 	s.mu.Unlock()
 
-	if err := s.gcClient.Connect(ctx); err != nil {
+	if err := client.Connect(ctx); err != nil {
 		cancel()
 		return s.setQRAuthError(epoch, "Steam CM connect", err)
 	}
-	session, err := s.gcClient.BeginQRAuth(ctx)
+	session, err := client.BeginQRAuth(ctx)
 	if err != nil {
 		cancel()
 		return s.setQRAuthError(epoch, "Steam QR login", err)
@@ -114,14 +115,18 @@ func (s *Service) StartSteamQR() domain.ConnectionStatus {
 			QRChallengeURL: challengeURL,
 		}
 	}
-	go s.completeQRLogin(ctx, session, epoch)
+	go s.completeQRLogin(client, ctx, session, epoch)
 	return status
 }
 
-func (s *Service) completeQRLogin(ctx context.Context, session transport.QRAuthSession, epoch uint64) {
-	auth, err := s.gcClient.CompleteQRAuth(ctx, session)
+func (s *Service) completeQRLogin(client transport.GCClient, ctx context.Context, session transport.QRAuthSession, epoch uint64) {
+	auth, err := client.CompleteQRAuth(ctx, session)
 	if err != nil {
-		if ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) {
+			s.refreshExpiredQR(epoch)
+			return
+		}
+		if ctx.Err() != nil {
 			return
 		}
 		s.setQRAuthError(epoch, "Steam QR login", err)
@@ -134,11 +139,19 @@ func (s *Service) completeQRLogin(ctx context.Context, session transport.QRAuthS
 	}
 	s.connection = domain.ConnectionStatus{State: "connecting", Detail: "Sign-in approved. Finishing your Steam session…", AccountName: auth.AccountName}
 	s.mu.Unlock()
-	if err := s.gcClient.Connect(ctx); err != nil {
+	// The connection used to create/poll the QR is unauthenticated. Steam can
+	// approve the QR on one CM and require the authenticated logon on another;
+	// Connect is intentionally a no-op while that pre-auth connection exists,
+	// so explicitly replace it before sending ClientLogOn.
+	if err := client.Close(); err != nil {
+		s.setQRAuthError(epoch, "Steam QR session reset", err)
+		return
+	}
+	if err := client.Connect(ctx); err != nil {
 		s.setQRAuthError(epoch, "Steam CM reconnect after QR approval", err)
 		return
 	}
-	result, err := s.gcClient.LogOn(ctx, transport.LogonCredentials{Username: auth.AccountName, AccessToken: auth.RefreshToken, WebAccessToken: auth.AccessToken})
+	result, err := client.LogOn(ctx, transport.LogonCredentials{Username: auth.AccountName, AccessToken: auth.RefreshToken, WebAccessToken: auth.AccessToken})
 	if err != nil {
 		s.setQRAuthError(epoch, "Steam QR CM logon", err)
 		return
@@ -234,7 +247,7 @@ func (s *Service) resolveSteamAvatar(steamID string) {
 		if session := s.steamSessions[steamID]; session != nil {
 			session.Connection.AvatarURL = avatarURL
 		}
-		if s.connection.State == domain.ConnectionStateConnected && s.connection.SteamID == steamID {
+		if steamAccountConnected(s.connection, steamID) {
 			s.connection.AvatarURL = avatarURL
 		}
 	}()
@@ -318,7 +331,7 @@ func (s *Service) DisconnectSteam() domain.ConnectionStatus {
 	}
 	s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "disconnected"}
 	s.tradeAccessToken = ""
-	s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()}
+	s.trades = steamtrade.NewSnapshot("requires_connection", now(), "")
 	delete(s.tradeAccounts, disconnectedSteamID)
 	delete(s.steamSessions, disconnectedSteamID)
 	s.activeSteamID = ""

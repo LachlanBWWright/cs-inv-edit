@@ -538,6 +538,7 @@ export type SettingsData = {
   featureFlags: FeatureFlags;
   animations: AnimationSettings;
   armoryPurchasePacingSeconds: number;
+  storageRetrievalPacingSeconds: number;
 };
 
 export type EconomyTag = {

@@ -1,18 +1,38 @@
 import { ipcMain } from "electron";
+import { Result } from "neverthrow";
 import {
-  postJsonResult,
   requestJsonResult,
   type SafeParseSchema,
 } from "@cs-inv-edit/app";
 import {
+  backendInputSchemas,
   backendSchemas,
   economyGameSchema,
   localAgentPaths,
   steamInventoryServiceAppIdSchema,
 } from "@cs-inv-edit/contracts";
 import { serializeResult, type IpcResult } from "./ipc-result.js";
+import { registerBackendMutationIpcHandlers } from "./backend-mutation-ipc-handlers.js";
+import { registerBackendTailIpcHandlers } from "./backend-tail-ipc-handlers.js";
 
-export const backendUrl = "http://127.0.0.1:7331";
+let backendUrl = "http://127.0.0.1:7331";
+let backendAuthToken = "";
+
+export function configureBackendConnection(url: string, authToken: string) {
+  backendUrl = url;
+  backendAuthToken = authToken;
+}
+
+function authenticatedInit(init?: RequestInit): RequestInit | undefined {
+  if (!backendAuthToken) return init;
+  return {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      Authorization: `Bearer ${backendAuthToken}`,
+    },
+  };
+}
 
 async function requestJson<T>(
   pathName: string,
@@ -20,7 +40,12 @@ async function requestJson<T>(
   init?: RequestInit,
 ): Promise<IpcResult<T>> {
   return serializeResult(
-    requestJsonResult<T>(backendUrl, pathName, schema, init),
+    requestJsonResult<T>(
+      backendUrl,
+      pathName,
+      schema,
+      authenticatedInit(init),
+    ),
   );
 }
 
@@ -29,15 +54,41 @@ function postJson<T>(
   schema: SafeParseSchema<T>,
   input?: unknown,
 ): Promise<IpcResult<T>> {
-  return serializeResult(
-    postJsonResult<T>(backendUrl, pathName, schema, input),
+  const body = Result.fromThrowable(
+    () => JSON.stringify(input ?? {}),
+    (cause) => ({ message: "Could not serialize IPC request body", cause }),
+  )();
+  return body.match(
+    (serializedBody) =>
+      serializeResult(
+        requestJsonResult<T>(
+          backendUrl,
+          pathName,
+          schema,
+          authenticatedInit({
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: serializedBody,
+          }),
+        ),
+      ),
+    (error) => Promise.resolve({ ok: false, error }),
   );
 }
 
-function registerReceiptMutation(channel: string, pathName: string) {
-  ipcMain.handle(channel, (_event, input?: unknown) =>
-    postJson(pathName, backendSchemas.receipt, input),
-  );
+function invalidInput(message: string, cause: unknown): IpcResult<never> {
+  return { ok: false, error: { message, cause } };
+}
+
+function parseInput<T>(
+  schema: SafeParseSchema<T>,
+  input: unknown,
+  message: string,
+): IpcResult<T> {
+  const parsed = schema.safeParse(input);
+  return parsed.success
+    ? { ok: true, value: parsed.data }
+    : invalidInput(message, { issues: parsed.error });
 }
 
 export function registerBackendIpcHandlers() {
@@ -63,7 +114,7 @@ export function registerBackendIpcHandlers() {
           ok: false as const,
           error: {
             message: "Invalid economy game IPC argument",
-            cause: parsed.error,
+            cause: { issues: parsed.error.issues },
           },
         };
   });
@@ -87,7 +138,7 @@ export function registerBackendIpcHandlers() {
             ok: false as const,
             error: {
               message: "Invalid economy game IPC argument",
-              cause: parsed.error,
+              cause: { issues: parsed.error.issues },
             },
           };
     },
@@ -105,7 +156,7 @@ export function registerBackendIpcHandlers() {
             ok: false as const,
             error: {
               message: "Invalid Steam Inventory Service AppID",
-              cause: parsed.error,
+              cause: { issues: parsed.error.issues },
             },
           };
     },
@@ -130,7 +181,7 @@ export function registerBackendIpcHandlers() {
             ok: false as const,
             error: {
               message: "Invalid Steam Inventory Service AppID",
-              cause: parsed.error,
+              cause: { issues: parsed.error.issues },
             },
           };
     },
@@ -138,20 +189,34 @@ export function registerBackendIpcHandlers() {
   ipcMain.handle("backend:armory", async () =>
     requestJson(localAgentPaths.armory, backendSchemas.armory),
   );
-  ipcMain.handle("backend:marketPreview", async (_event, marketName: string) =>
-    requestJson(
-      localAgentPaths.marketPreview(marketName),
-      backendSchemas.marketPreview,
-    ),
-  );
+  ipcMain.handle("backend:marketPreview", async (_event, marketName: unknown) => {
+    const parsed = parseInput(
+      backendInputSchemas.textId,
+      marketName,
+      "Invalid market name IPC argument",
+    );
+    return parsed.ok
+      ? requestJson(
+          localAgentPaths.marketPreview(parsed.value),
+          backendSchemas.marketPreview,
+        )
+      : parsed;
+  });
   ipcMain.handle("backend:refreshArmory", async () =>
     requestJson(localAgentPaths.refreshArmory, backendSchemas.receipt, {
       method: "POST",
     }),
   );
-  ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) =>
-    postJson(localAgentPaths.redeemArmory, backendSchemas.receipt, input),
-  );
+  ipcMain.handle("backend:redeemArmory", async (_event, input?: unknown) => {
+    const parsed = parseInput(
+      backendInputSchemas.armoryRedeem,
+      input,
+      "Invalid armory redemption IPC argument",
+    );
+    return parsed.ok
+      ? postJson(localAgentPaths.redeemArmory, backendSchemas.receipt, parsed.value)
+      : parsed;
+  });
   ipcMain.handle("backend:store", async () =>
     requestJson(localAgentPaths.store, backendSchemas.store),
   );
@@ -159,6 +224,33 @@ export function registerBackendIpcHandlers() {
     requestJson(localAgentPaths.refreshStore, backendSchemas.receipt, {
       method: "POST",
     }),
+  );
+  ipcMain.handle("backend:tf2Store", async () =>
+    requestJson(localAgentPaths.tf2Store, backendSchemas.store),
+  );
+  ipcMain.handle("backend:refreshTF2Store", async () =>
+    requestJson(localAgentPaths.refreshTf2Store, backendSchemas.receipt, {
+      method: "POST",
+    }),
+  );
+  ipcMain.handle(
+    "backend:initializeTF2StorePurchase",
+    async (_event, input?: unknown) => {
+      const parsed = backendSchemas.initializeStorePurchase.safeParse(input);
+      return parsed.success
+        ? postJson(
+            localAgentPaths.initializeTf2StorePurchase,
+            backendSchemas.purchaseSession,
+            parsed.data,
+          )
+        : {
+            ok: false as const,
+            error: {
+              message: "Invalid TF2 store purchase IPC argument",
+              cause: { issues: parsed.error.issues },
+            },
+          };
+    },
   );
   ipcMain.handle("backend:trades", async () =>
     requestJson(localAgentPaths.trades, backendSchemas.trades),
@@ -173,35 +265,72 @@ export function registerBackendIpcHandlers() {
   );
   ipcMain.handle(
     "backend:refreshTradeAccounts",
-    async (_event, steamId?: string) =>
-      requestJson(
-        localAgentPaths.refreshTradeAccounts(steamId),
-        backendSchemas.tradeAccounts,
-        { method: "POST" },
-      ),
+    async (_event, steamId?: unknown) => {
+      const parsed = parseInput(
+        backendInputSchemas.optionalTextId,
+        steamId,
+        "Invalid Steam ID IPC argument",
+      );
+      return parsed.ok
+        ? requestJson(
+            localAgentPaths.refreshTradeAccounts(parsed.value),
+            backendSchemas.tradeAccounts,
+            { method: "POST" },
+          )
+        : parsed;
+    },
   );
-  ipcMain.handle("backend:createTradeOffer", async (_event, input: unknown) =>
-    postJson(
-      localAgentPaths.createTradeOffer,
-      backendSchemas.tradeMutation,
+  ipcMain.handle("backend:createTradeOffer", async (_event, input: unknown) => {
+    const parsed = parseInput(
+      backendInputSchemas.createTradeOffer,
       input,
-    ),
-  );
-  ipcMain.handle("backend:acceptTradeOffer", async (_event, id: string) =>
-    postJson(
-      localAgentPaths.acceptTradeOffer(id),
-      backendSchemas.tradeMutation,
-      {},
-    ),
-  );
+      "Invalid create-trade-offer IPC argument",
+    );
+    return parsed.ok
+      ? postJson(
+          localAgentPaths.createTradeOffer,
+          backendSchemas.tradeMutation,
+          parsed.value,
+        )
+      : parsed;
+  });
+  ipcMain.handle("backend:acceptTradeOffer", async (_event, id: unknown) => {
+    const parsed = parseInput(
+      backendInputSchemas.textId,
+      id,
+      "Invalid trade-offer ID IPC argument",
+    );
+    return parsed.ok
+      ? postJson(
+          localAgentPaths.acceptTradeOffer(parsed.value),
+          backendSchemas.tradeMutation,
+          {},
+        )
+      : parsed;
+  });
   ipcMain.handle(
     "backend:counterTradeOffer",
-    async (_event, id: string, input: unknown) =>
-      postJson(
-        localAgentPaths.counterTradeOffer(id),
-        backendSchemas.tradeMutation,
+    async (_event, id: unknown, input: unknown) => {
+      const parsedId = parseInput(
+        backendInputSchemas.textId,
+        id,
+        "Invalid trade-offer ID IPC argument",
+      );
+      const parsedInput = parseInput(
+        backendInputSchemas.createTradeOffer,
         input,
-      ),
+        "Invalid counter-trade IPC argument",
+      );
+      return parsedId.ok && parsedInput.ok
+        ? postJson(
+            localAgentPaths.counterTradeOffer(parsedId.value),
+            backendSchemas.tradeMutation,
+            parsedInput.value,
+          )
+        : parsedId.ok
+          ? parsedInput
+          : parsedId;
+    },
   );
   ipcMain.handle(
     "backend:initializeStorePurchase",
@@ -217,78 +346,47 @@ export function registerBackendIpcHandlers() {
             ok: false as const,
             error: {
               message: "Invalid store purchase IPC argument",
-              cause: parsed.error,
+              cause: { issues: parsed.error.issues },
             },
           };
     },
   );
-  ipcMain.handle("backend:storePurchase", async (_event, id: string) =>
-    requestJson(
-      localAgentPaths.storePurchase(id),
-      backendSchemas.purchaseSession,
-    ),
-  );
-  ipcMain.handle("backend:reconcileStorePurchase", async (_event, id: string) =>
-    requestJson(
-      localAgentPaths.reconcileStorePurchase(id),
-      backendSchemas.purchaseSession,
-      { method: "POST" },
-    ),
-  );
+  ipcMain.handle("backend:storePurchase", async (_event, id: unknown) => {
+    const parsed = parseInput(
+      backendInputSchemas.textId,
+      id,
+      "Invalid store purchase ID IPC argument",
+    );
+    return parsed.ok
+      ? requestJson(
+          localAgentPaths.storePurchase(parsed.value),
+          backendSchemas.purchaseSession,
+        )
+      : parsed;
+  });
   ipcMain.handle(
-    "backend:submitOperation",
-    async (_event, type: string, input?: unknown) =>
-      requestJson(localAgentPaths.submitOperation(type), backendSchemas.receipt, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input ?? {}),
-      }),
+    "backend:reconcileStorePurchase",
+    async (_event, id: unknown) => {
+      const parsed = parseInput(
+        backendInputSchemas.textId,
+        id,
+        "Invalid store purchase ID IPC argument",
+      );
+      return parsed.ok
+        ? requestJson(
+            localAgentPaths.reconcileStorePurchase(parsed.value),
+            backendSchemas.purchaseSession,
+            { method: "POST" },
+          )
+        : parsed;
+    },
   );
-  ipcMain.handle("backend:operations", async () =>
-    requestJson(localAgentPaths.operations, backendSchemas.receipts),
+  registerBackendTailIpcHandlers(
+    (pathName, schema, init) => requestJson(pathName, schema, init),
+    (pathName, schema, input) => postJson(pathName, schema, input),
+    (schema, input, message) => parseInput(schema, input, message),
   );
-  ipcMain.handle("backend:events", async () =>
-    requestJson(localAgentPaths.events, backendSchemas.events),
+  registerBackendMutationIpcHandlers((pathName, input) =>
+    postJson(pathName, backendSchemas.receipt, input),
   );
-  ipcMain.handle("backend:protocolTrace", async (_event, after: number) =>
-    requestJson(
-      localAgentPaths.protocolTrace(after),
-      backendSchemas.protocolTrace,
-    ),
-  );
-  ipcMain.handle("backend:settings", async () =>
-    requestJson(localAgentPaths.settings, backendSchemas.settings),
-  );
-  ipcMain.handle("backend:steamStatus", async () =>
-    requestJson(localAgentPaths.steamStatus, backendSchemas.connection),
-  );
-  ipcMain.handle("backend:connectSteam", async (_event, input?: unknown) =>
-    postJson(localAgentPaths.connectSteam, backendSchemas.connection, input),
-  );
-  ipcMain.handle("backend:startSteamQR", async () =>
-    postJson(localAgentPaths.startSteamQr, backendSchemas.connection, {}),
-  );
-  ipcMain.handle("backend:submitSteamGuard", async (_event, input?: unknown) =>
-    postJson(localAgentPaths.submitSteamGuard, backendSchemas.connection, input),
-  );
-  ipcMain.handle("backend:disconnectSteam", async () =>
-    requestJson(localAgentPaths.disconnectSteam, backendSchemas.connection, {
-      method: "POST",
-    }),
-  );
-  const receiptMutations = {
-    applyNameTag: localAgentPaths.applyNameTag,
-    removeNameTag: localAgentPaths.removeNameTag,
-    deleteItem: localAgentPaths.deleteItem,
-    applyStatTrakSwap: localAgentPaths.applyStatTrakSwap,
-    applyStrangePart: localAgentPaths.applyStrangePart,
-    useItem: localAgentPaths.useItem,
-    useMultipleItems: localAgentPaths.useMultipleItems,
-    applyToolToItem: localAgentPaths.applyToolToItem,
-    applyToolToBaseItem: localAgentPaths.applyToolToBaseItem,
-    giftItem: localAgentPaths.sendGift,
-  };
-  for (const [operation, pathName] of Object.entries(receiptMutations)) {
-    registerReceiptMutation(`backend:${operation}`, pathName);
-  }
 }

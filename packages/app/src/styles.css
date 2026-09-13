@@ -152,6 +152,108 @@ button:disabled,
   outline: none;
 }
 
+@keyframes armory-confirmation-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.armory-confirmation {
+  transform-origin: top center;
+  animation: armory-confirmation-in 180ms ease-out both;
+}
+
+.armory-redemption-panel {
+  border: 1px solid rgb(120 85 24 / 0.7);
+  border-radius: 1rem;
+  background: rgb(30 25 12);
+  padding: 1rem;
+}
+
+.armory-redemption-panel--complete {
+  border-color: rgb(16 185 129 / 0.5);
+  background: rgb(6 35 29);
+}
+
+.armory-redemption-panel--failed {
+  border-color: rgb(244 63 94 / 0.5);
+  background: rgb(45 13 22);
+}
+
+.armory-progress-mark {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid rgb(245 158 11 / 0.6);
+  border-radius: 9999px;
+  color: rgb(252 211 77);
+  font-weight: 700;
+}
+
+.armory-redemption-panel--complete .armory-progress-mark {
+  border-color: rgb(52 211 153 / 0.7);
+  color: rgb(110 231 183);
+}
+
+.armory-redemption-panel--failed .armory-progress-mark {
+  border-color: rgb(251 113 133 / 0.7);
+  color: rgb(253 164 175);
+}
+
+.armory-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(245 158 11);
+  animation: armory-progress-pulse 1.2s ease-in-out infinite alternate;
+  transition:
+    width 300ms ease,
+    background-color 180ms ease;
+}
+
+.armory-progress-bar--complete {
+  background: rgb(52 211 153);
+  animation: none;
+}
+
+.armory-progress-bar--failed {
+  background: rgb(251 113 133);
+  animation: none;
+}
+
+@keyframes armory-progress-pulse {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.armory-received-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  border: 1px solid rgb(52 211 153 / 0.28);
+  border-radius: 0.75rem;
+  background: rgb(2 20 17 / 0.7);
+  padding: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .armory-confirmation,
+  .armory-progress-bar {
+    animation: none;
+  }
+}
+
 .tf2-effect-badges {
   position: absolute;
   right: 0.5rem;

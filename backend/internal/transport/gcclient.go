@@ -61,6 +61,10 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 		return nil
 	}
 	s.state = GCConnectionState{State: "connecting"}
+	// Events are scoped to a single CM connection. Keeping the old channel
+	// allows packets from a closed QR/login attempt to be consumed by the next
+	// logon, which is exactly the kind of state that a process restart clears.
+	s.events = make(chan GCEvent, 64)
 	s.mu.Unlock()
 
 	diagnostics, err := diagnoseSteamCMWithRetry(3, 500*time.Millisecond)
@@ -69,7 +73,9 @@ func (s *SteamGCClient) Connect(ctx context.Context) error {
 		return err
 	}
 
+	s.mu.Lock()
 	events := s.events
+	s.mu.Unlock()
 	unified := newNonAuthedUnifiedHandler()
 	var conn *steamcm.SteamConnection
 	conn = steamcm.NewSteamConnection(

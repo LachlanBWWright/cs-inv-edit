@@ -1,7 +1,11 @@
 import { createResource, createSignal, onCleanup } from "solid-js";
 import { errAsync } from "neverthrow";
 import type { ResultAsync } from "neverthrow";
-import { type ProtocolTraceEntry } from "@cs-inv-edit/contracts";
+import {
+  type InventorySnapshot,
+  type ConnectionStatus,
+  type ProtocolTraceEntry,
+} from "@cs-inv-edit/contracts";
 import type { AppError } from "../../shared/lib/result-http.js";
 
 import type { AppProps } from "./app-props.js";
@@ -91,9 +95,21 @@ export function createAppResources(props: AppProps) {
   };
   const protocolTraceTimer = globalThis.setInterval(pollProtocolTrace, 750);
   onCleanup(() => globalThis.clearInterval(protocolTraceTimer));
-  const [inventory, { refetch: refetchInventory }] = createResource(() =>
-    resourceValue(props.backend.inventory()),
-  );
+  const [inventory, setInventory] = createSignal<InventorySnapshot>();
+  const [inventoryLoading, setInventoryLoading] = createSignal(true);
+  let inventoryRevision = 0;
+  const refetchInventory = () => {
+    const requestRevision = ++inventoryRevision;
+    setInventoryLoading(true);
+    return resourceValue(props.backend.inventory()).then((snapshot) => {
+      if (requestRevision === inventoryRevision) {
+        if (snapshot) setInventory(snapshot);
+        setInventoryLoading(false);
+      }
+      return snapshot;
+    });
+  };
+  void refetchInventory();
   const [steamInventory, { refetch: refetchSteamInventory }] = createResource(
     () =>
       settings()?.featureFlags.enableSteamInventory
@@ -152,13 +168,33 @@ export function createAppResources(props: AppProps) {
   const [events, { refetch: refetchEvents }] = createResource(() =>
     resourceValue(props.backend.events()),
   );
-  const [connection, { refetch: refetchConnection, mutate: setConnection }] =
-    createResource(() =>
-      resourceValue(
-        props.backend.steamStatus?.() ??
-          errAsync({ message: "Steam status unavailable" }),
-      ),
+  const [connection, setConnectionValue] =
+    createSignal<ConnectionStatus>();
+  const [connectionLoading, setConnectionLoading] = createSignal(true);
+  let connectionRevision = 0;
+  const setConnection = (status: ConnectionStatus) => {
+    connectionRevision += 1;
+    setConnectionValue(status);
+  };
+  const refetchConnection = () => {
+    const requestRevision = connectionRevision;
+    return (
+      props.backend.steamStatus?.() ??
+        errAsync({ message: "Steam status unavailable" })
+    ).match(
+      (status) => {
+        if (connectionRevision === requestRevision) setConnection(status);
+        setConnectionLoading(false);
+        return status;
+      },
+      (error) => {
+        console.error(error.message);
+        setConnectionLoading(false);
+        return undefined;
+      },
     );
+  };
+  void refetchConnection();
 
   return {
     health,
@@ -166,6 +202,7 @@ export function createAppResources(props: AppProps) {
     refetchSettings,
     tf2ProtocolEntries,
     inventory,
+    inventoryLoading,
     refetchInventory,
     steamInventory,
     refetchSteamInventory,
@@ -195,6 +232,7 @@ export function createAppResources(props: AppProps) {
     events,
     refetchEvents,
     connection,
+    connectionLoading,
     refetchConnection,
     setConnection,
   };

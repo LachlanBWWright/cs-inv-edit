@@ -20,9 +20,9 @@ func (s *Service) Store() domain.StoreSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.settings.FeatureFlags.EnableStoreRead {
-		return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue."}
+		return storeError("CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue.")
 	}
-	if s.connection.State == domain.ConnectionStateConnected && s.store.Status == domain.StoreStatusRequiresConnection {
+	if steamConnected(s.connection) && s.store.Status == domain.StoreStatusRequiresConnection {
 		store := cloneStore(s.store)
 		store.Message = "Steam is connected. Refresh the Store to load the current GC price sheet."
 		if !s.settings.FeatureFlags.EnableFullCS2Store {

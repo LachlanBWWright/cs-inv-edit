@@ -13,11 +13,12 @@ import (
 
 func defaultSettings() domain.Settings {
 	return domain.Settings{
-		BackendURL:                  "http://127.0.0.1:7331",
-		ValidationMode:              true,
-		SacrificialAccountMode:      true,
-		Animations:                  domain.AnimationSettings{Container: "slot-machine", TradeUp: "slot-machine", Armory: "slot-machine", Terminal: "slot-machine"},
-		ArmoryPurchasePacingSeconds: 5,
+		BackendURL:                    "http://127.0.0.1:7331",
+		ValidationMode:                true,
+		SacrificialAccountMode:        true,
+		Animations:                    domain.AnimationSettings{Container: "slot-machine", TradeUp: "slot-machine", Armory: "slot-machine", Terminal: "slot-machine"},
+		ArmoryPurchasePacingSeconds:   5,
+		StorageRetrievalPacingSeconds: 1,
 		FeatureFlags: domain.FeatureFlags{
 			EnableStorageMutations: true,
 			EnableContainerOpening: true,
@@ -53,11 +54,22 @@ func defaultSettings() domain.Settings {
 	}
 }
 
-func emptyStore() domain.StoreSnapshot {
-	return domain.StoreSnapshot{Status: "requires_connection", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "Connect Steam to load the CS2 cash store."}
+func emptyStore(message string) domain.StoreSnapshot {
+	return domain.StoreSnapshot{Status: "requires_connection", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: message}
 }
-func emptyTF2Store() domain.StoreSnapshot {
-	return domain.StoreSnapshot{Status: "requires_connection", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "Connect Steam to load the TF2 Mann Co. Store."}
+func steamConnected(connection domain.ConnectionStatus) bool {
+	return connection.State == domain.ConnectionStateConnected
+}
+func steamAccountConnected(connection domain.ConnectionStatus, steamID string) bool {
+	return steamConnected(connection) && connection.SteamID == steamID
+}
+func storeError(message string) domain.StoreSnapshot {
+	return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: message}
+}
+func storeErrorWithDiagnostics(message string, diagnostics []string) domain.StoreSnapshot {
+	snapshot := storeError(message)
+	snapshot.Diagnostics = diagnostics
+	return snapshot
 }
 func cloneStore(store domain.StoreSnapshot) domain.StoreSnapshot {
 	offers := make([]domain.StoreOffer, len(store.Offers))
@@ -179,7 +191,7 @@ func cloneArmory(armory domain.ArmorySnapshot) domain.ArmorySnapshot {
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {
-	return domain.Settings{BackendURL: settings.BackendURL, ValidationMode: settings.ValidationMode, SacrificialAccountMode: settings.SacrificialAccountMode, FeatureFlags: settings.FeatureFlags, Animations: settings.Animations, ArmoryPurchasePacingSeconds: settings.ArmoryPurchasePacingSeconds}
+	return domain.Settings{BackendURL: settings.BackendURL, ValidationMode: settings.ValidationMode, SacrificialAccountMode: settings.SacrificialAccountMode, FeatureFlags: settings.FeatureFlags, Animations: settings.Animations, ArmoryPurchasePacingSeconds: settings.ArmoryPurchasePacingSeconds, StorageRetrievalPacingSeconds: settings.StorageRetrievalPacingSeconds}
 }
 
 func ptrUint32(value uint32) *uint32 { return &value }

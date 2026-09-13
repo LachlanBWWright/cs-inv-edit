@@ -31,6 +31,20 @@ import {
   zPriceHistoryResult,
   zPriceSearchResult,
 } from "./generated-data/zod.gen.js";
+import {
+  zApplyStatTrakSwapRequest,
+  zApplyStrangePartRequest,
+  zApplyToolToBaseItemRequest,
+  zApplyToolToItemRequest,
+  zArmoryRedeemRequest,
+  zCreateSteamTradeOfferRequest,
+  zGiftItemRequest,
+  zItemIdRequest,
+  zSetItemNameRequest,
+  zUseItemRequest,
+  zUseMultipleItemsRequest,
+} from "./generated/zod.gen.js";
+import { z } from "zod";
 
 export * from "./game-schemas.js";
 export * from "./inventory-schemas.js";
@@ -63,4 +77,22 @@ export const backendSchemas = {
   priceScan: priceScanResultSchema,
   priceHistory: zPriceHistoryResult,
   priceSearch: zPriceSearchResult,
+} as const;
+
+export const backendInputSchemas = {
+  armoryRedeem: zArmoryRedeemRequest,
+  createTradeOffer: zCreateSteamTradeOfferRequest,
+  itemId: zItemIdRequest,
+  setItemName: zSetItemNameRequest,
+  applyStatTrakSwap: zApplyStatTrakSwapRequest,
+  applyStrangePart: zApplyStrangePartRequest,
+  useItem: zUseItemRequest,
+  useMultipleItems: zUseMultipleItemsRequest,
+  applyToolToItem: zApplyToolToItemRequest,
+  applyToolToBaseItem: zApplyToolToBaseItemRequest,
+  giftItem: zGiftItemRequest,
+  textId: z.string().min(1),
+  nonNegativeInteger: z.number().int().gte(0),
+  optionalTextId: z.string().min(1).optional(),
+  jsonObject: z.record(z.string(), z.unknown()),
 } as const;

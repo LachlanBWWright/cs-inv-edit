@@ -18,6 +18,7 @@ import { swapScreenshotUrl } from "../cs2/cs2-screenshot.js";
 import type { InventoryDetailsPanelProps } from "./InventoryDetailsPanel.js";
 import { TerminalItemSection } from "../commerce/terminal-item-section.js";
 import { ActionLink } from "../../shared/ui/ActionLink.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 
 function ExternalItemLinks(props: {
   inventoryUrl: string | undefined;
@@ -82,6 +83,34 @@ export function SelectedItemContent(props: {
   return (
     <div class="space-y-4">
       <ItemHeader selected={props.selected} />
+      <ActionBar
+        selected={props.selected}
+        pending={props.panelProps.pending}
+        storageContentsLoading={
+          props.panelProps.storageContentsLoading ?? false
+        }
+        storageMutationsEnabled={props.panelProps.storageMutationsEnabled}
+        storageUnavailableReason={props.panelProps.storageUnavailableReason}
+        canOpenContainer={props.panelProps.canOpenContainer}
+        canUseNameTagOn={props.panelProps.canUseNameTagOn}
+        compatibleContainerKey={props.panelProps.compatibleContainerKey}
+        compatibleContainerKeys={props.panelProps.compatibleContainerKeys}
+        selectedContainerKeyId={props.panelProps.selectedContainerKeyId}
+        containerStatusMessage={props.panelProps.containerStatusMessage}
+        onOpenContainer={props.panelProps.onOpenContainer}
+        onOpenRenameEditor={props.panelProps.onOpenRenameEditor}
+        onRemoveName={props.panelProps.onRemoveName}
+        onShowContents={props.panelProps.onShowContents ?? (() => undefined)}
+        onViewStorageContents={
+          props.panelProps.onViewStorageContents ?? (() => undefined)
+        }
+        onBeginMoveIntoStorage={
+          props.panelProps.onBeginMoveIntoStorage ?? (() => undefined)
+        }
+        onSelectedContainerKeyChange={
+          props.panelProps.onSelectedContainerKeyChange
+        }
+      />
       <section class="divide-y divide-slate-800 border-y border-slate-800/80">
         <div class="py-4">
           <PropertyGrid
@@ -134,40 +163,12 @@ export function SelectedItemContent(props: {
         returnEstimate={props.panelProps.tradeUpReturnEstimate}
         returnEstimateLoading={props.panelProps.tradeUpReturnLoading}
         priceAnalysisEnabled={
-          props.panelProps.settings?.featureFlags.enablePriceAnalysis === true
+          priceFeaturesEnabled(props.panelProps.settings)
         }
       />
       <TerminalItemSection
         selected={props.selected}
         panelProps={props.panelProps}
-      />
-      <ActionBar
-        selected={props.selected}
-        pending={props.panelProps.pending}
-        storageContentsLoading={
-          props.panelProps.storageContentsLoading ?? false
-        }
-        storageMutationsEnabled={props.panelProps.storageMutationsEnabled}
-        storageUnavailableReason={props.panelProps.storageUnavailableReason}
-        canOpenContainer={props.panelProps.canOpenContainer}
-        canUseNameTagOn={props.panelProps.canUseNameTagOn}
-        compatibleContainerKey={props.panelProps.compatibleContainerKey}
-        compatibleContainerKeys={props.panelProps.compatibleContainerKeys}
-        selectedContainerKeyId={props.panelProps.selectedContainerKeyId}
-        containerStatusMessage={props.panelProps.containerStatusMessage}
-        onOpenContainer={props.panelProps.onOpenContainer}
-        onOpenRenameEditor={props.panelProps.onOpenRenameEditor}
-        onRemoveName={props.panelProps.onRemoveName}
-        onShowContents={props.panelProps.onShowContents ?? (() => undefined)}
-        onViewStorageContents={
-          props.panelProps.onViewStorageContents ?? (() => undefined)
-        }
-        onBeginMoveIntoStorage={
-          props.panelProps.onBeginMoveIntoStorage ?? (() => undefined)
-        }
-        onSelectedContainerKeyChange={
-          props.panelProps.onSelectedContainerKeyChange
-        }
       />
       <RenameEditor
         selected={props.selected}

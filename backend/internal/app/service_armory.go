@@ -23,13 +23,14 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != domain.ConnectionStateConnected {
+	if !steamConnected(s.connection) {
 		s.armory = emptyArmory()
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load Armory stars"
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
+	steamID := s.connection.SteamID
 	s.armory.Status = domain.SnapshotStatusLoading
 	s.armory.Message = "Waiting for CS2 Game Coordinator Armory state"
 	s.mu.Unlock()
@@ -63,6 +64,12 @@ func (s *Service) RefreshArmory() operations.Receipt {
 		}
 	}
 	s.mu.Lock()
+	if !steamAccountConnected(s.connection, steamID) {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "completed", "Armory refresh superseded by an account change"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
 	if err != nil {
 		s.armory = domain.ArmorySnapshot{Status: "error", Message: err.Error(), RefreshedAt: now(), ItemIDs: []string{}, Offers: []domain.ArmoryOffer{}}
 		s.mu.Unlock()
@@ -111,7 +118,7 @@ func (s *Service) RedeemArmory(input map[string]any) operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != domain.ConnectionStateConnected || s.armory.Status != domain.SnapshotStatusReady || s.armory.GenerationTime != generation || s.armory.Balance != balance {
+	if !steamConnected(s.connection) || s.armory.Status != domain.SnapshotStatusReady || s.armory.GenerationTime != generation || s.armory.Balance != balance {
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "failed", "Armory snapshot is stale; refresh before purchasing"
 		s.addEvent(receipt, receipt.State, receipt.Message)

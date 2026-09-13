@@ -1,14 +1,11 @@
 import type { JSX } from "solid-js";
 import type { StatusTone } from "../ui-types.js";
+import { cn } from "./class-names.js";
 
 export interface AlertProps {
   children?: JSX.Element;
   class?: string;
   variant?: StatusTone;
-}
-
-function cn(...values: Array<string | false | undefined>) {
-  return values.filter(Boolean).join(" ");
 }
 
 export function Alert(props: AlertProps) {

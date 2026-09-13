@@ -29,7 +29,7 @@ func (s *Service) SteamInventoryServiceGames(ctx context.Context) domain.SteamIn
 		return result
 	}
 	steamIDText := s.connection.SteamID
-	connected := s.connection.State == domain.ConnectionStateConnected && steamIDText != ""
+	connected := steamConnected(s.connection) && steamIDText != ""
 	s.mu.Unlock()
 	if !connected {
 		result.Status, result.Message = "requires_connection", "Connect a Steam account to find owned games"
@@ -132,7 +132,7 @@ func (s *Service) GameInventory(gameID string) (domain.GameInventorySnapshot, bo
 	if !enabled {
 		return emptyGameInventory(game.ID, game.AppID), true, false
 	}
-	if s.connection.State != domain.ConnectionStateConnected || s.connection.SteamID == "" {
+	if !steamConnected(s.connection) || s.connection.SteamID == "" {
 		return emptyGameInventory(game.ID, game.AppID), true, true
 	}
 	snapshot, ok := s.gameInventories[gameInventoryKey(s.connection.SteamID, game.ID)]
@@ -160,7 +160,7 @@ func (s *Service) RefreshGameInventory(gameID string) operations.Receipt {
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != domain.ConnectionStateConnected || s.connection.SteamID == "" {
+	if !steamConnected(s.connection) || s.connection.SteamID == "" {
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load "+game.ID+" inventory"
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -243,7 +243,7 @@ func (s *Service) SteamInventoryService(appID uint32) (domain.GameInventorySnaps
 	if !s.settings.FeatureFlags.EnableSteamInventory {
 		return emptyGameInventory("steam-service", appID), false
 	}
-	if s.connection.State != domain.ConnectionStateConnected || s.connection.SteamID == "" {
+	if !steamConnected(s.connection) || s.connection.SteamID == "" {
 		return emptyGameInventory("steam-service", appID), true
 	}
 	key := gameInventoryKey(s.connection.SteamID, steamInventoryServiceKey(appID))
@@ -270,7 +270,7 @@ func (s *Service) RefreshSteamInventoryService(appID uint32) operations.Receipt 
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != domain.ConnectionStateConnected || s.connection.SteamID == "" {
+	if !steamConnected(s.connection) || s.connection.SteamID == "" {
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load Steam Inventory Service items"
 		s.addEvent(receipt, receipt.State, receipt.Message)

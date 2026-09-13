@@ -23,74 +23,50 @@ type steamAccountSession struct {
 }
 
 type Service struct {
-	mu                 sync.Mutex
-	events             []operations.Event
-	operations         []operations.Receipt
-	inventory          domain.InventorySnapshot
-	armory             domain.ArmorySnapshot
-	store              domain.StoreSnapshot
-	tf2Store           domain.StoreSnapshot
-	purchaseSessions   map[string]domain.PurchaseSession
-	purchaseItemIDs    map[string][]uint64
-	purchaseAppIDs     map[string]uint32
-	loadedStorageUnits map[uint64]bool
-	storeCountry       string
-	storeCurrencyID    int32
-	tf2StoreCountry    string
-	tf2StoreCurrencyID int32
-	settings           domain.Settings
-	connection         domain.ConnectionStatus
-	gcClient           transport.GCClient
-	econProvider       *econ.Provider
-	armorySchema       *econ.Schema
-	multiProvider      *multigame.Provider
-	gameInventories    map[string]domain.GameInventorySnapshot
-	gameRefreshes      map[string]uint64
-	gameCancels        map[string]context.CancelFunc
-	gcSessionEpoch     uint64
-	gcSessionContext   context.Context
-	gcSessionCancel    context.CancelFunc
-	gcSessions         map[gcSessionKey]*gcSessionState
-	lastOperation      operations.Receipt
-	pendingUsername    string
-	pendingPassword    string
-	authCancel         context.CancelFunc
-	authEpoch          uint64
-	profileResolver    *steamprofile.Resolver
-	tradeAccessToken   string
-	tradeProvider      *steamtrade.Provider
-	trades             steamtrade.Snapshot
-	tradeAccounts      map[string]steamtrade.AccountSnapshot
-	steamSessions      map[string]*steamAccountSession
-	activeSteamID      string
-	saveSteamSession   func(transport.LogonCredentials) error
-	clearSteamSession  func() error
+	mu sync.Mutex
+	operationState
+	inventoryState
+	commerceState
+	authState
+	tradeState
+	econProvider    *econ.Provider
+	armorySchema    *econ.Schema
+	multiProvider   *multigame.Provider
+	profileResolver *steamprofile.Resolver
 }
 
 func NewService() *Service {
 	service := &Service{
-		inventory:          emptyInventory(),
-		armory:             emptyArmory(),
-		store:              emptyStore(),
-		tf2Store:           emptyTF2Store(),
-		purchaseSessions:   make(map[string]domain.PurchaseSession),
-		purchaseItemIDs:    make(map[string][]uint64),
-		purchaseAppIDs:     make(map[string]uint32),
-		loadedStorageUnits: make(map[uint64]bool),
-		settings:           defaultSettings(),
-		connection:         domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
-		gcClient:           transport.NewSteamGCClient(),
-		econProvider:       econ.NewProvider(),
-		multiProvider:      multigame.NewProvider(),
-		gameInventories:    make(map[string]domain.GameInventorySnapshot),
-		gameRefreshes:      make(map[string]uint64),
-		gameCancels:        make(map[string]context.CancelFunc),
-		gcSessions:         make(map[gcSessionKey]*gcSessionState),
-		profileResolver:    steamprofile.NewResolver(),
-		tradeProvider:      steamtrade.NewProvider(nil),
-		trades:             steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()},
-		tradeAccounts:      make(map[string]steamtrade.AccountSnapshot),
-		steamSessions:      make(map[string]*steamAccountSession),
+		inventoryState: inventoryState{
+			inventory:          emptyInventory(),
+			loadedStorageUnits: make(map[uint64]bool),
+			gameInventories:    make(map[string]domain.GameInventorySnapshot),
+			gameRefreshes:      make(map[string]uint64),
+			gameCancels:        make(map[string]context.CancelFunc),
+		},
+		commerceState: commerceState{
+			armory:           emptyArmory(),
+			store:            emptyStore("Connect Steam to load the CS2 cash store."),
+			tf2Store:         emptyStore("Connect Steam to load the TF2 Mann Co. Store."),
+			purchaseSessions: make(map[string]domain.PurchaseSession),
+			purchaseItemIDs:  make(map[string][]uint64),
+			purchaseAppIDs:   make(map[string]uint32),
+		},
+		authState: authState{
+			settings:      defaultSettings(),
+			connection:    domain.ConnectionStatus{State: "disconnected", Detail: "not connected"},
+			gcClient:      transport.NewSteamGCClient(),
+			gcSessions:    make(map[gcSessionKey]*gcSessionState),
+			steamSessions: make(map[string]*steamAccountSession),
+		},
+		tradeState: tradeState{
+			tradeProvider: steamtrade.NewProvider(nil),
+			tradeAccounts: make(map[string]steamtrade.AccountSnapshot),
+			trades:        steamtrade.NewSnapshot("requires_connection", now(), ""),
+		},
+		econProvider:    econ.NewProvider(),
+		multiProvider:   multigame.NewProvider(),
+		profileResolver: steamprofile.NewResolver(),
 	}
 	service.events = []operations.Event{{
 		OperationID: "system",
@@ -113,12 +89,23 @@ func (s *Service) registerSteamSessionLocked(status domain.ConnectionStatus, tok
 
 func (s *Service) prepareAdditionalSteamSession() {
 	s.mu.Lock()
-	if s.connection.State == domain.ConnectionStateConnected {
+	if s.connection.State != domain.ConnectionStateDisconnected {
+		oldClient := s.gcClient
+		preserveConnectedClient := steamConnected(s.connection)
 		s.gcClient = transport.NewSteamGCClient()
 		s.gcClient.SetProtocolTracing(s.settings.FeatureFlags.EnableProtocolConsole)
 		s.connection = domain.ConnectionStatus{State: "disconnected", Detail: "new account authentication pending"}
 		s.tradeAccessToken = ""
-		s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now()}
+		s.trades = steamtrade.NewSnapshot("requires_connection", now(), "")
+		s.mu.Unlock()
+		// A failed or interrupted authentication has no saved account session to
+		// preserve. Close that client so its old QR poller/socket cannot affect
+		// the new sign-in attempt. Connected clients remain alive in
+		// steamSessions for multi-account use.
+		if oldClient != nil && !preserveConnectedClient {
+			_ = oldClient.Close()
+		}
+		return
 	}
 	s.mu.Unlock()
 }
@@ -146,7 +133,7 @@ func (s *Service) RefreshAccountTrades(ctx context.Context, steamID string) stea
 	for _, current := range targets {
 		snapshot, err := s.tradeProvider.Load(ctx, current.token)
 		if err != nil {
-			snapshot = steamtrade.Snapshot{Status: "error", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: err.Error()}
+			snapshot = steamtrade.NewSnapshot("error", now(), err.Error())
 		}
 		s.mu.Lock()
 		if session := s.steamSessions[current.steamID]; session != nil {
@@ -169,8 +156,8 @@ func (s *Service) Trades() steamtrade.Snapshot {
 
 func (s *Service) RefreshTrades(ctx context.Context) steamtrade.Snapshot {
 	s.mu.Lock()
-	if s.connection.State != domain.ConnectionStateConnected {
-		s.trades = steamtrade.Snapshot{Status: "requires_connection", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: "Connect a Steam account to view trades."}
+	if !steamConnected(s.connection) {
+		s.trades = steamtrade.NewSnapshot("requires_connection", now(), "Connect a Steam account to view trades.")
 		out := s.trades
 		s.mu.Unlock()
 		return out
@@ -178,11 +165,11 @@ func (s *Service) RefreshTrades(ctx context.Context) steamtrade.Snapshot {
 	token := s.tradeAccessToken
 	s.mu.Unlock()
 	if token == "" {
-		return steamtrade.Snapshot{Status: "requires_reauthentication", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: "Sign in again to grant read-only access to Steam trades."}
+		return steamtrade.NewSnapshot("requires_reauthentication", now(), "Sign in again to grant read-only access to Steam trades.")
 	}
 	snapshot, err := s.tradeProvider.Load(ctx, token)
 	if err != nil {
-		return steamtrade.Snapshot{Status: "error", Received: []steamtrade.Trade{}, Sent: []steamtrade.Trade{}, History: []steamtrade.Trade{}, RefreshedAt: now(), Message: err.Error()}
+		return steamtrade.NewSnapshot("error", now(), err.Error())
 	}
 	s.mu.Lock()
 	s.trades = snapshot
@@ -207,7 +194,7 @@ func (s *Service) createTradeOffer(ctx context.Context, input steamtrade.CreateR
 		return steamtrade.MutationResult{Status: "blocked_by_feature_flag", Message: "Steam trade mutations are disabled. Enable them in Settings first."}
 	}
 	steamID, token, provider := s.connection.SteamID, s.tradeAccessToken, s.tradeProvider
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	s.mu.Unlock()
 	if !connected {
 		return steamtrade.MutationResult{Status: "requires_connection", Message: "Connect Steam before creating a trade offer."}
@@ -226,7 +213,7 @@ func (s *Service) AcceptTradeOffer(ctx context.Context, tradeOfferID string) ste
 		return steamtrade.MutationResult{Status: "blocked_by_feature_flag", Message: "Steam trade mutations are disabled. Enable them in Settings first."}
 	}
 	steamID, token, provider := s.connection.SteamID, s.tradeAccessToken, s.tradeProvider
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	partner := activeReceivedPartner(s.trades.Received, tradeOfferID)
 	s.mu.Unlock()
 	if !connected {
@@ -280,7 +267,7 @@ func (s *Service) ProtocolTrace(after uint64) []transport.ProtocolTraceEntry {
 func (s *Service) TF2Features() transport.TF2FeatureSnapshot {
 	s.mu.Lock()
 	enabled := s.settings.FeatureFlags.EnableTF2Inventory
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	currency := s.store.Currency
 	s.mu.Unlock()
 	if !enabled {
@@ -339,7 +326,7 @@ func (s *Service) TF2FeaturesWithMetadata(ctx context.Context) transport.TF2Feat
 
 func (s *Service) CS2Features() transport.CS2FeatureSnapshot {
 	s.mu.Lock()
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	s.mu.Unlock()
 	if !connected {
 		return transport.CS2FeatureSnapshot{

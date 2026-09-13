@@ -11,7 +11,7 @@ export default defineConfig({
   target: "node22",
   bundle: true,
   splitting: false,
-  sourcemap: true,
+  sourcemap: false,
   clean: true,
   external: ["electron"],
 });

@@ -1,5 +1,5 @@
 import { For } from "solid-js";
-import { modeDetails, modeGroups } from "../shell/sidebar-mode-data.js";
+import { modeDetails, modeGroups } from "../shell/navbar-mode-data.js";
 
 function FeatureGroupCard(props: { group: (typeof modeGroups)[number] }) {
   return (

@@ -40,6 +40,7 @@ type itemDefinition struct {
 	Image                 string
 	ToolType              string
 	Capabilities          map[string]string
+	CannotTrade           bool
 	LootList              string
 	SupplyCrateSeries     string
 	IsVolatileContainer   bool

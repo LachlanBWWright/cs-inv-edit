@@ -43,6 +43,7 @@ func (s *Schema) parseItems(root kvObject) {
 			Image:                 merged.string("image_inventory"),
 			ToolType:              merged.object("tool").string("type"),
 			Capabilities:          merged.object("capabilities").strings(),
+			CannotTrade:           schemaBool(merged.object("attributes").string("cannot trade")),
 			LootList:              merged.string("loot_list_name"),
 			SupplyCrateSeries:     merged.object("attributes").object("set supply crate series").string("value"),
 			IsVolatileContainer:   schemaBool(merged.object("attributes").object("volatile container").string("value")),

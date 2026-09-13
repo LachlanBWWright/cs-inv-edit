@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
 	cs2pb "cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
@@ -23,6 +22,11 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		if next, ok := input["validationMode"].(bool); ok {
 			s.mu.Lock()
 			s.settings.ValidationMode = next
+			s.mu.Unlock()
+		}
+		if next, ok := input["storageRetrievalPacingSeconds"].(float64); ok && next >= 1 && next <= 60 {
+			s.mu.Lock()
+			s.settings.StorageRetrievalPacingSeconds = uint32(next)
 			s.mu.Unlock()
 		}
 		if next, ok := input["sacrificialAccountMode"].(bool); ok {
@@ -94,7 +98,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			if !flags.EnableSteamInventory {
 				s.clearGameInventoriesLocked("steam")
 			}
-			connected := s.connection.State == domain.ConnectionStateConnected
+			connected := steamConnected(s.connection)
 			s.mu.Unlock()
 			if connected && ((oldFlags.EnableTF2Inventory && !flags.EnableTF2Inventory) || (oldFlags.EnableDota2Inventory && !flags.EnableDota2Inventory)) {
 				if err := s.gcClient.SetGamesPlayed(context.Background(), enabledPresenceApps(flags)); err != nil {
@@ -133,7 +137,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 			s.mu.Unlock()
 			return receipt
 		}
-		if s.connection.State != domain.ConnectionStateConnected {
+		if !steamConnected(s.connection) {
 			receipt.State = "failed"
 			receipt.Message = "connect a Steam account before opening containers"
 			s.operations = append(s.operations, receipt)
@@ -160,7 +164,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		casketID, parseErr := strconv.ParseUint(casketIDText, 10, 64)
 		s.mu.Lock()
 		enabled := s.settings.FeatureFlags.EnableStorageMutations
-		connected := s.connection.State == domain.ConnectionStateConnected
+		connected := steamConnected(s.connection)
 		if parseErr == nil && casketID != 0 && enabled && connected {
 			s.loadedStorageUnits[casketID] = true
 		}
@@ -181,7 +185,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 	if operation == operations.TypeTerminalLoadOffer {
 		terminalIDText, _ := input["terminalId"].(string)
 		s.mu.Lock()
-		connected := s.connection.State == domain.ConnectionStateConnected
+		connected := steamConnected(s.connection)
 		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 		s.mu.Unlock()
 		if !connected || sessionErr != nil {
@@ -203,7 +207,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		itemID, itemParseErr := strconv.ParseUint(itemIDText, 10, 64)
 		s.mu.Lock()
 		enabled := s.settings.FeatureFlags.EnableStorageMutations
-		connected := s.connection.State == domain.ConnectionStateConnected
+		connected := steamConnected(s.connection)
 		storageValidation := s.validateStorageChangeLocked(opType, casketIDText, itemIDText)
 		_, accountCtx, sessionErr := s.currentGCSessionKeyLocked(protocol.AppIDCS2)
 		s.mu.Unlock()
@@ -278,7 +282,7 @@ func (s *Service) SubmitOperation(opType string, input map[string]any) operation
 		if !s.settings.FeatureFlags.EnableNameTags {
 			state = "blocked_by_feature_flag"
 			message = "name tag operations disabled"
-		} else if s.connection.State != domain.ConnectionStateConnected {
+		} else if !steamConnected(s.connection) {
 			state = "awaiting_gc_confirmation"
 			message = "awaiting GC confirmation"
 		} else {

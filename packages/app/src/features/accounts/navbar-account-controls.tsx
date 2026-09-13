@@ -4,15 +4,15 @@ import { SettingsView } from "../settings/SettingsView.js";
 import { IconButton } from "../../shared/ui/IconButton.js";
 import { Popover } from "../../shared/ui/Popover.js";
 import { supportsPullToRefresh } from "../../shared/ui/PullToRefresh.js";
-import type { SidebarProps } from "../shell/Sidebar.js";
+import type { NavbarProps } from "../shell/Navbar.js";
 import {
   isCommerceScreen,
   isEconomyInventoryScreen,
   isInventoryScreen,
 } from "../shell/view.js";
 
-type SidebarAccountControlsProps = Pick<
-  SidebarProps,
+type NavbarAccountControlsProps = Pick<
+  NavbarProps,
   | "view"
   | "connection"
   | "inventory"
@@ -29,6 +29,7 @@ type SidebarAccountControlsProps = Pick<
   | "onOpenAccount"
   | "onSaveSettings"
 > & {
+  hasAdjacentControls: boolean;
   state: {
     accountOpen: Accessor<boolean>;
     settingsOpen: Accessor<boolean>;
@@ -40,7 +41,7 @@ type SidebarAccountControlsProps = Pick<
   };
 };
 
-function accountInitials(props: SidebarAccountControlsProps) {
+function accountInitials(props: NavbarAccountControlsProps) {
   return (
     props.connection?.accountName ||
     props.connection?.steamId ||
@@ -49,14 +50,14 @@ function accountInitials(props: SidebarAccountControlsProps) {
 }
 
 function AccountButton(
-  props: SidebarAccountControlsProps & {
-    state: SidebarAccountControlsProps["state"];
+  props: NavbarAccountControlsProps & {
+    state: NavbarAccountControlsProps["state"];
   },
 ) {
   const state = props.state;
   return (
     <button
-      class="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200"
+      class={`flex h-full items-center gap-2 ${props.view === "account" || !props.hasAdjacentControls ? "rounded-full" : "rounded-r-full"} border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200`}
       aria-label={
         props.connection?.accountName
           ? `Account: ${props.connection.accountName}`
@@ -97,14 +98,14 @@ function AccountButton(
   );
 }
 
-export function SidebarAccountControls(props: SidebarAccountControlsProps) {
+export function NavbarAccountControls(props: NavbarAccountControlsProps) {
   const state = props.state;
   const openSettings = () => {
     state.setAccountOpen(false);
     state.setSettingsOpen(true);
   };
   return (
-    <div class="ml-auto flex items-center gap-2">
+    <div class="flex w-max shrink-0 items-stretch">
       <Show
         when={
           (isInventoryScreen(props.view) ||
@@ -114,7 +115,7 @@ export function SidebarAccountControls(props: SidebarAccountControlsProps) {
         }
       >
         <IconButton
-          class="hidden sm:inline-flex"
+          class="hidden h-full rounded-none sm:inline-flex"
           label="Refresh inventory"
           onClick={props.onRefreshCurrentInventory}
         >
@@ -135,7 +136,7 @@ export function SidebarAccountControls(props: SidebarAccountControlsProps) {
         </IconButton>
       </Show>
       <Popover
-        class="relative"
+        class="relative w-max"
         open={state.accountOpen() || state.settingsOpen()}
         onOpenChange={(open) => {
           if (!open) {

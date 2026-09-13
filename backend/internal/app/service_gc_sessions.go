@@ -34,8 +34,8 @@ func (s *Service) activateAccountSessionLocked(nextSteamID string) {
 		s.cancelAllGameRefreshesLocked()
 		s.inventory = emptyInventory()
 		s.armory = emptyArmory()
-		s.store = emptyStore()
-		s.tf2Store = emptyTF2Store()
+		s.store = emptyStore("Connect Steam to load the CS2 cash store.")
+		s.tf2Store = emptyStore("Connect Steam to load the TF2 Mann Co. Store.")
 		s.purchaseSessions = make(map[string]domain.PurchaseSession)
 		s.purchaseItemIDs = make(map[string][]uint64)
 		s.purchaseAppIDs = make(map[string]uint32)
@@ -53,7 +53,7 @@ func (s *Service) invalidateAccountSessionLocked() {
 }
 
 func (s *Service) currentGCSessionKeyLocked(appID uint32) (gcSessionKey, context.Context, error) {
-	if s.connection.State != domain.ConnectionStateConnected {
+	if !steamConnected(s.connection) {
 		return gcSessionKey{}, nil, fmt.Errorf("Steam account is not connected")
 	}
 	accountID := s.connection.SteamID

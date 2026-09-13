@@ -17,8 +17,12 @@ import {
 import { RelatedItemPreview } from "./RelatedItemPreview.js";
 import { SelectedTradeUpItemCard } from "../tools/trade-up-selected-item-card.js";
 import type { TradeUpOutcome } from "../tools/trade-up-utils.js";
-
-const confirmationPhrase = "TRADE UP";
+import {
+  mergeMarketPrices,
+  tradeUpConfirmationPhrase,
+  tradeUpInputCost,
+  tradeUpReceiptAccepted,
+} from "./trade-up-confirmation.js";
 
 export function TradeUpConfirmationDialog(props: {
   open: boolean;
@@ -57,12 +61,8 @@ export function TradeUpConfirmationDialog(props: {
       "Trade-up price scan failed",
     ).match(
       (scanned) => {
-        const prices = new Map(props.marketPrices);
-        for (const [name, value] of scanned) prices.set(name, value);
-        const cost = props.items.reduce(
-          (sum, item) => sum + (prices.get(item.marketName ?? "") ?? 0),
-          0,
-        );
+        const prices = mergeMarketPrices(props.marketPrices, scanned);
+        const cost = tradeUpInputCost(props.items, prices);
         setEstimate(expectedReturn(props.outcomes, prices, cost || undefined));
         setPricesLoading(false);
       },
@@ -81,7 +81,7 @@ export function TradeUpConfirmationDialog(props: {
     props.connected &&
     props.items.length === props.requiredCount &&
     acknowledged() &&
-    phrase() === confirmationPhrase &&
+    phrase() === tradeUpConfirmationPhrase &&
     !pending();
   const execute = () => {
     if (!canExecute()) return;
@@ -94,8 +94,7 @@ export function TradeUpConfirmationDialog(props: {
       (receipt) => {
         setPending(false);
         if (
-          receipt.state === "awaiting_gc_confirmation" ||
-          receipt.state === "completed"
+          tradeUpReceiptAccepted(receipt)
         ) {
           props.onAccepted();
           return;
@@ -172,7 +171,7 @@ export function TradeUpConfirmationDialog(props: {
             the output is random.
           </label>
           <label class="block text-sm text-slate-300">
-            Type <strong>{confirmationPhrase}</strong> to enable submission.
+            Type <strong>{tradeUpConfirmationPhrase}</strong> to enable submission.
             <Input
               value={phrase()}
               onInput={(event) => setPhrase(event.currentTarget.value)}

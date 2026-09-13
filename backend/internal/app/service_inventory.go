@@ -219,7 +219,7 @@ func (s *Service) fetchInventory(parent context.Context, progress func(string)) 
 			Marketable:    itemMetadata.Marketable,
 			TradableAfter: itemMetadata.TradableAfter,
 		}
-		inventoryItem.Stickers = domainStickers(item.Attributes, metadata.AppliedItems(item.DefIndex, item.Attributes))
+		inventoryItem.Stickers = domainStickers(metadata.AppliedItems(item.DefIndex, item.Attributes))
 		storageEligible, storageReason := storageEligibility(item, inventoryItem)
 		inventoryItem.StorageEligible = &storageEligible
 		inventoryItem.StorageIneligibleReason = storageReason

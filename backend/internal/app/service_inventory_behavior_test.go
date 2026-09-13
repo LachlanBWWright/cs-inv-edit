@@ -35,6 +35,22 @@ func TestContainerDetectionSurvivesMislabeledCapsuleDescription(t *testing.T) {
 	}
 }
 
+func TestDomainStickersIgnoreGraffitiPatternAttributes(t *testing.T) {
+	got := domainStickers(nil)
+	if len(got) != 0 {
+		t.Fatalf("sealed graffiti produced sticker summary = %#v", got)
+	}
+}
+
+func TestDomainStickersIncludeResolvedAppliedSticker(t *testing.T) {
+	got := domainStickers([]econ.AppliedItem{{
+		Kind: domain.ItemKindSticker, Slot: 1, ID: 1655, Name: "Drug War Veteran",
+	}})
+	if len(got) != 1 || got[0].Slot == nil || *got[0].Slot != 1 || got[0].StickerID == nil || *got[0].StickerID != 1655 {
+		t.Fatalf("resolved applied sticker summary = %#v", got)
+	}
+}
+
 func TestTradeUpPreviewUsesExteriorQualifiedDescription(t *testing.T) {
 	wear := 0.12797817
 	min, max := 0.0, 1.0

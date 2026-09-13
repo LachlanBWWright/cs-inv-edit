@@ -190,7 +190,8 @@ export function settingsEqual(
     left.backendUrl !== right.backendUrl ||
     left.validationMode !== right.validationMode ||
     left.sacrificialAccountMode !== right.sacrificialAccountMode ||
-    left.armoryPurchasePacingSeconds !== right.armoryPurchasePacingSeconds
+    left.armoryPurchasePacingSeconds !== right.armoryPurchasePacingSeconds ||
+    left.storageRetrievalPacingSeconds !== right.storageRetrievalPacingSeconds
   )
     return false;
   if (

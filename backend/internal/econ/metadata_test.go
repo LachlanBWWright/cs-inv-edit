@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"cs-inv-edit/backend/internal/domain"
 )
 
 type marketRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -92,8 +94,11 @@ func TestCS2TradableAfterAttributeResolvesTransferCapability(t *testing.T) {
 	if metadata.Tradable == nil || !*metadata.Tradable || metadata.Marketable == nil || !*metadata.Marketable {
 		t.Fatalf("transfer capability = tradable %#v marketable %#v", metadata.Tradable, metadata.Marketable)
 	}
+	plain := schema.Metadata(1209, 0, nil)
+	if plain.Tradable == nil || !*plain.Tradable || plain.Marketable == nil || !*plain.Marketable {
+		t.Fatalf("ordinary CS2 definition transfer capability = tradable %#v marketable %#v", plain.Tradable, plain.Marketable)
+	}
 }
-
 func TestCS2TransferFlagsAlwaysConverge(t *testing.T) {
 	tradable := true
 	marketable := false
@@ -108,13 +113,30 @@ func TestCS2TransferFlagsAlwaysConverge(t *testing.T) {
 }
 
 func TestStorageUnitUsesDedicatedKindDespiteGenericToolSchema(t *testing.T) {
-	schema := &Schema{items: map[uint32]itemDefinition{
-		1201: {Name: "casket", ItemName: "Storage Unit", ItemClass: "tool", ToolType: "casket"},
-	}}
+	root, err := parseKeyValues(`"items_game" { "items" { "1201" { "name" "casket" "item_name" "Storage Unit" "item_class" "tool" "tool" { "type" "casket" } "attributes" { "cannot trade" "1" } } } }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := &Schema{items: map[uint32]itemDefinition{}}
+	schema.parseItems(root)
 
 	metadata := schema.Metadata(1201, 0, map[uint32]uint32{270: 248})
 	if metadata.Kind != "storage_unit" {
 		t.Fatalf("kind = %q, want storage_unit", metadata.Kind)
+	}
+	if metadata.Tradable == nil || *metadata.Tradable || metadata.Marketable == nil || *metadata.Marketable {
+		t.Fatalf("storage unit transfer state = tradable %#v marketable %#v, want explicit false", metadata.Tradable, metadata.Marketable)
+	}
+}
+
+func TestStorageUnitTransferRestrictionSurvivesSteamEnrichment(t *testing.T) {
+	tradable, marketable := true, true
+	metadata := (Metadata{Kind: domain.ItemKindStorageUnit, CannotTrade: true, Tradable: &tradable, Marketable: &marketable, TradableAfter: "2026-10-20T17:59:59Z"}).NormalizeCS2TransferState()
+	metadata = metadata.WithInventoryDescription(InventoryDescription{
+		Tradable: true, Marketable: true, TradableAfter: "2026-10-20T17:59:59Z",
+	})
+	if metadata.Tradable == nil || *metadata.Tradable || metadata.Marketable == nil || *metadata.Marketable || metadata.TradableAfter != "" {
+		t.Fatalf("storage unit enrichment re-enabled transfer state: %#v", metadata)
 	}
 }
 

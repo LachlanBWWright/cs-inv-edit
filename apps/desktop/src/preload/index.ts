@@ -1,10 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { ResultAsync, err, ok, fromThrowable } from "neverthrow";
-import type { AppError } from "@cs-inv-edit/app";
+import type { AppError, LocalAgentClient } from "@cs-inv-edit/app";
 import { backendSchemas } from "@cs-inv-edit/contracts";
-import type { EconomyGame } from "@cs-inv-edit/contracts";
+import type { ConnectionStatus, EconomyGame } from "@cs-inv-edit/contracts";
 import type { SafeParseSchema } from "@cs-inv-edit/app";
 import { watchSteamStatusWithRecovery } from "@cs-inv-edit/app";
+
+function runtimeArgument(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+}
+
+const backendRuntimeUrl = runtimeArgument("cs2-backend-url") ?? "http://127.0.0.1:7331";
+const backendAuthToken = runtimeArgument("cs2-backend-token");
 
 function isAppError(value: unknown): value is AppError {
   return (
@@ -45,7 +53,7 @@ const invokeResult = <T>(
         });
   });
 
-const api = {
+const api: LocalAgentClient = {
   health: () => invokeResult(backendSchemas.health, "backend:health"),
   inventory: () => invokeResult(backendSchemas.inventory, "backend:inventory"),
   refreshInventory: () =>
@@ -89,6 +97,15 @@ const api = {
   store: () => invokeResult(backendSchemas.store, "backend:store"),
   refreshStore: () =>
     invokeResult(backendSchemas.receipt, "backend:refreshStore"),
+  tf2Store: () => invokeResult(backendSchemas.store, "backend:tf2Store"),
+  refreshTF2Store: () =>
+    invokeResult(backendSchemas.receipt, "backend:refreshTF2Store"),
+  initializeTF2StorePurchase: (input: unknown) =>
+    invokeResult(
+      backendSchemas.purchaseSession,
+      "backend:initializeTF2StorePurchase",
+      input,
+    ),
   trades: () => invokeResult(backendSchemas.trades, "backend:trades"),
   refreshTrades: () =>
     invokeResult(backendSchemas.trades, "backend:refreshTrades"),
@@ -147,11 +164,12 @@ const api = {
     invokeResult(backendSchemas.connection, "backend:connectSteam", input),
   startSteamQR: () =>
     invokeResult(backendSchemas.connection, "backend:startSteamQR"),
-  watchSteamStatus: (listener: (status: unknown) => void) => {
+  watchSteamStatus: (listener: (status: ConnectionStatus) => void) => {
     const parse = fromThrowable(JSON.parse, (cause) => cause);
     return watchSteamStatusWithRecovery({
-      socketUrl: "ws://127.0.0.1:7331/steam/status/ws",
-      readStatus: api.steamStatus,
+      socketUrl: `${backendRuntimeUrl.replace(/^http/, "ws")}/steam/status/ws?token=${encodeURIComponent(backendAuthToken ?? "")}`,
+      readStatus: () =>
+        invokeResult(backendSchemas.connection, "backend:steamStatus"),
       listener,
       parseMessage: (message) =>
         parse(message)

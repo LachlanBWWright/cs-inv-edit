@@ -7,6 +7,7 @@ export interface ToastItem {
   title: string;
   description?: string;
   variant?: StatusTone;
+  onDismiss?: () => void;
 }
 
 export interface ToastViewportProps {
@@ -43,7 +44,10 @@ function ToastCard(props: {
           size="sm"
           class="p-1"
           label={`Dismiss ${props.toast.title}`}
-          onClick={() => props.onDismiss(props.toast.id)}
+          onClick={() => {
+            props.toast.onDismiss?.();
+            props.onDismiss(props.toast.id);
+          }}
         >
           ×
         </Button>

@@ -166,13 +166,7 @@ export function isWeaponFinish(item: RelatedItemDto) {
   );
 }
 
-export function steamMarketUrl(marketName: string) {
-  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
-}
-
-export function steamMarketSearchUrl(marketName: string) {
-  return `https://steamcommunity.com/market/search?appid=730&q=${encodeURIComponent(marketName)}`;
-}
+export { steamMarketSearchUrl, steamMarketUrl } from "../../shared/lib/steam-urls.js";
 
 export function formatProbability(probability: number) {
   if (probability <= 0) return "Unknown";

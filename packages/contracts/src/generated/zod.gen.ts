@@ -515,7 +515,7 @@ export const zInitializeStorePurchaseRequest = z.object({
   supplementalData: z.string().optional(),
   expectedTerminalOfferItemId: z
     .string()
-    .regex(/^\\d+$/)
+    .regex(/^[0-9]+$/)
     .optional(),
 });
 
@@ -571,12 +571,12 @@ export const zPurchaseSession = z.object({
 export const zSteamTradeAssetRequest = z.object({
   appId: z.int().gte(1),
   contextId: z.string().min(1),
-  assetId: z.string().regex(/^\\d+$/),
+  assetId: z.string().regex(/^[0-9]+$/),
   amount: z.int().gte(1),
 });
 
 export const zCreateSteamTradeOfferRequest = z.object({
-  partnerSteamId: z.string().regex(/^7656119\\d{10}$/),
+  partnerSteamId: z.string().regex(/^7656119[0-9]{10}$/),
   message: z.string().max(128).optional(),
   itemsToGive: z.array(zSteamTradeAssetRequest).max(256),
   itemsToReceive: z.array(zSteamTradeAssetRequest).max(256),
@@ -718,20 +718,20 @@ export const zArmoryRedeemRequest = z.object({
 });
 
 export const zItemIdRequest = z.object({
-  itemId: z.string().regex(/^\\d+$/),
+  itemId: z.string().regex(/^[0-9]+$/),
 });
 
 export const zSetItemNameRequest = z.object({
-  subjectItemId: z.string().regex(/^\\d+$/),
-  toolItemId: z.string().regex(/^\\d+$/),
+  subjectItemId: z.string().regex(/^[0-9]+$/),
+  toolItemId: z.string().regex(/^[0-9]+$/),
   name: z.string(),
 });
 
 export const zOpenContainerRequest = z.object({
-  itemId: z.string().regex(/^\\d+$/),
+  itemId: z.string().regex(/^[0-9]+$/),
   keyItemId: z
     .string()
-    .regex(/^\\d+$/)
+    .regex(/^[0-9]+$/)
     .optional(),
   pointsRemaining: z
     .int()
@@ -750,18 +750,18 @@ export const zOpenContainerRequest = z.object({
 });
 
 export const zApplyStatTrakSwapRequest = z.object({
-  toolItemId: z.string().regex(/^\\d+$/),
-  item1ItemId: z.string().regex(/^\\d+$/),
-  item2ItemId: z.string().regex(/^\\d+$/),
+  toolItemId: z.string().regex(/^[0-9]+$/),
+  item1ItemId: z.string().regex(/^[0-9]+$/),
+  item2ItemId: z.string().regex(/^[0-9]+$/),
 });
 
 export const zApplyStrangePartRequest = z.object({
-  strangePartItemId: z.string().regex(/^\\d+$/),
-  itemItemId: z.string().regex(/^\\d+$/),
+  strangePartItemId: z.string().regex(/^[0-9]+$/),
+  itemItemId: z.string().regex(/^[0-9]+$/),
 });
 
 export const zUseItemRequest = z.object({
-  itemId: z.string().regex(/^\\d+$/),
+  itemId: z.string().regex(/^[0-9]+$/),
   targetSteamId: z.string().optional(),
   giftPotentialTargets: z
     .array(
@@ -784,16 +784,16 @@ export const zUseItemRequest = z.object({
 });
 
 export const zUseMultipleItemsRequest = z.object({
-  itemIds: z.array(z.string().regex(/^\\d+$/)).min(1),
+  itemIds: z.array(z.string().regex(/^[0-9]+$/)).min(1),
 });
 
 export const zApplyToolToItemRequest = z.object({
-  toolItemId: z.string().regex(/^\\d+$/),
-  subjectItemId: z.string().regex(/^\\d+$/),
+  toolItemId: z.string().regex(/^[0-9]+$/),
+  subjectItemId: z.string().regex(/^[0-9]+$/),
 });
 
 export const zApplyToolToBaseItemRequest = z.object({
-  toolItemId: z.string().regex(/^\\d+$/),
+  toolItemId: z.string().regex(/^[0-9]+$/),
   baseitemDefIndex: z
     .int()
     .gte(0)
@@ -803,7 +803,7 @@ export const zApplyToolToBaseItemRequest = z.object({
 });
 
 export const zGiftItemRequest = z.object({
-  itemId: z.string().regex(/^\\d+$/),
+  itemId: z.string().regex(/^[0-9]+$/),
   receiverAccountId: z
     .int()
     .gte(0)
@@ -877,6 +877,7 @@ export const zSettingsData = z.object({
   featureFlags: zFeatureFlags,
   animations: zAnimationSettings,
   armoryPurchasePacingSeconds: z.int().gte(1).lte(60),
+  storageRetrievalPacingSeconds: z.int().gte(1).lte(60),
 });
 
 export const zEconomyTag = z.object({
@@ -1021,12 +1022,12 @@ export const zSteamGuardRequest = z.object({
 });
 
 export const zStorageLoadRequest = z.object({
-  casketId: z.string().regex(/^\\d+$/),
+  casketId: z.string().regex(/^[0-9]+$/),
 });
 
 export const zStorageMoveRequest = z.object({
-  casketId: z.string().regex(/^\\d+$/),
-  itemId: z.string().regex(/^\\d+$/),
+  casketId: z.string().regex(/^[0-9]+$/),
+  itemId: z.string().regex(/^[0-9]+$/),
 });
 
 export const zFeatureActivity = z.object({

@@ -30,6 +30,7 @@ import type { CompactMode } from "../../shared/ui-types.js";
 import type { ToastItem } from "../../shared/ui/ToastViewport.js";
 import type { AppScreen } from "./view.js";
 import type { UIActionOutcome } from "../../shared/lib/ui-action-outcome.js";
+import type { StorageRetrievalJob } from "../inventory/storage-retrieval-queue.js";
 export interface AppViewProps {
   view: AppScreen;
   setView: (view: AppScreen) => void;
@@ -79,6 +80,12 @@ export interface AppViewProps {
   onDeleteAccount: (account: SteamAccountProfile) => void;
   onRefreshInventory: () => void;
   onDismissToast: (id: string) => void;
+  pushToast: (toast: {
+    title: string;
+    description?: string;
+    variant?: import("../../shared/ui-types.js").StatusTone;
+  }) => void;
+  enqueueStorageRetrieval: (job: StorageRetrievalJob) => void;
   onConnect: (input: {
     username?: string;
     password?: string;

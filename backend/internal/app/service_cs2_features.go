@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"cs-inv-edit/backend/internal/domain"
 	"cs-inv-edit/backend/internal/operations"
 	"cs-inv-edit/backend/internal/proto/gametracking"
 	"cs-inv-edit/backend/internal/protocol"
@@ -18,7 +17,7 @@ func (s *Service) submitCS2FeatureOperation(receipt operations.Receipt, operatio
 		return s.finishCS2FeatureOperation(receipt, "failed", "unknown CS2 feature operation", nil)
 	}
 	s.mu.Lock()
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	steamID := s.connection.SteamID
 	loadoutsEnabled := s.settings.FeatureFlags.EnableCS2Loadouts
 	s.mu.Unlock()

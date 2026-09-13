@@ -1,3 +1,5 @@
+import { priceFeaturesEnabledFromFlags } from "../../shared/lib/feature-flags.js";
+
 export type InventoryMode = "inventory";
 export type EconomyInventoryMode =
   | "steam-inventory"
@@ -60,7 +62,7 @@ export function availableModes(flags?: {
     "armory",
     "store",
   ];
-  if (flags?.enablePriceAnalysis === true) modes.push("price-analysis");
+  if (priceFeaturesEnabledFromFlags(flags)) modes.push("price-analysis");
   if (flags?.enableCs2Loadouts) modes.push("cs2-loadouts");
   if (flags?.enableTf2Inventory)
     modes.push(

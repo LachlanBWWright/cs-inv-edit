@@ -6,6 +6,7 @@ import {
   OfferCard,
   armoryPurchaseRequiresConfirmation,
 } from "./armory-view-elements.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 
 export interface ArmoryOfferListProps {
   offers: ArmorySnapshot["offers"];
@@ -69,7 +70,7 @@ function ArmoryOfferEntry(props: {
       estimate={props.list.offerEstimates[armoryOfferKey(props.offer)]}
       estimateLoading={props.list.offerEstimatesLoading}
       priceAnalysisEnabled={
-        props.list.settings?.featureFlags.enablePriceAnalysis === true
+        priceFeaturesEnabled(props.list.settings)
       }
       canBuy={props.list.redemptionEnabled && props.list.ready && affordable()}
       buyDisabledReason={purchaseDisabledReason(

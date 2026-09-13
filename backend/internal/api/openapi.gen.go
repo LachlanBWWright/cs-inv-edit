@@ -1161,12 +1161,13 @@ type SetItemNameRequest struct {
 
 // SettingsData defines model for SettingsData.
 type SettingsData struct {
-	Animations                  AnimationSettings `json:"animations"`
-	ArmoryPurchasePacingSeconds int               `json:"armoryPurchasePacingSeconds"`
-	BackendUrl                  string            `json:"backendUrl"`
-	FeatureFlags                FeatureFlags      `json:"featureFlags"`
-	SacrificialAccountMode      bool              `json:"sacrificialAccountMode"`
-	ValidationMode              bool              `json:"validationMode"`
+	Animations                    AnimationSettings `json:"animations"`
+	ArmoryPurchasePacingSeconds   int               `json:"armoryPurchasePacingSeconds"`
+	BackendUrl                    string            `json:"backendUrl"`
+	FeatureFlags                  FeatureFlags      `json:"featureFlags"`
+	SacrificialAccountMode        bool              `json:"sacrificialAccountMode"`
+	StorageRetrievalPacingSeconds int               `json:"storageRetrievalPacingSeconds"`
+	ValidationMode                bool              `json:"validationMode"`
 }
 
 // SteamAccountTradesCollection defines model for SteamAccountTradesCollection.

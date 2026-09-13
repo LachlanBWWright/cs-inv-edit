@@ -18,9 +18,14 @@ import type {
   TF2TradeUpCollectionBreakdown,
   TF2TradeUpOutcome,
 } from "./tf2-trade-up.js";
+import {
+  mergeMarketPrices,
+  tradeUpConfirmationPhrase,
+  tradeUpInputCost,
+  tradeUpReceiptAccepted,
+} from "./trade-up-confirmation.js";
 
 type TF2Item = Extract<EconomyInventoryItemDto, { game: "tf2" }>;
-const phrase = "TRADE UP";
 
 export function TF2TradeUpConfirmationDialog(props: {
   open: boolean;
@@ -60,12 +65,8 @@ export function TF2TradeUpConfirmationDialog(props: {
       "TF2 price scan failed",
     ).match(
       (scanned) => {
-        const prices = new Map(props.marketPrices);
-        for (const [name, value] of scanned) prices.set(name, value);
-        const cost = props.items.reduce(
-          (sum, item) => sum + (prices.get(item.marketName ?? "") ?? 0),
-          0,
-        );
+        const prices = mergeMarketPrices(props.marketPrices, scanned);
+        const cost = tradeUpInputCost(props.items, prices);
         setEstimate(expectedReturn(props.outcomes, prices, cost || undefined));
       },
       () => setEstimate(undefined),
@@ -76,7 +77,7 @@ export function TF2TradeUpConfirmationDialog(props: {
     props.connected &&
     props.items.length === (props.requiredCount ?? 10) &&
     acknowledged() &&
-    typed() === phrase &&
+    typed() === tradeUpConfirmationPhrase &&
     !pending();
   const execute = () => {
     if (!canExecute()) return;
@@ -89,7 +90,7 @@ export function TF2TradeUpConfirmationDialog(props: {
         setPending(false);
         if (
           receipt &&
-          ["completed", "awaiting_gc_confirmation"].includes(receipt.state)
+          tradeUpReceiptAccepted(receipt)
         ) {
           props.onAccepted();
           return;
@@ -237,7 +238,7 @@ export function TF2TradeUpConfirmationDialog(props: {
             craft cannot be undone.
           </label>
           <label class="block text-sm">
-            Type <strong>{phrase}</strong> to confirm.
+            Type <strong>{tradeUpConfirmationPhrase}</strong> to confirm.
             <Input
               value={typed()}
               onInput={(event) => setTyped(event.currentTarget.value)}

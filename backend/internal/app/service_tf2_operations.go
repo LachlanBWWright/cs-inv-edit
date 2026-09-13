@@ -27,7 +27,7 @@ func (s *Service) submitTF2Operation(receipt operations.Receipt, operation strin
 	s.mu.Lock()
 	flags := s.settings.FeatureFlags
 	validationMode := s.settings.ValidationMode
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	steamID := s.connection.SteamID
 	storeCurrencyID := s.storeCurrencyID
 	enabled := tf2OperationEnabled(flags, mapping.FeatureFlag)

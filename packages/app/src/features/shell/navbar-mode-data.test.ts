@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { modeDetails, modeGroups } from "./sidebar-mode-data.js";
+import { modeDetails, modeGroups } from "./navbar-mode-data.js";
 
-describe("sidebar mode data", () => {
+describe("navbar mode data", () => {
   it("keeps each game's primary modes in their intended order", () => {
     const cs2 = modeGroups.find((group) => group.label === "Counter-Strike 2");
     const tf2 = modeGroups.find((group) => group.label === "Team Fortress 2");

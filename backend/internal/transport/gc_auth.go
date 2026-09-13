@@ -12,11 +12,10 @@ import (
 	"time"
 
 	"cs-inv-edit/backend/internal/proto/steampb"
-	"google.golang.org/protobuf/proto"
 )
 
 func (s *SteamGCClient) LogOn(ctx context.Context, credentials LogonCredentials) (LogonResult, error) {
-	return s.logOn(ctx, credentials, true)
+	return s.logOn(ctx, credentials, 3)
 }
 
 func (s *SteamGCClient) BeginQRAuth(ctx context.Context) (QRAuthSession, error) {
@@ -26,33 +25,43 @@ func (s *SteamGCClient) BeginQRAuth(ctx context.Context) (QRAuthSession, error) 
 	if conn == nil {
 		return QRAuthSession{}, ErrNotConnected
 	}
-	trace := newDiagnosticTrace("steam qr auth started over CM unified messages")
+	trace := newDiagnosticTrace("steam qr auth started over Steam authentication API")
 	if err := conn.SendPacket(mustClientHelloPacket()); err != nil {
 		return QRAuthSession{}, trace.Error(fmt.Errorf("steam client hello send failed: %w", err))
 	}
-	request := &steampb.CAuthentication_BeginAuthSessionViaQR_Request{
-		DeviceFriendlyName: proto.String("cs-inv-edit"),
-		PlatformType:       steampb.EAuthTokenPlatformType_k_EAuthTokenPlatformType_SteamClient.Enum(),
-		WebsiteId:          proto.String("Client"),
-		DeviceDetails: &steampb.CAuthentication_DeviceDetails{
-			DeviceFriendlyName: proto.String("cs-inv-edit"),
-			PlatformType:       steampb.EAuthTokenPlatformType_k_EAuthTokenPlatformType_SteamClient.Enum(),
-			OsType:             proto.Int32(steamClientOSType()),
-			MachineId:          steamMachineID("qr"),
-		},
+	var response steamQRBeginResponse
+	for attempt := 1; attempt <= 3; attempt++ {
+		trace.Add(fmt.Sprintf("steam qr auth challenge attempt=%d/3", attempt))
+		var err error
+		response, err = beginSteamQRViaWebAPI(ctx)
+		if err != nil {
+			return QRAuthSession{}, trace.Error(fmt.Errorf("steam QR auth session failed: %w", err))
+		}
+		if missing := qrWebChallengeMissingFields(response); len(missing) == 0 {
+			break
+		} else {
+			trace.Add("steam qr auth response missing fields=" + strings.Join(missing, ","))
+		}
+		if attempt < 3 {
+			select {
+			case <-ctx.Done():
+				return QRAuthSession{}, trace.Error(ctx.Err())
+			case <-time.After(300 * time.Millisecond):
+			}
+		}
 	}
-	response := new(steampb.CAuthentication_BeginAuthSessionViaQR_Response)
-	if err := sendNonAuthedUnified(ctx, newNonAuthedUnifiedHandler(), conn, "Authentication.BeginAuthSessionViaQR#1", request, response, trace); err != nil {
-		return QRAuthSession{}, trace.Error(fmt.Errorf("steam QR CM request failed: %w", err))
+	if missing := qrWebChallengeMissingFields(response); len(missing) > 0 {
+		return QRAuthSession{}, trace.Error(fmt.Errorf("steam QR auth returned an incomplete challenge after 3 attempts (missing %s)", strings.Join(missing, ", ")))
 	}
-	interval := time.Second
-	if response.GetInterval() > 0 {
-		interval = time.Duration(float64(time.Second) * float64(response.GetInterval()))
+	requestID, err := base64.StdEncoding.DecodeString(response.RequestID)
+	if err != nil {
+		return QRAuthSession{}, trace.Error(fmt.Errorf("steam QR auth returned an invalid request_id: %w", err))
 	}
-	if missing := qrChallengeMissingFields(response); len(missing) > 0 {
-		return QRAuthSession{}, trace.Error(fmt.Errorf("steam QR CM response missing %s", strings.Join(missing, ", ")))
+	interval := time.Duration(float64(response.Interval) * float64(time.Second))
+	if interval <= 0 {
+		interval = time.Second
 	}
-	return QRAuthSession{ClientID: response.GetClientId(), RequestID: response.GetRequestId(), ChallengeURL: response.GetChallengeUrl(), PollInterval: interval}, nil
+	return QRAuthSession{ClientID: response.ClientID, RequestID: requestID, ChallengeURL: response.ChallengeURL, PollInterval: interval}, nil
 }
 
 type steamQRBeginResponse struct {
@@ -130,13 +139,6 @@ func qrChallengeMissingFields(response *steampb.CAuthentication_BeginAuthSession
 
 func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSession) (QRAuthResult, error) {
 	trace := newDiagnosticTrace("steam qr auth polling started")
-	s.mu.Lock()
-	conn := s.conn
-	s.mu.Unlock()
-	if conn == nil {
-		return QRAuthResult{}, ErrNotConnected
-	}
-	unified := newNonAuthedUnifiedHandler()
 	interval := session.PollInterval
 	if interval <= 0 {
 		interval = time.Second
@@ -149,11 +151,7 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 		case <-ctx.Done():
 			return QRAuthResult{}, ctx.Err()
 		case <-ticker.C:
-			response := new(steampb.CAuthentication_PollAuthSessionStatus_Response)
-			err := sendNonAuthedUnified(ctx, unified, conn, "Authentication.PollAuthSessionStatus#1", &steampb.CAuthentication_PollAuthSessionStatus_Request{
-				ClientId:  proto.Uint64(session.ClientID),
-				RequestId: append([]byte(nil), session.RequestID...),
-			}, response, trace)
+			response, err := pollSteamQRViaWebAPI(ctx, session)
 			if err != nil {
 				consecutiveFailures++
 				trace.Add(fmt.Sprintf("steam qr auth poll transient failure=%d/5 error=%v", consecutiveFailures, err))
@@ -168,21 +166,17 @@ func (s *SteamGCClient) CompleteQRAuth(ctx context.Context, session QRAuthSessio
 				continue
 			}
 			consecutiveFailures = 0
-			if response.GetNewClientId() != 0 {
-				session.ClientID = response.GetNewClientId()
+			if response.NewClientID != 0 {
+				session.ClientID = response.NewClientID
 			}
-			if response.GetNewChallengeUrl() != "" {
-				session.ChallengeURL = response.GetNewChallengeUrl()
+			if response.NewChallengeURL != "" {
+				session.ChallengeURL = response.NewChallengeURL
 				if session.OnChallengeURL != nil {
-					session.OnChallengeURL(response.GetNewChallengeUrl())
+					session.OnChallengeURL(response.NewChallengeURL)
 				}
 			}
-			token := response.GetRefreshToken()
-			if token == "" {
-				token = response.GetAccessToken()
-			}
-			if token != "" {
-				return QRAuthResult{AccountName: response.GetAccountName(), AccessToken: response.GetAccessToken(), RefreshToken: token}, nil
+			if response.RefreshToken != "" {
+				return QRAuthResult{AccountName: response.AccountName, AccessToken: response.AccessToken, RefreshToken: response.RefreshToken}, nil
 			}
 			ticker.Reset(interval)
 		}

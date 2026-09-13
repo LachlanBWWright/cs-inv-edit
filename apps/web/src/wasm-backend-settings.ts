@@ -43,4 +43,5 @@ export const defaultWasmSettings: SettingsData = {
     terminal: "slot-machine",
   },
   armoryPurchasePacingSeconds: 5,
+  storageRetrievalPacingSeconds: 1,
 };

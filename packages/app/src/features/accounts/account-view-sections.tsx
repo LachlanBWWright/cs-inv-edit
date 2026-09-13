@@ -3,6 +3,7 @@ import { Alert } from "../../shared/ui/Alert.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Input } from "../../shared/ui/Input.js";
 import { AccountIntroduction } from "./AccountIntroduction.js";
+import { QrSignInPanel } from "./qr-sign-in-panel.js";
 
 export interface AccountViewLayoutProps {
   status: string;
@@ -24,6 +25,8 @@ export interface AccountViewLayoutProps {
   onConnect: (event: Event) => void;
   onSteamGuard: (event: Event) => void;
   onDisconnect: () => void;
+  onRetrySteamQR?: () => void;
+  onRefreshSteamQR?: () => void;
 }
 
 function renderConnectionPanel(props: AccountViewLayoutProps) {
@@ -90,8 +93,11 @@ function renderConnectionPanel(props: AccountViewLayoutProps) {
       </Show>
       <div class="space-y-7 rounded-3xl bg-slate-900 p-5 sm:p-7">
         <QrSignInPanel
+          connectionState={props.connectionState}
           qrImage={props.qrImage}
           qrLoadingText={props.qrLoadingText}
+          onRetrySteamQR={props.onRetrySteamQR}
+          onRefreshSteamQR={props.onRefreshSteamQR}
         />
         <CredentialsForm
           username={props.username}
@@ -334,41 +340,5 @@ function CredentialsForm(props: CredentialsFormProps) {
         {props.loading ? "Signing in..." : "Sign in"}
       </Button>
     </form>
-  );
-}
-
-interface QrSignInPanelProps {
-  qrImage: string;
-  qrLoadingText: string;
-}
-
-function QrSignInPanel(props: QrSignInPanelProps) {
-  return (
-    <section
-      class="flex flex-col items-center text-center"
-      aria-labelledby="qr-sign-in-heading"
-    >
-      <h3 id="qr-sign-in-heading" class="font-semibold text-slate-100">
-        Sign in with a QR code
-      </h3>
-      <Show
-        when={props.qrImage}
-        fallback={
-          <div
-            class="mt-3 flex aspect-square w-full max-w-80 items-center justify-center rounded-2xl bg-slate-950 px-6 text-sm text-slate-400"
-            role="status"
-            aria-live="polite"
-          >
-            {props.qrLoadingText}
-          </div>
-        }
-      >
-        <img
-          class="mt-3 aspect-square w-full max-w-80 rounded-2xl bg-white p-3"
-          src={props.qrImage}
-          alt="Steam sign-in QR code"
-        />
-      </Show>
-    </section>
   );
 }

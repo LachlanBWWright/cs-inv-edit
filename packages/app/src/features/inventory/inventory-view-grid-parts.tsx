@@ -15,6 +15,7 @@ import { ResponsiveInspector } from "../../shared/ui/ResponsiveInspector.js";
 import { Alert } from "../../shared/ui/Alert.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Dialog } from "../../shared/ui/Dialog.js";
+import { Switch } from "../../shared/ui/Switch.js";
 import { InventoryItemIcon as ItemIcon, InventoryItemWear as ItemWear } from "./inventory-view-content-elements.js";
 
 function StorageFailureAlert(props: {
@@ -68,35 +69,24 @@ export function StorageToolbar(props: {
   };
   return (
     <Show when={props.browsingStorageUnit}>
-      {(unit) => (
-        <div class="mb-3 grid shrink-0 gap-3">
+      <div class="sticky top-20 z-10 mb-3 grid shrink-0 gap-3 bg-slate-950 pb-1">
           <div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 p-2.5">
             <button
               type="button"
               class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:border-cyan-400/50 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={!!props.storageRetrieval}
               onClick={props.onBackFromStorage}
             >
               ← Back
             </button>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={props.removeFromStorageMode}
-              class="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={controlsDisabled()}
-              onClick={props.onToggleRemoveFromStorageMode}
-            >
-              <span
-                class={`relative h-6 w-11 rounded-full transition ${props.removeFromStorageMode ? "bg-amber-400" : "bg-slate-700"}`}
-                aria-hidden="true"
-              >
-                <span
-                  class={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${props.removeFromStorageMode ? "translate-x-6" : "translate-x-1"}`}
-                />
-              </span>
+            <label class="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-200">
+              <Switch
+                checked={props.removeFromStorageMode}
+                disabled={controlsDisabled()}
+                aria-label="Remove item mode"
+                onCheckedChange={props.onToggleRemoveFromStorageMode}
+              />
               Remove item mode
-            </button>
+            </label>
             <button
               type="button"
               class="rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
@@ -113,9 +103,6 @@ export function StorageToolbar(props: {
             >
               Retrieve all items
             </button>
-            <span class="ml-auto truncate text-sm text-slate-400">
-              {itemDisplayName(unit())}
-            </span>
           </div>
           <Show when={props.storageUnavailableReason}>
             {(reason) => <Alert variant="warning">{reason()}</Alert>}
@@ -140,8 +127,7 @@ export function StorageToolbar(props: {
               />
             </div>
           </Dialog>
-        </div>
-      )}
+      </div>
     </Show>
   );
 }
@@ -153,7 +139,7 @@ export function InventoryItemCard(props: {
   compactSummary: JSX.Element;
   onSelectItem: InventoryGridProps["onSelectItem"];
   onPointerDown: (event: MouseEvent) => void;
-  onPointerEnter: () => void;
+  onPointerEnter: (event: PointerEvent) => void;
   storageSelectionActive: boolean;
   storageSelectedItemIds: string[];
   marketPrices: ReadonlyMap<string, number>;
@@ -161,6 +147,7 @@ export function InventoryItemCard(props: {
   return (
     <button
       type="button"
+      data-item-id={props.item.id}
       class={`focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${props.itemCardClass}`}
       aria-pressed={props.storageSelectionActive ? props.storageSelectedItemIds.includes(props.item.id) : undefined}
       aria-label={
@@ -199,11 +186,11 @@ export function InventoryRetrievalOverlay(props: {
 }) {
   return (
     <div
-      class="absolute inset-0 z-10 flex items-start justify-center bg-slate-950 px-4 pt-10"
+      class="flex min-h-[20rem] flex-1 items-center justify-center rounded-2xl border border-slate-800 bg-slate-950 px-4"
       role="status"
       aria-live="polite"
     >
-      <div class="flex w-full max-w-sm items-center gap-4 rounded-2xl border border-cyan-400/30 bg-slate-900 p-5 shadow-2xl">
+      <div class="flex w-full max-w-sm items-center gap-4 rounded-2xl border border-cyan-400/30 bg-slate-900 p-5">
         <span
           class="h-9 w-9 shrink-0 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-300"
           aria-hidden="true"
@@ -232,10 +219,12 @@ export function InventoryItemGrid(props: {
   onPointerUp: () => void;
   onPointerLeave: () => void;
   onItemPointerDown: (item: InventoryItemDto, event: MouseEvent) => void;
-  onItemPointerEnter: (item: InventoryItemDto) => void;
+  onItemPointerEnter: (item: InventoryItemDto, event: PointerEvent) => void;
+  ref?: (element: HTMLDivElement) => void;
 }) {
   return (
     <div
+      ref={props.ref}
       class="grid gap-3"
       onPointerUp={props.onPointerUp}
       onPointerLeave={props.onPointerLeave}
@@ -252,7 +241,7 @@ export function InventoryItemGrid(props: {
             compactSummary={props.compactSummary(item)}
             onSelectItem={props.onSelectItem}
             onPointerDown={(event) => props.onItemPointerDown(item, event)}
-            onPointerEnter={() => props.onItemPointerEnter(item)}
+            onPointerEnter={(event) => props.onItemPointerEnter(item, event)}
             storageSelectionActive={props.storageSelectionActive}
             storageSelectedItemIds={props.storageSelectedItemIds}
             marketPrices={props.marketPrices}

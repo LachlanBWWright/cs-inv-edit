@@ -28,6 +28,8 @@ const baseArgs = {
   onConnect: noEvent,
   onSteamGuard: noEvent,
   onDisconnect: noOp,
+  onRetrySteamQR: noOp,
+  onRefreshSteamQR: noOp,
 };
 
 const meta = {
@@ -76,10 +78,22 @@ export const QRStillWaiting: Story = {
 export const QRConnectionError: Story = {
   args: {
     ...baseArgs,
-    status: "Steam QR login: context deadline exceeded",
     connectionState: "error",
-    connectionDetail: "Steam QR login: context deadline exceeded",
-    qrLoadingText: "Steam QR login: context deadline exceeded",
+    connectionDetail:
+      "Steam approved the sign-in, but the connection server asked us to reconnect. Try again to finish signing in.",
+    qrLoadingText:
+      "Steam approved the sign-in, but the connection server asked us to reconnect. Try again to finish signing in.",
+  },
+};
+
+export const QRReconnectError: Story = {
+  args: {
+    ...baseArgs,
+    connectionState: "error",
+    connectionDetail:
+      "Steam requested a different connection server after 3 attempts.",
+    qrLoadingText:
+      "Steam requested a different connection server after 3 attempts.",
   },
 };
 

@@ -1122,7 +1122,7 @@ components:
         expectedPriceSheetVersion: { type: integer, minimum: 0 }
         expectedAmountMinor: { type: integer, minimum: 0 }
         supplementalData: { type: string }
-        expectedTerminalOfferItemId: { type: string, pattern: '^\\d+$' }
+        expectedTerminalOfferItemId: { type: string, pattern: '^[0-9]+$' }
     PurchaseSession:
       type: object
       additionalProperties: false
@@ -1182,14 +1182,14 @@ components:
       properties:
         appId: { type: integer, minimum: 1 }
         contextId: { type: string, minLength: 1 }
-        assetId: { type: string, pattern: '^\\d+$' }
+        assetId: { type: string, pattern: '^[0-9]+$' }
         amount: { type: integer, minimum: 1 }
     CreateSteamTradeOfferRequest:
       type: object
       additionalProperties: false
       required: [partnerSteamId, itemsToGive, itemsToReceive]
       properties:
-        partnerSteamId: { type: string, pattern: '^7656119\\d{10}$' }
+        partnerSteamId: { type: string, pattern: '^7656119[0-9]{10}$' }
         message: { type: string, maxLength: 128 }
         itemsToGive:
           type: array
@@ -1344,22 +1344,22 @@ components:
       additionalProperties: false
       required: [itemId]
       properties:
-        itemId: { type: string, pattern: '^\\d+$' }
+        itemId: { type: string, pattern: '^[0-9]+$' }
     SetItemNameRequest:
       type: object
       additionalProperties: false
       required: [subjectItemId, toolItemId, name]
       properties:
-        subjectItemId: { type: string, pattern: '^\\d+$' }
-        toolItemId: { type: string, pattern: '^\\d+$' }
+        subjectItemId: { type: string, pattern: '^[0-9]+$' }
+        toolItemId: { type: string, pattern: '^[0-9]+$' }
         name: { type: string }
     OpenContainerRequest:
       type: object
       additionalProperties: false
       required: [itemId]
       properties:
-        itemId: { type: string, pattern: '^\\d+$' }
-        keyItemId: { type: string, pattern: '^\\d+$' }
+        itemId: { type: string, pattern: '^[0-9]+$' }
+        keyItemId: { type: string, pattern: '^[0-9]+$' }
         pointsRemaining: { type: integer, format: uint32, minimum: 0 }
         volatileLimit: { type: integer, format: uint32, minimum: 0 }
     ApplyStatTrakSwapRequest:
@@ -1367,22 +1367,22 @@ components:
       additionalProperties: false
       required: [toolItemId, item1ItemId, item2ItemId]
       properties:
-        toolItemId: { type: string, pattern: '^\\d+$' }
-        item1ItemId: { type: string, pattern: '^\\d+$' }
-        item2ItemId: { type: string, pattern: '^\\d+$' }
+        toolItemId: { type: string, pattern: '^[0-9]+$' }
+        item1ItemId: { type: string, pattern: '^[0-9]+$' }
+        item2ItemId: { type: string, pattern: '^[0-9]+$' }
     ApplyStrangePartRequest:
       type: object
       additionalProperties: false
       required: [strangePartItemId, itemItemId]
       properties:
-        strangePartItemId: { type: string, pattern: '^\\d+$' }
-        itemItemId: { type: string, pattern: '^\\d+$' }
+        strangePartItemId: { type: string, pattern: '^[0-9]+$' }
+        itemItemId: { type: string, pattern: '^[0-9]+$' }
     UseItemRequest:
       type: object
       additionalProperties: false
       required: [itemId]
       properties:
-        itemId: { type: string, pattern: '^\\d+$' }
+        itemId: { type: string, pattern: '^[0-9]+$' }
         targetSteamId: { type: string }
         giftPotentialTargets:
           type: array
@@ -1397,27 +1397,27 @@ components:
         itemIds:
           type: array
           minItems: 1
-          items: { type: string, pattern: '^\\d+$' }
+          items: { type: string, pattern: '^[0-9]+$' }
     ApplyToolToItemRequest:
       type: object
       additionalProperties: false
       required: [toolItemId, subjectItemId]
       properties:
-        toolItemId: { type: string, pattern: '^\\d+$' }
-        subjectItemId: { type: string, pattern: '^\\d+$' }
+        toolItemId: { type: string, pattern: '^[0-9]+$' }
+        subjectItemId: { type: string, pattern: '^[0-9]+$' }
     ApplyToolToBaseItemRequest:
       type: object
       additionalProperties: false
       required: [toolItemId, baseitemDefIndex]
       properties:
-        toolItemId: { type: string, pattern: '^\\d+$' }
+        toolItemId: { type: string, pattern: '^[0-9]+$' }
         baseitemDefIndex: { type: integer, format: uint32, minimum: 0 }
     GiftItemRequest:
       type: object
       additionalProperties: false
       required: [itemId, receiverAccountId]
       properties:
-        itemId: { type: string, pattern: '^\\d+$' }
+        itemId: { type: string, pattern: '^[0-9]+$' }
         receiverAccountId: { type: integer, format: uint32, minimum: 0 }
         giftMessage: { type: string }
     RevealAnimationMode:
@@ -1517,6 +1517,7 @@ components:
           featureFlags,
           animations,
           armoryPurchasePacingSeconds,
+          storageRetrievalPacingSeconds,
         ]
       properties:
         backendUrl: { type: string }
@@ -1525,6 +1526,7 @@ components:
         featureFlags: { $ref: "#/components/schemas/FeatureFlags" }
         animations: { $ref: "#/components/schemas/AnimationSettings" }
         armoryPurchasePacingSeconds: { type: integer, minimum: 1, maximum: 60 }
+        storageRetrievalPacingSeconds: { type: integer, minimum: 1, maximum: 60 }
     EconomyTag:
       type: object
       additionalProperties: false
@@ -1713,14 +1715,14 @@ components:
       additionalProperties: false
       required: [casketId]
       properties:
-        casketId: { type: string, pattern: '^\\d+$' }
+        casketId: { type: string, pattern: '^[0-9]+$' }
     StorageMoveRequest:
       type: object
       additionalProperties: false
       required: [casketId, itemId]
       properties:
-        casketId: { type: string, pattern: '^\\d+$' }
-        itemId: { type: string, pattern: '^\\d+$' }
+        casketId: { type: string, pattern: '^[0-9]+$' }
+        itemId: { type: string, pattern: '^[0-9]+$' }
     FeatureActivity:
       type: object
       additionalProperties: false

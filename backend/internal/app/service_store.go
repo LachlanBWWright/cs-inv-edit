@@ -21,19 +21,20 @@ func (s *Service) RefreshStore() operations.Receipt {
 	receipt := s.newReceipt("store.refresh")
 	s.mu.Lock()
 	if !s.settings.FeatureFlags.EnableStoreRead {
-		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue."}
+		s.store = storeError("CS2 cash-store reads are disabled. Enable enableStoreRead in Settings to load the catalogue.")
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "blocked_by_feature_flag", "CS2 cash-store reads are disabled"
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
-	if s.connection.State != domain.ConnectionStateConnected {
-		s.store = emptyStore()
+	if !steamConnected(s.connection) {
+		s.store = emptyStore("Connect Steam to load the CS2 cash store.")
 		s.mu.Unlock()
 		receipt.State, receipt.Message = "requires_connection", "connect a Steam account to load the CS2 cash store"
 		s.addEvent(receipt, receipt.State, receipt.Message)
 		return receipt
 	}
+	steamID := s.connection.SteamID
 	version := s.store.PriceSheetVersion
 	s.store.Status, s.store.Message = "loading", "Waiting for the CS2 Game Coordinator price sheet"
 	s.mu.Unlock()
@@ -42,7 +43,7 @@ func (s *Service) RefreshStore() operations.Receipt {
 	cancelWelcome()
 	if err != nil {
 		s.mu.Lock()
-		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: fmt.Sprintf("load authoritative CS2 store currency: %v", err)}
+		s.store = storeError(fmt.Sprintf("load authoritative CS2 store currency: %v", err))
 		receipt.State, receipt.Message = "failed", s.store.Message
 		s.mu.Unlock()
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -62,8 +63,14 @@ func (s *Service) RefreshStore() operations.Receipt {
 		metadataCancel()
 	}
 	s.mu.Lock()
+	if !steamAccountConnected(s.connection, steamID) {
+		s.mu.Unlock()
+		receipt.State, receipt.Message = "completed", "CS2 Store refresh superseded by an account change"
+		s.addEvent(receipt, receipt.State, receipt.Message)
+		return receipt
+	}
 	if err != nil {
-		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: err.Error()}
+		s.store = storeError(err.Error())
 		receipt.State, receipt.Message = "failed", err.Error()
 		s.mu.Unlock()
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -111,7 +118,7 @@ func (s *Service) RefreshStore() operations.Receipt {
 	}
 	if len(offers) == 0 {
 		err = fmt.Errorf("the GC price sheet contained %d entries, but none could be joined to live items_game metadata and %s prices", len(catalog.Offers), currency)
-		s.store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: err.Error(), Diagnostics: diagnostics}
+		s.store = storeErrorWithDiagnostics(err.Error(), diagnostics)
 		receipt.State, receipt.Message = "failed", err.Error()
 		s.mu.Unlock()
 		s.addEvent(receipt, receipt.State, receipt.Message)
@@ -124,7 +131,6 @@ func (s *Service) RefreshStore() operations.Receipt {
 	s.addEvent(receipt, receipt.State, receipt.Message)
 	return receipt
 }
-
 func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseSession {
 	created := now()
 	failed := func(message string) domain.PurchaseSession {
@@ -136,7 +142,7 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 		s.mu.Unlock()
 		return failed("CS2 cash-store purchases are disabled")
 	}
-	if s.connection.State != domain.ConnectionStateConnected {
+	if !steamConnected(s.connection) {
 		s.mu.Unlock()
 		log.Printf("[InitializeStorePurchase] FAILED: Steam connection is not active (state=%q)", s.connection.State)
 		return failed("connect a Steam account before purchasing")
@@ -149,7 +155,6 @@ func (s *Service) InitializeStorePurchase(input map[string]any) domain.PurchaseS
 		log.Printf("[InitializeStorePurchase] FAILED: invalid purchase quantity=%d (err=%v)", quantity64, err)
 		return failed("invalid store purchase quantity; CS2 supports between 1 and 20 items per purchase")
 	}
-
 	var offer *domain.StoreOffer
 	log.Printf("[InitializeStorePurchase] INITIATING purchase offerID=%q quantity=%d expectedVersion=%d expectedAmount=%d storeStatus=%q storeCountry=%q storeCurrencyID=%d",
 		offerID, quantity64, version64, expected, s.store.Status, s.storeCountry, s.storeCurrencyID)

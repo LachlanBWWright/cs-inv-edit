@@ -16,7 +16,7 @@ import type { TF2ActivityFilter } from "../tf2/tf2-activity-utils.js";
 import type { CS2ActivityFilter } from "../cs2/CS2FeaturesPanel.js";
 import type { AppScreen } from "./view.js";
 
-export interface SidebarProps {
+export interface NavbarProps {
   view: AppScreen;
   setView: (view: AppScreen) => void;
   platform: import("../../shared/ui-types.js").AppPlatform;

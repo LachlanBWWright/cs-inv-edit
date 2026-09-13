@@ -1,8 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
-import type { SidebarProps } from "./Sidebar.js";
+import type { NavbarProps } from "./Navbar.js";
 import type { InventorySort } from "../inventory/inventory-view-utils.js";
-import type { EconomyInventorySort } from "../inventory/game-inventory-utils.js";
-import type { CommerceSort } from "../commerce/commerce-view-utils.js";
+import { economySorts, commerceSorts } from "./navbar-options.js";
 import { isOption } from "../../shared/lib/options.js";
 import { InventoryFilters } from "../inventory/InventoryFilters.js";
 import { SettingsView } from "../settings/SettingsView.js";
@@ -15,29 +14,14 @@ import {
   isInventoryScreen,
 } from "./view.js";
 
-const economySorts = [
-  "name",
-  "quality-high",
-  "quality-low",
-  "price-high",
-  "price-low",
-  "quantity-high",
-] as const satisfies readonly EconomyInventorySort[];
-const commerceSorts = [
-  "name",
-  "price-low",
-  "price-high",
-] as const satisfies readonly CommerceSort[];
-
-const priceFeaturesEnabled = (props: SidebarProps) =>
-  props.settings?.featureFlags.enablePriceAnalysis === true;
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 
 export interface MobileNavOptionsProps {
   open: boolean;
   onClose: () => void;
   activeFilterCount: number;
   sortOptions: { value: InventorySort; label: string; detail: string }[];
-  props: SidebarProps;
+  props: NavbarProps;
 }
 
 function SortOption(props: {
@@ -52,7 +36,7 @@ function SortOption(props: {
 
 function InventoryFilterSection(props: {
   input: MobileNavOptionsProps;
-  props: SidebarProps;
+  props: NavbarProps;
 }) {
   if (!isInventoryScreen(props.props.view)) return null;
   const setSort: JSX.EventHandler<HTMLSelectElement, InputEvent> = (event) => {
@@ -113,7 +97,7 @@ function InventoryFilterSection(props: {
   );
 }
 
-function EconomyInventorySection(props: { props: SidebarProps }) {
+function EconomyInventorySection(props: { props: NavbarProps }) {
   if (!isEconomyInventoryScreen(props.props.view)) return null;
   const setEconomySort: JSX.EventHandler<HTMLSelectElement, InputEvent> = (
     event,
@@ -139,7 +123,7 @@ function EconomyInventorySection(props: { props: SidebarProps }) {
             <option value="name">Name · A to Z</option>
             <option value="quality-high">Quality · High to low</option>
             <option value="quality-low">Quality · Low to high</option>
-            <Show when={priceFeaturesEnabled(props.props)}>
+            <Show when={priceFeaturesEnabled(props.props.settings)}>
               <option value="price-high">Steam price · High to low</option>
               <option value="price-low">Steam price · Low to high</option>
             </Show>
@@ -168,7 +152,7 @@ function EconomyInventorySection(props: { props: SidebarProps }) {
   );
 }
 
-function CommerceSection(props: { props: SidebarProps }) {
+function CommerceSection(props: { props: NavbarProps }) {
   if (!isCommerceScreen(props.props.view)) return null;
   return (
     <section class="space-y-4">
@@ -199,7 +183,7 @@ function CommerceSection(props: { props: SidebarProps }) {
           }}
         >
           <option value="name">Name</option>
-          <Show when={priceFeaturesEnabled(props.props)}>
+          <Show when={priceFeaturesEnabled(props.props.settings)}>
             <option value="price-low">Price: low to high</option>
             <option value="price-high">Price: high to low</option>
           </Show>

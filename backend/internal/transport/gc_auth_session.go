@@ -10,7 +10,7 @@ import (
 	"cs-inv-edit/backend/internal/steamlang"
 )
 
-func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials, allowTryAnotherCM bool) (LogonResult, error) {
+func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials, cmRetries int) (LogonResult, error) {
 	s.mu.Lock()
 	conn := s.conn
 	s.mu.Unlock()
@@ -35,15 +35,15 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 				if resultErr.result == steamlang.EResult_TryAnotherCM {
 					s.events <- GCEvent{Type: "steam.auth.try_another_cm", Payload: steamResultName(resultErr.result)}
 					s.closeAndClearConn(conn)
-					if !allowTryAnotherCM {
+					if cmRetries <= 0 {
 						s.setState("error")
-						return LogonResult{EResult: int32(resultErr.result)}, fmt.Errorf("steam auth failed after reconnect: %w", err)
+						return LogonResult{EResult: int32(resultErr.result)}, fmt.Errorf("steam auth failed after %d reconnect attempts: %w", 3, err)
 					}
 					if connectErr := s.Connect(ctx); connectErr != nil {
 						s.setState("error")
 						return LogonResult{EResult: int32(resultErr.result)}, fmt.Errorf("steam requested a different CM but reconnect failed: %w", connectErr)
 					}
-					return s.logOn(ctx, credentials, false)
+					return s.logOn(ctx, credentials, cmRetries-1)
 				}
 				if steamGuardResult(resultErr.result) {
 					s.setState("connected")
@@ -113,15 +113,15 @@ func (s *SteamGCClient) logOn(ctx context.Context, credentials LogonCredentials,
 			if resultCode == steamlang.EResult_TryAnotherCM {
 				s.events <- GCEvent{Type: "steam.logon.try_another_cm", Payload: steamResultName(resultCode)}
 				s.closeAndClearConn(conn)
-				if !allowTryAnotherCM {
+				if cmRetries <= 0 {
 					s.setState("error")
-					return result, fmt.Errorf("steam logon failed after reconnect: %s", steamResultName(resultCode))
+					return result, fmt.Errorf("steam logon failed after %d reconnect attempts: %s", 3, steamResultName(resultCode))
 				}
 				if err := s.Connect(ctx); err != nil {
 					s.setState("error")
 					return result, fmt.Errorf("steam requested a different CM but reconnect failed: %w", err)
 				}
-				return s.logOn(ctx, credentials, false)
+				return s.logOn(ctx, credentials, cmRetries-1)
 			}
 			if resultCode != steamlang.EResult_OK {
 				if steamGuardResult(resultCode) {

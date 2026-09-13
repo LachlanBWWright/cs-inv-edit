@@ -1,8 +1,8 @@
 import { Show, type Accessor, type Setter } from "solid-js";
 import type { AppMode, AppScreen } from "./view.js";
 import { Popover } from "../../shared/ui/Popover.js";
-import { modeDetails } from "./sidebar-mode-data.js";
-import { SidebarModeMenu } from "./sidebar-mode-menu.js";
+import { modeDetails } from "./navbar-mode-data.js";
+import { NavbarModeMenu } from "./navbar-mode-menu.js";
 
 function ModePickerLabel(props: {
   compact?: boolean;
@@ -23,7 +23,7 @@ function ModePickerLabel(props: {
   );
 }
 
-export function SidebarModePicker(props: {
+export function NavbarModePicker(props: {
   view: AppScreen;
   modeMenuOpen: Accessor<boolean>;
   currentMode: Accessor<AppMode>;
@@ -34,10 +34,11 @@ export function SidebarModePicker(props: {
   setKindMenuOpen: Setter<boolean>;
   setCompactMenuOpen: Setter<boolean>;
   setSettingsOpen: Setter<boolean>;
+  hasAdjacentControls: boolean;
   compact?: boolean;
 }) {
   const buttonClass = () =>
-    `group flex items-center gap-2.5 rounded-xl border border-slate-700/80 bg-slate-900 px-2.5 text-left shadow-sm transition hover:border-cyan-400/50 hover:bg-slate-900 ${props.compact ? "h-[38px] w-[6.3rem] min-w-0 lg:w-auto lg:min-w-48" : "h-11 min-w-48"}`;
+    `group flex h-full items-center gap-2.5 ${props.hasAdjacentControls ? "rounded-l-xl" : "rounded-xl"} border border-slate-700/80 bg-slate-900 px-2.5 text-left shadow-sm transition hover:border-cyan-400/50 hover:bg-slate-900 ${props.compact ? "w-[6.3rem] min-w-0 lg:w-auto lg:min-w-48" : "min-w-48"}`;
   return (
     <>
       <Show when={props.view !== "account"}>
@@ -76,7 +77,7 @@ export function SidebarModePicker(props: {
             </svg>
           </button>
           <Show when={props.modeMenuOpen()}>
-            <SidebarModeMenu
+            <NavbarModeMenu
               enabledModes={props.enabledModes}
               currentMode={props.currentMode}
               chooseMode={props.chooseMode}

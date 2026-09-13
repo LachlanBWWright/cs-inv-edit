@@ -1,3 +1,5 @@
+import { formatDateTime, formatState } from "../../shared/lib/format.js";
+
 export type TF2ActivityFilter = "all" | "matches" | "contracts" | "updates";
 
 export const activityText = (value: unknown) =>
@@ -26,16 +28,11 @@ export const activityDateTime = (value: unknown) => {
   const date = new Date(raw < 10_000_000_000 ? raw * 1_000 : raw);
   return Number.isNaN(date.valueOf())
     ? undefined
-    : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
+    : formatDateTime(date.getTime());
 };
 
 export const activityLabel = (value: string) =>
-  value
-    .replace(/^k_?/i, "")
-    .replaceAll("_", " ")
+  formatState(value.replace(/^k_?/i, ""))
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/^./, (letter) => letter.toUpperCase());
 

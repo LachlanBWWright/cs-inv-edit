@@ -16,6 +16,8 @@ import { containerItemOdds } from "./related-item-preview-utils.js";
 import { itemDisplayName } from "./inventory-view-utils.js";
 import { TradeUpContractReveal } from "../../shared/ui/TradeUpContractReveal.js";
 import { InventoryDetailsPanelContent } from "./inventory-details-panel-content.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
+import { uniqueSortedStrings } from "../../shared/lib/collections.js";
 import {
   MOCK_RESULT_DELAY_MS,
   randomRevealCandidate,
@@ -124,13 +126,9 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
       ready: immediate,
       candidates,
     });
-    const marketNames = [
-      ...new Set(
-        candidates
-          .map((candidate) => candidate.marketName)
-          .filter((name): name is string => !!name),
-      ),
-    ];
+    const marketNames = uniqueSortedStrings(
+      candidates.map((candidate) => candidate.marketName),
+    );
     if (marketNames.length > 0) {
       void props.onScanPrices(marketNames, 730).then((scan) => {
         if (!scan) return;
@@ -179,14 +177,10 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
   createEffect(() => {
     const item = props.selectedItem;
     const outcomes = item?.tradeUpItems ?? [];
-    const names = [
-      ...new Set(
-        [
-          item?.marketName,
-          ...outcomes.map((outcome) => outcome.marketName),
-        ].filter((name): name is string => !!name),
-      ),
-    ];
+    const names = uniqueSortedStrings([
+      item?.marketName,
+      ...outcomes.map((outcome) => outcome.marketName),
+    ]);
     const requestKey = `${item?.id ?? ""}\u0000${names.join("\u0000")}`;
     if (
       !item ||
@@ -289,15 +283,11 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
         context: "container",
       });
       const odds = containerItemOdds(items);
-      const names = [
-        ...new Set(
-          [
-            ...items.map((item) => item.marketName),
-            selected?.marketName,
-            props.compatibleContainerKey?.marketName,
-          ].filter((name): name is string => !!name),
-        ),
-      ];
+      const names = uniqueSortedStrings([
+        ...items.map((item) => item.marketName),
+        selected?.marketName,
+        props.compatibleContainerKey?.marketName,
+      ]);
       setContainerReturn(undefined);
       setContainerReturnLoading(names.length > 0);
       if (names.length > 0)
@@ -377,7 +367,7 @@ function InventoryDetailsPanel(props: InventoryDetailsPanelProps) {
         contentsOdds={contentsOdds}
         onMarketPreview={props.onMarketPreview}
         priceAnalysisEnabled={
-          props.settings?.featureFlags.enablePriceAnalysis === true
+          priceFeaturesEnabled(props.settings)
         }
       />
     </>

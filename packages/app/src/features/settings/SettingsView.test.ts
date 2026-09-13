@@ -7,6 +7,7 @@ const settings: SettingsData = {
   validationMode: true,
   sacrificialAccountMode: true,
   armoryPurchasePacingSeconds: 5,
+  storageRetrievalPacingSeconds: 1,
   animations: {
     container: "slot-machine",
     tradeUp: "slot-machine",

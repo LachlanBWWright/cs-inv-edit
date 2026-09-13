@@ -7,11 +7,10 @@ import {
   isEconomyInventoryScreen,
   isInventoryScreen,
 } from "./view.js";
-import type { SidebarProps } from "./sidebar-props.js";
+import type { NavbarProps } from "./navbar-props.js";
 import type { TF2ActivityFilter } from "../tf2/tf2-activity-utils.js";
 import type { CS2ActivityFilter } from "../cs2/CS2FeaturesPanel.js";
-import type { EconomyInventorySort } from "../inventory/game-inventory-utils.js";
-import type { CommerceSort } from "../commerce/commerce-view-utils.js";
+import { economySorts, commerceSorts } from "./navbar-options.js";
 import type { InventorySort } from "../inventory/inventory-view-utils.js";
 import { isOption } from "../../shared/lib/options.js";
 
@@ -33,21 +32,8 @@ const inventoryKinds = [
   "tool_item",
   "cs2_econ_item",
   "unknown",
-] as const satisfies readonly SidebarProps["kindFilter"][];
+] as const satisfies readonly NavbarProps["kindFilter"][];
 const inventorySorts = inventorySortOptions.map(([value]) => value);
-const economySorts = [
-  "name",
-  "quality-high",
-  "quality-low",
-  "price-high",
-  "price-low",
-  "quantity-high",
-] as const satisfies readonly EconomyInventorySort[];
-const commerceSorts = [
-  "name",
-  "price-low",
-  "price-high",
-] as const satisfies readonly CommerceSort[];
 const tf2ActivityFilters = [
   "all",
   "contracts",
@@ -60,8 +46,7 @@ const cs2ActivityFilters = [
   "missions",
 ] as const satisfies readonly CS2ActivityFilter[];
 
-const priceFeaturesEnabled = (props: SidebarProps) =>
-  props.settings?.featureFlags.enablePriceAnalysis === true;
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 
 function OwnedGameOption(props: { game: { appId: number; name: string } }) {
   return (
@@ -71,7 +56,7 @@ function OwnedGameOption(props: { game: { appId: number; name: string } }) {
   );
 }
 
-export function SidebarContextControls(props: SidebarProps) {
+export function NavbarContextControls(props: NavbarProps) {
   const inventoryContext = () =>
     isInventoryScreen(props.view) ||
     isEconomyInventoryScreen(props.view) ||
@@ -95,7 +80,7 @@ export function SidebarContextControls(props: SidebarProps) {
       <Show when={inventoryContext()}>
         <Show when={props.view === "steam-service-inventory"}>
           <Select
-            class="h-10 max-w-64"
+            class="h-full min-w-0 flex-none max-w-64 rounded-none"
             aria-label="Owned game"
             disabled={!props.steamServiceGames?.games.length}
             value={props.steamServiceAppId?.toString() ?? ""}
@@ -111,7 +96,7 @@ export function SidebarContextControls(props: SidebarProps) {
         </Show>
         <div class="relative min-w-0 flex-1 sm:min-w-[220px]">
           <Input
-            class="h-10 w-full min-w-0 px-2.5 sm:h-auto sm:px-3"
+            class="h-full w-full min-w-0 rounded-none px-2.5 sm:px-3"
             placeholder="Search"
             value={props.query}
             onInput={(event) => props.setQuery(event.currentTarget.value)}
@@ -119,7 +104,7 @@ export function SidebarContextControls(props: SidebarProps) {
         </div>
         <Show when={isInventoryScreen(props.view)}>
           <Select
-            class="hidden h-9 max-w-44 sm:block"
+            class="hidden h-full min-w-0 flex-none max-w-44 rounded-none sm:block"
             aria-label="Item type"
             value={props.kindFilter}
             onInput={(event) => {
@@ -137,7 +122,7 @@ export function SidebarContextControls(props: SidebarProps) {
             <option value="unknown">Unknown</option>
           </Select>
           <Select
-            class="hidden h-9 max-w-48 sm:block"
+            class="hidden h-full min-w-0 flex-none max-w-48 rounded-none sm:block"
             aria-label="Sort inventory"
             value={props.sort}
             onInput={(event) => {
@@ -149,7 +134,7 @@ export function SidebarContextControls(props: SidebarProps) {
               {([value, label]) => (
                 <Show
                   when={
-                    priceFeaturesEnabled(props) || !value.startsWith("price-")
+                    priceFeaturesEnabled(props.settings) || !value.startsWith("price-")
                   }
                 >
                   <option value={value}>{label}</option>
@@ -165,7 +150,7 @@ export function SidebarContextControls(props: SidebarProps) {
           }
         >
           <Select
-            class="hidden h-9 max-w-64 sm:block"
+            class="hidden h-full min-w-0 flex-none max-w-64 rounded-none sm:block"
             aria-label="Inventory item category"
             value={props.economyTagFilter}
             onInput={(event) =>
@@ -180,7 +165,7 @@ export function SidebarContextControls(props: SidebarProps) {
         </Show>
         <Show when={isEconomyInventoryScreen(props.view)}>
           <Select
-            class="hidden h-9 sm:block"
+            class="hidden h-full min-w-0 flex-none rounded-none sm:block"
             aria-label="Sort inventory"
             value={props.economySort}
             onInput={(event) => {
@@ -191,7 +176,7 @@ export function SidebarContextControls(props: SidebarProps) {
             <option value="name">Name: A to Z</option>
             <option value="quality-high">Quality: high to low</option>
             <option value="quality-low">Quality: low to high</option>
-            <Show when={priceFeaturesEnabled(props)}>
+            <Show when={priceFeaturesEnabled(props.settings)}>
               <option value="price-high">Price: high to low</option>
               <option value="price-low">Price: low to high</option>
             </Show>
@@ -200,7 +185,7 @@ export function SidebarContextControls(props: SidebarProps) {
         </Show>
         <Show when={isCommerceScreen(props.view)}>
           <Select
-            class="hidden h-9 max-w-52 sm:block"
+            class="hidden h-full min-w-0 flex-none max-w-52 rounded-none sm:block"
             aria-label="Offer category"
             value={props.commerceCategoryFilter}
             onInput={(event) =>
@@ -213,7 +198,7 @@ export function SidebarContextControls(props: SidebarProps) {
             </For>
           </Select>
           <Select
-            class="hidden h-9 sm:block"
+            class="hidden h-full min-w-0 flex-none rounded-none sm:block"
             aria-label="Sort offers"
             value={props.commerceSort}
             onInput={(event) => {
@@ -222,7 +207,7 @@ export function SidebarContextControls(props: SidebarProps) {
             }}
           >
             <option value="name">Name</option>
-            <Show when={priceFeaturesEnabled(props)}>
+            <Show when={priceFeaturesEnabled(props.settings)}>
               <option value="price-low">Price: low to high</option>
               <option value="price-high">Price: high to low</option>
             </Show>
@@ -234,7 +219,7 @@ export function SidebarContextControls(props: SidebarProps) {
       >
         <Show when={props.view === "tf2-matches"}>
           <Select
-            class="h-9 max-w-44"
+            class="h-full min-w-0 flex-none max-w-44 rounded-none"
             aria-label="Match type"
             value={String(props.tf2MatchGroup)}
             disabled={props.tf2ActivityLoading === "history"}
@@ -254,7 +239,7 @@ export function SidebarContextControls(props: SidebarProps) {
         </Show>
         <Show when={props.view === "tf2-campaigns"}>
           <Select
-            class="h-9 max-w-36"
+            class="h-full min-w-0 flex-none max-w-36 rounded-none"
             aria-label="Activity filter"
             value={props.tf2ActivityFilter}
             onInput={setTF2Activity}
@@ -265,6 +250,7 @@ export function SidebarContextControls(props: SidebarProps) {
           </Select>
         </Show>
         <IconButton
+          class="rounded-none"
           label="Refresh activity"
           disabled={!!props.tf2ActivityLoading}
           onClick={
@@ -278,13 +264,13 @@ export function SidebarContextControls(props: SidebarProps) {
       </Show>
       <Show when={props.view === "cs2-features"}>
         <Input
-          class="h-10 min-w-0 flex-1"
+          class="h-full min-w-0 flex-1 rounded-none"
           placeholder="Search activity"
           value={props.query}
           onInput={(event) => props.setQuery(event.currentTarget.value)}
         />
         <Select
-          class="h-9 max-w-40"
+          class="h-full min-w-0 flex-none max-w-40 rounded-none"
           aria-label="Activity filter"
           value={props.cs2ActivityFilter}
           onInput={(event) => {
@@ -299,7 +285,7 @@ export function SidebarContextControls(props: SidebarProps) {
           <option value="missions">Missions</option>
         </Select>
         <button
-          class="h-9 rounded-lg border border-slate-700 px-3 text-sm"
+          class="h-full border border-slate-700 px-3 text-sm"
           disabled={props.cs2ActivityLoading}
           onClick={props.onCS2ActivityRefresh}
         >

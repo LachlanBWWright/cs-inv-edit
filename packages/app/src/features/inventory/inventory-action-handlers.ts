@@ -1,8 +1,10 @@
 import type { Accessor, Setter } from "solid-js";
-import type { InventoryItemDto, OperationReceipt } from "@cs-inv-edit/contracts";
+import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
 import type { InventoryViewProps } from "./InventoryView.js";
 import { itemDisplayName } from "./inventory-view-utils.js";
+import { runStorageMutations } from "./storage-retrieval-queue.js";
+export { runStorageMutations } from "./storage-retrieval-queue.js";
 
 interface InventoryActionContext {
   props: InventoryViewProps;
@@ -30,43 +32,6 @@ interface InventoryActionContext {
 export interface StorageMutationFailure {
   itemId: string;
   message: string;
-}
-
-export async function runStorageMutations(input: {
-  itemIds: string[];
-  mutate: (itemId: string) => Promise<OperationReceipt>;
-  failureFallback: string;
-  onProgress: (completed: number) => void;
-}) {
-  let completed = 0;
-  const failures: StorageMutationFailure[] = [];
-  for (const itemId of input.itemIds) {
-    await fromAppPromise(
-      input.mutate(itemId),
-      input.failureFallback,
-    ).match(
-      (receipt) => {
-        if (
-          receipt.state === "completed" ||
-          receipt.state === "awaiting_gc_confirmation"
-        ) {
-          completed++;
-          return;
-        }
-        failures.push({
-          itemId,
-          message: receipt.message ?? input.failureFallback,
-        });
-      },
-      (error) =>
-        failures.push({
-          itemId,
-          message: appErrorMessage(error, input.failureFallback),
-        }),
-    );
-    input.onProgress(completed);
-  }
-  return { completed, failures };
 }
 
 export function createInventoryActionHandlers(context: InventoryActionContext) {
@@ -188,7 +153,7 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
       );
       if (unit) {
         setBrowsingStorageUnit(unit);
-        setRemoveFromStorageMode(false);
+        setRemoveFromStorageMode(true);
         setStorageSelectedItemIds([]);
         setStorageSelectionAnchorId(undefined);
         props.setSelectedItemId(undefined);
@@ -215,25 +180,32 @@ export function createInventoryActionHandlers(context: InventoryActionContext) {
     setStorageFailures([]);
     setPending(true);
     setStorageRetrieval({ completed: 0, total: itemIds.length });
+    const pacingSeconds = props.settings?.storageRetrievalPacingSeconds ?? 1;
     setStatusMessage(
       `Retrieving ${itemIds.length} item${itemIds.length === 1 ? "" : "s"} from ${itemDisplayName(unit)}...`,
     );
-    const { completed, failures } = await runStorageMutations({
+    props.enqueueStorageRetrieval({
+      unitName: itemDisplayName(unit),
       itemIds,
       mutate: (itemId) =>
         props.storageActions.moveFrom({ casketId: unit.id, itemId }),
-      failureFallback: "Failed to retrieve this item.",
-      onProgress: (progress) =>
-        setStorageRetrieval({ completed: progress, total: itemIds.length }),
+      intervalMs: pacingSeconds * 1000,
+      onProgress: (completed) =>
+        setStorageRetrieval({ completed, total: itemIds.length }),
+      onFinished: ({ completed, failures, cancelled }) => {
+        setStorageSelectedItemIds(failures.map((failure) => failure.itemId));
+        setStorageSelectionAnchorId(undefined);
+        setStorageFailures(failures);
+        setStatusMessage(
+          cancelled
+            ? `Retrieval cancelled after ${completed} of ${itemIds.length} items.`
+            : `Retrieved ${completed} of ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.`,
+        );
+        setStorageRetrieval(undefined);
+        setPending(false);
+        if (!cancelled) props.onRefresh();
+      },
     });
-    setStorageSelectedItemIds(failures.map((failure) => failure.itemId));
-    setStorageSelectionAnchorId(undefined);
-    setStorageFailures(failures);
-    setStatusMessage(
-      `Retrieved ${completed} of ${itemIds.length} item${itemIds.length === 1 ? "" : "s"}.`,
-    );
-    setStorageRetrieval(undefined);
-    setPending(false);
   };
 
   const moveIntoStorage = async () => {

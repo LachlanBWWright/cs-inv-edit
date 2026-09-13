@@ -13,7 +13,7 @@ import (
 func (s *Service) RefreshInventory() operations.Receipt {
 	receipt := s.newReceipt("inventory.refresh")
 	s.mu.Lock()
-	if s.connection.State != domain.ConnectionStateConnected && s.connection.State != domain.ConnectionStateSessionConflict {
+	if !steamConnected(s.connection) && s.connection.State != domain.ConnectionStateSessionConflict {
 		s.inventory.Status = domain.SnapshotStatusRequiresConnection
 		s.inventory.RefreshedAt = now()
 		receipt.State = "requires_connection"
@@ -125,6 +125,12 @@ func (s *Service) UpdateSettings(next domain.Settings) domain.Settings {
 	if next.ArmoryPurchasePacingSeconds > 60 {
 		next.ArmoryPurchasePacingSeconds = 60
 	}
+	if next.StorageRetrievalPacingSeconds < 1 {
+		next.StorageRetrievalPacingSeconds = 1
+	}
+	if next.StorageRetrievalPacingSeconds > 60 {
+		next.StorageRetrievalPacingSeconds = 60
+	}
 	s.mu.Lock()
 	oldFlags := s.settings.FeatureFlags
 	s.settings = next
@@ -137,7 +143,7 @@ func (s *Service) UpdateSettings(next domain.Settings) domain.Settings {
 	if !next.FeatureFlags.EnableSteamInventory {
 		s.clearGameInventoriesLocked("steam")
 	}
-	connected := s.connection.State == domain.ConnectionStateConnected
+	connected := steamConnected(s.connection)
 	s.mu.Unlock()
 	if connected && ((oldFlags.EnableTF2Inventory && !next.FeatureFlags.EnableTF2Inventory) || (oldFlags.EnableDota2Inventory && !next.FeatureFlags.EnableDota2Inventory)) {
 		if err := s.gcClient.SetGamesPlayed(context.Background(), enabledPresenceApps(next.FeatureFlags)); err != nil {

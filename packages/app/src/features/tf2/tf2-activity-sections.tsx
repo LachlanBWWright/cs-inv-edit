@@ -4,6 +4,7 @@ import type {
   TF2FeatureSnapshot,
 } from "@cs-inv-edit/contracts";
 import { TF2MatchActivityCard } from "../inventory/tf2-match-activity-card.js";
+import { formatState } from "../../shared/lib/format.js";
 
 interface TF2ActivityEntry {
   kind: string;
@@ -122,7 +123,7 @@ function TF2ActivityEntryCard(props: {
     <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
       <div class="flex items-start justify-between gap-2">
         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {props.entry.kind.replaceAll("_", " ")}
+          {formatState(props.entry.kind)}
         </p>
         <button
           class="text-xs text-slate-600 hover:text-slate-300"

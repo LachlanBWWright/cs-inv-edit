@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on } from "solid-js";
+import { createEffect, createMemo, createSignal, on } from "solid-js";
 import type { InventoryItemDto } from "@cs-inv-edit/contracts";
 import { InventoryViewContent } from "./InventoryViewContent.js";
 import {
@@ -12,13 +12,14 @@ import { formatUSDMinor } from "./ItemMarketBadges.js";
 import { createOpenContainerHandler } from "./inventory-open-container.js";
 import { createInventoryActionHandlers } from "./inventory-action-handlers.js";
 import type { StorageMutationFailure } from "./inventory-action-handlers.js";
-import { filterInventoryItems } from "./inventory-filtering.js";
+import { createInventoryFilterState } from "./inventory-filter-state.js";
 import type { InventoryViewProps } from "./inventory-view-props.js";
 import {
   storageMoveCandidates,
   storageSelectionLimit,
 } from "./inventory-storage-selection.js";
 import { createInventoryTradeUp } from "./inventory-trade-up.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 import { TradeUpConfirmationDialog } from "./TradeUpConfirmationDialog.js";
 import {
   InventoryReveal,
@@ -61,27 +62,26 @@ export function InventoryView(props: InventoryViewProps) {
     message: string;
   }>();
   const tradeUp = createInventoryTradeUp(() => props.inventory?.items ?? []);
-  const filteredItems = () => {
-    return filterInventoryItems({
-      items: props.inventory?.items ?? [],
-      query: props.query,
-      kind: props.kindFilter,
-      rarity: props.rarityFilter,
-      weapon: props.weaponFilter,
-      collection: props.collectionFilter,
-      sort: props.sort,
-      marketPrices: props.marketPrices,
-    });
-  };
+  const { filteredItems } = createInventoryFilterState({
+    items: () => props.inventory?.items ?? [],
+    query: () => props.query,
+    kind: () => props.kindFilter,
+    rarity: () => props.rarityFilter,
+    weapon: () => props.weaponFilter,
+    collection: () => props.collectionFilter,
+    sort: () => props.sort,
+    marketPrices: () => props.marketPrices,
+  });
 
-  const visibleItems = () =>
+  const visibleItems = createMemo(() =>
     browsingStorageUnit()
       ? (props.inventory?.items ?? []).filter(
           (item) => item.casketId === browsingStorageUnit()!.id,
         )
       : movingIntoStorageUnit()
         ? storageMoveCandidates(filteredItems(), movingIntoStorageUnit()!)
-        : tradeUp.filterItems(filteredItems());
+        : tradeUp.filterItems(filteredItems()),
+  );
   const selectedItem = () =>
     movingIntoStorageUnit() ??
     resolveSelectedInventoryItem(visibleItems(), props.selectedItemId);
@@ -377,7 +377,7 @@ export function InventoryView(props: InventoryViewProps) {
         outcomes={tradeUp.outcomes()}
         executionEnabled={props.settings?.featureFlags.enableTradeups ?? false}
         priceAnalysisEnabled={
-          props.settings?.featureFlags.enablePriceAnalysis === true
+          priceFeaturesEnabled(props.settings)
         }
         connected={connected()}
         requiredCount={tradeUp.requiredCount()}

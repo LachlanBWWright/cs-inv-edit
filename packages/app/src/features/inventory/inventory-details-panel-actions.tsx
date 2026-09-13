@@ -12,10 +12,7 @@ import {
 import { formatFloat } from "./item-instance-utils.js";
 import type { ReturnEstimate } from "../commerce/roi-utils.js";
 import { ReturnEstimateCard } from "../commerce/ReturnEstimateCard.js";
-
-function steamMarketUrl(marketName: string) {
-  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
-}
+import { steamMarketUrl } from "../../shared/lib/steam-urls.js";
 
 function tradeUpInputCount(item: InventoryItemDto) {
   const covert = ["ancient", "covert", "extraordinary", "master"].includes(
@@ -263,7 +260,7 @@ export function ActionBar(props: ActionBarProps) {
         </section>
       </Show>
       <Show when={props.selected.kind === "storage_unit"}>
-        <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid w-full gap-2 sm:grid-cols-2">
           <Button
             variant="action"
             size="lg"

@@ -1,10 +1,12 @@
 package rpc
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -35,6 +37,10 @@ func parseBody(r *http.Request) (map[string]any, error) {
 
 func (h *Handler) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isAuthorized(r) {
+			writeError(w, http.StatusUnauthorized, "backend authentication required")
+			return
+		}
 		origin := r.Header.Get("Origin")
 		if isAllowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -51,7 +57,12 @@ func (h *Handler) withCORS(next http.Handler) http.Handler {
 }
 
 func isAllowedOrigin(origin string) bool {
-	if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err == nil && parsed.Scheme == "http" &&
+		(parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1") {
 		return true
 	}
 	for _, configured := range strings.Split(os.Getenv("CS2_BACKEND_CORS_ORIGINS"), ",") {
@@ -60,6 +71,21 @@ func isAllowedOrigin(origin string) bool {
 		}
 	}
 	return false
+}
+
+func isAuthorized(r *http.Request) bool {
+	expected := os.Getenv("CS2_BACKEND_AUTH_TOKEN")
+	if expected == "" {
+		return true
+	}
+	provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if provided == "" {
+		provided = r.URL.Query().Get("token")
+	}
+	if provided == "" || len(provided) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
 func writeJSON(w http.ResponseWriter, value any) {

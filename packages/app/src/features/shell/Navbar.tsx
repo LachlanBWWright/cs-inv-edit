@@ -1,16 +1,23 @@
 import { createMemo, createSignal } from "solid-js";
 import type { AppMode } from "./view.js";
-import { availableModes, modeForScreen } from "./view.js";
-import { modeGroups } from "./sidebar-mode-data.js";
-import { SidebarModePicker } from "./sidebar-mode-picker.js";
-import { SidebarAccountControls } from "../accounts/sidebar-account-controls.js";
-import { MobileNavOptions } from "./sidebar-mobile-options.js";
-import { SidebarContextControls } from "./sidebar-context-controls.js";
-import type { SidebarProps } from "./sidebar-props.js";
+import {
+  availableModes,
+  isCommerceScreen,
+  isEconomyInventoryScreen,
+  isInventoryScreen,
+  modeForScreen,
+} from "./view.js";
+import { modeGroups } from "./navbar-mode-data.js";
+import { NavbarModePicker } from "./navbar-mode-picker.js";
+import { NavbarAccountControls } from "../accounts/navbar-account-controls.js";
+import { MobileNavOptions } from "./navbar-mobile-options.js";
+import { NavbarContextControls } from "./navbar-context-controls.js";
+import type { NavbarProps } from "./navbar-props.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 
-export type { SidebarProps } from "./sidebar-props.js";
+export type { NavbarProps } from "./navbar-props.js";
 
-export function Sidebar(props: SidebarProps) {
+export function Navbar(props: NavbarProps) {
   const [accountOpen, setAccountOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [modeMenuOpen, setModeMenuOpen] = createSignal(false);
@@ -59,13 +66,20 @@ export function Sidebar(props: SidebarProps) {
   const visibleSortOptions = () =>
     sortOptions.filter(
       (option) =>
-        props.settings?.featureFlags.enablePriceAnalysis === true ||
+        priceFeaturesEnabled(props.settings) ||
         !option.value.startsWith("price-"),
     );
+  const hasAdjacentControls = () =>
+    isInventoryScreen(props.view) ||
+    isEconomyInventoryScreen(props.view) ||
+    isCommerceScreen(props.view) ||
+    props.view === "tf2-matches" ||
+    props.view === "tf2-campaigns" ||
+    props.view === "cs2-features";
   return (
-    <header class="sticky top-0 z-20 flex flex-nowrap items-center gap-2 border-b border-slate-800 bg-slate-950 px-2 py-2 sm:px-3 lg:flex-wrap lg:px-4">
-      <div class="flex min-w-0 flex-1 items-center gap-2 lg:flex-wrap">
-        <SidebarModePicker
+    <header class="sticky top-0 z-20 flex min-h-[42px] flex-nowrap items-stretch border-b border-slate-800 bg-slate-950 px-2 py-2 sm:px-3 lg:px-4">
+      <div class="flex min-w-0 flex-[1_1_0%] items-stretch">
+        <NavbarModePicker
           view={props.view}
           modeMenuOpen={modeMenuOpen}
           currentMode={currentMode}
@@ -76,17 +90,18 @@ export function Sidebar(props: SidebarProps) {
           setKindMenuOpen={setKindMenuOpen}
           setCompactMenuOpen={setCompactMenuOpen}
           setSettingsOpen={setSettingsOpen}
+          hasAdjacentControls={hasAdjacentControls()}
           compact
         />
-        <SidebarContextControls {...props} />
+        <NavbarContextControls {...props} />
         <button
-          class="relative rounded-lg border border-slate-700 px-3 py-2 text-sm sm:hidden"
+          class="relative h-full border border-slate-700 px-3 py-2 text-sm sm:hidden"
           onClick={() => setMobileOptionsOpen(true)}
         >
           Options{activeFilterCount() ? ` (${activeFilterCount()})` : ""}
         </button>
       </div>
-      <SidebarAccountControls
+      <NavbarAccountControls
         view={props.view}
         connection={props.connection}
         inventory={props.inventory}
@@ -102,6 +117,7 @@ export function Sidebar(props: SidebarProps) {
         onRefreshCurrentInventory={props.onRefreshCurrentInventory}
         onOpenAccount={props.onOpenAccount}
         onSaveSettings={props.onSaveSettings}
+        hasAdjacentControls={hasAdjacentControls()}
         state={{
           accountOpen,
           settingsOpen,

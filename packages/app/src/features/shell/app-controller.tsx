@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
-import type { ArmorySnapshot, StoreSnapshot } from "@cs-inv-edit/contracts";
-import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import type { ArmorySnapshot } from "@cs-inv-edit/contracts";
+import { fromAppPromise } from "../../shared/lib/result.js";
 import { writeStoredJson } from "../../shared/lib/storage.js";
 import { enabledModeOrDefault } from "./view.js";
 import {
@@ -21,7 +21,10 @@ import {
 } from "./app-controller-url.js";
 import { createAppResources } from "./app-resources.js";
 import { createAccountController } from "../accounts/account-controller.js";
-import { createCommerceRefreshers } from "../commerce/commerce-refreshers.js";
+import {
+  createCommerceRefreshers,
+  installAutomaticCommerceRefresh,
+} from "../commerce/commerce-refreshers.js";
 import { shouldShowAccountScreen } from "../accounts/account-route.js";
 import {
   installAutomaticGameInventoryRefresh,
@@ -29,6 +32,8 @@ import {
   installShellNavigationSync,
 } from "./app-controller-effects.js";
 import { createMarketPreviewRequester } from "./app-market-preview.js";
+import { createStorageRetrievalQueue } from "../inventory/storage-retrieval-queue.js";
+import { connectedSteamId } from "../../shared/lib/steam-connection.js";
 export function createAppController(props: AppProps) {
   const shell = createShellController(screenFromUrl());
   shell.setAccounts(loadSteamAccounts());
@@ -42,6 +47,7 @@ export function createAppController(props: AppProps) {
     refetchSettings,
     tf2ProtocolEntries,
     inventory,
+    inventoryLoading,
     refetchInventory,
     steamInventory,
     refetchSteamInventory,
@@ -70,10 +76,15 @@ export function createAppController(props: AppProps) {
     events,
     refetchEvents,
     connection,
+    connectionLoading,
     refetchConnection,
     setConnection,
   } = createAppResources(props);
   const pushToast = toastController.pushToast;
+  const storageRetrievalQueue = createStorageRetrievalQueue({
+    pushToast,
+    updateToast: toastController.updateToast,
+  });
 
   const refreshInventoryState = createInventoryRefresher({
     backend: props.backend,
@@ -123,16 +134,14 @@ export function createAppController(props: AppProps) {
 
   let automaticArmoryRefresh = "";
   createEffect(() => {
-    const steamId =
-      connection()?.state === "connected" ? connection()?.steamId : undefined;
-    if (shell.view() !== "armory" || !steamId || armory()?.status === "ready")
+    const steamId = connectedSteamId(connection());
+    if (shell.view() !== "armory" || !steamId)
       return;
     const key = `${steamId}\u0000armory`;
     if (automaticArmoryRefresh === key) return;
     automaticArmoryRefresh = key;
     void refreshArmoryState();
   });
-  let automaticStoreRefresh = "";
   const { refreshStoreState, refreshTradesState, refreshTradeAccountsState } =
     createCommerceRefreshers({
       props,
@@ -141,76 +150,15 @@ export function createAppController(props: AppProps) {
       setTradeAccounts,
       refetchStore,
     });
-  const refreshTF2StoreState = async () => {
-    setTF2Store((current) => ({
-      status: "loading",
-      offers: current?.offers ?? [],
-      refreshedAt: current?.refreshedAt ?? new Date().toISOString(),
-      priceSheetVersion: current?.priceSheetVersion,
-      currency: current?.currency,
-      message: "Requesting the current TF2 GC price sheet",
-    }));
-    await props.backend
-      .refreshTF2Store()
-      .andThen(() =>
-        fromAppPromise(
-          Promise.resolve(refetchTF2Store()),
-          "TF2 Store reload failed",
-        ),
-      )
-      .match(
-        () => undefined,
-        (error) =>
-          setTF2Store((current): StoreSnapshot => ({
-            status: "error",
-            offers: current?.offers ?? [],
-            refreshedAt: new Date().toISOString(),
-            message: appErrorMessage(error, "Unable to refresh TF2 Store"),
-          })),
-      );
-  };
-  createEffect(() => {
-    const steamId =
-      connection()?.state === "connected" ? connection()?.steamId : undefined;
-    const enabled = settings()?.featureFlags.enableStoreRead === true;
-    if (
-      shell.view() !== "store" ||
-      !steamId ||
-      !enabled ||
-      store()?.status === "ready"
-    )
-      return;
-    const key = `${steamId}\u0000store\u0000${enabled}`;
-    if (automaticStoreRefresh === key) return;
-    automaticStoreRefresh = key;
-    void refreshStoreState();
-  });
-  let automaticTF2StoreRefresh = "";
-  createEffect(() => {
-    const steamId =
-      connection()?.state === "connected" ? connection()?.steamId : undefined;
-    const enabled = settings()?.featureFlags.enableTf2Store !== false;
-    if (
-      shell.view() !== "tf2-store" ||
-      !steamId ||
-      !enabled ||
-      tf2Store()?.status === "ready"
-    )
-      return;
-    const key = `${steamId}\u0000tf2-store\u0000${enabled}`;
-    if (automaticTF2StoreRefresh === key) return;
-    automaticTF2StoreRefresh = key;
-    void refreshTF2StoreState();
-  });
-  let automaticTradeRefresh = "";
-  createEffect(() => {
-    const steamId =
-      connection()?.state === "connected" ? connection()?.steamId : undefined;
-    if (shell.view() !== "trades" || !steamId) return;
-    const key = `${steamId}\u0000trades`;
-    if (automaticTradeRefresh === key) return;
-    automaticTradeRefresh = key;
-    void refreshTradeAccountsState();
+  const { refreshTF2StoreState } = installAutomaticCommerceRefresh({
+    props,
+    view: shell.view,
+    connection,
+    settings,
+    setTF2Store,
+    refetchTF2Store,
+    refreshStoreState,
+    refreshTradeAccountsState,
   });
 
   createEffect(() => {
@@ -241,7 +189,7 @@ export function createAppController(props: AppProps) {
       !shouldShowAccountScreen({
         currentView,
         connection: connection(),
-        connectionLoading: connection.loading,
+        connectionLoading: connectionLoading(),
         hasSignedInAccount: shell
           .accounts()
           .some((account) => account.signedIn),
@@ -327,6 +275,7 @@ export function createAppController(props: AppProps) {
     health,
     settings,
     inventory,
+    inventoryLoading,
     steamInventory,
     steamServiceInventory: steamService.inventory,
     steamServiceGames: steamService.games,
@@ -346,8 +295,10 @@ export function createAppController(props: AppProps) {
     receipts,
     events,
     connection,
+    connectionLoading,
     setConnection,
     pushToast,
+    enqueueStorageRetrieval: storageRetrievalQueue.enqueue,
     dismissToast: toastController.dismissToast,
     refreshInventoryState,
     refreshArmoryState,

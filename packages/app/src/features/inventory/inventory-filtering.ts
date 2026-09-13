@@ -8,6 +8,7 @@ import {
 
 export interface InventoryFilterInput {
   items: InventoryItemDto[];
+  searchIndex?: ReadonlyMap<InventoryItemDto, InventorySearchEntry>;
   query: string;
   kind: "all" | InventoryItemDto["kind"];
   rarity: string;
@@ -17,10 +18,16 @@ export interface InventoryFilterInput {
   marketPrices: ReadonlyMap<string, number>;
 }
 
-export function filterInventoryItems(input: InventoryFilterInput) {
-  const query = input.query.toLowerCase();
-  const matches = input.items.filter((item) => {
-    const searchable = [
+export interface InventorySearchEntry {
+  item: InventoryItemDto;
+  searchable: string;
+  weapon: string | undefined;
+}
+
+function createInventorySearchEntry(item: InventoryItemDto): InventorySearchEntry {
+  return {
+    item,
+    searchable: [
       item.name,
       item.marketName,
       item.marketPrice,
@@ -36,12 +43,26 @@ export function filterInventoryItems(input: InventoryFilterInput) {
     ]
       .filter(Boolean)
       .join(" ")
-      .toLowerCase();
+      .toLowerCase(),
+    weapon: itemWeaponName(item),
+  };
+}
+
+export function createInventorySearchIndex(items: InventoryItemDto[]) {
+  return new Map(items.map((item) => [item, createInventorySearchEntry(item)]));
+}
+
+export function filterInventoryItems(input: InventoryFilterInput) {
+  const query = input.query.toLowerCase();
+  const matches = input.items.filter((item) => {
+    const entry = input.searchIndex?.get(item);
+    const searchable = entry?.searchable ?? createInventorySearchEntry(item).searchable;
     return (
       (!query || searchable.includes(query)) &&
       (input.kind === "all" || item.kind === input.kind) &&
       (input.rarity === "all" || item.rarity === input.rarity) &&
-      (input.weapon === "all" || itemWeaponName(item) === input.weapon) &&
+      (input.weapon === "all" ||
+        (entry?.weapon ?? itemWeaponName(item)) === input.weapon) &&
       (input.collection === "all" || item.collection === input.collection)
     );
   });

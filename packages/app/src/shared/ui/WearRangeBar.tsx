@@ -8,7 +8,7 @@ const wearRanges = [
     min: 0,
     max: 0.07,
     color: "wear-color-factory-new",
-    markerColor: "text-cyan-500",
+    markerColor: "bg-cyan-500",
   },
   {
     name: "Minimal Wear",
@@ -16,7 +16,7 @@ const wearRanges = [
     min: 0.07,
     max: 0.15,
     color: "wear-color-minimal-wear",
-    markerColor: "text-emerald-500",
+    markerColor: "bg-emerald-500",
   },
   {
     name: "Field-Tested",
@@ -24,7 +24,7 @@ const wearRanges = [
     min: 0.15,
     max: 0.38,
     color: "wear-color-field-tested",
-    markerColor: "text-amber-400",
+    markerColor: "bg-amber-400",
   },
   {
     name: "Well-Worn",
@@ -32,7 +32,7 @@ const wearRanges = [
     min: 0.38,
     max: 0.45,
     color: "wear-color-well-worn",
-    markerColor: "text-orange-500",
+    markerColor: "bg-orange-500",
   },
   {
     name: "Battle-Scarred",
@@ -40,7 +40,7 @@ const wearRanges = [
     min: 0.45,
     max: 1,
     color: "wear-color-battle-scarred",
-    markerColor: "text-rose-600",
+    markerColor: "bg-rose-600",
   },
 ] as const;
 
@@ -116,15 +116,6 @@ export function WearRangeBar(props: {
             : "relative mt-7"
         }
       >
-        <Show when={props.wear !== undefined}>
-          <div
-            class={`absolute -top-4 -translate-x-1/2 ${markerColor()}`}
-            style={{ left: `${wear() * 100}%` }}
-            aria-label={`Current wear ${formatFloat(props.wear!)}`}
-          >
-            <span class="block text-center text-[10px] leading-none">▼</span>
-          </div>
-        </Show>
         <div
           class={`relative flex ${props.compact ? "h-2" : "h-4"} overflow-hidden rounded border border-slate-700`}
         >
@@ -144,6 +135,13 @@ export function WearRangeBar(props: {
             />
           </Show>
         </div>
+        <Show when={props.wear !== undefined}>
+          <div
+            class={`pointer-events-none absolute inset-y-0 w-1 -translate-x-1/2 rounded-sm border border-slate-950/80 ${markerColor()}`}
+            style={{ left: `${wear() * 100}%` }}
+            aria-label={`Current wear ${formatFloat(props.wear!)}`}
+          />
+        </Show>
         <Show when={!props.compact}>
           <div class="mt-2 flex text-[9px] font-medium text-slate-400">
             <WearLabels />

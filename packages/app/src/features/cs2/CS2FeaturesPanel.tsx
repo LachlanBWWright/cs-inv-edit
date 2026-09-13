@@ -4,6 +4,7 @@ import {
   stringArraySchema,
   writeStoredJson,
 } from "../../shared/lib/storage.js";
+import { formatState } from "../../shared/lib/format.js";
 import { CS2ProgressionSection } from "./cs2-progression-section.js";
 import {
   EmptyState,
@@ -89,7 +90,7 @@ function ActivityLine(props: {
       <div class="min-w-0 flex-1">
         <p class="font-medium text-slate-100">{props.itemName(props.entry)}</p>
         <p class="mt-1 text-xs capitalize text-slate-500">
-          {props.entry.kind.replaceAll("_", " ")}
+          {formatState(props.entry.kind)}
           {props.dateLabel(props.entry.timestamp)
             ? ` · ${props.dateLabel(props.entry.timestamp)}`
             : ""}

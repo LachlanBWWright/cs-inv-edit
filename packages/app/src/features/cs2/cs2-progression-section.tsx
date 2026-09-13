@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import { EmptyState, SectionTitle } from "./cs2-features-ui.js";
+import { formatState } from "../../shared/lib/format.js";
 
 function ProgressionMissionRow(props: {
   mission: { kind: string; data: Record<string, unknown> };
@@ -9,7 +10,7 @@ function ProgressionMissionRow(props: {
   const value = (key: string) => props.textValue(props.mission.data[key]);
   const criteria = () =>
     [
-      value("gamemode")?.replaceAll("_", " "),
+      value("gamemode") ? formatState(value("gamemode")!) : undefined,
       value("map") ?? value("mapgroup")?.replace(/^mg_/, ""),
     ].filter((entry): entry is string => !!entry);
   const objective = () =>
@@ -17,9 +18,9 @@ function ProgressionMissionRow(props: {
       ? value("description")?.replaceAll(/<\/?b>/g, "")
       : value("expression")
           ?.replaceAll("%", "")
-          .replaceAll("_", " ")
           .replaceAll("&&", " and ")
-          .replaceAll("||", " or ");
+          .replaceAll("||", " or ")
+          .replaceAll("_", " ");
   const progressTotal = () => {
     const required = props.textValue(props.mission.data.points_required);
     return required ? ` / ${required}` : "";

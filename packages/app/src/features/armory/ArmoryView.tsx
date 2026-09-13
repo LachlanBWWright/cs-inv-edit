@@ -23,6 +23,10 @@ import {
   type ReturnEstimate,
 } from "../commerce/roi-utils.js";
 import { ArmoryContentsDialog } from "./ArmoryContentsDialog.js";
+import {
+  ArmoryRedemptionProgress,
+  type ArmoryRedemptionProgressState,
+} from "./ArmoryRedemptionProgress.js";
 import { ArmoryStatus } from "./ArmoryStatus.js";
 import {
   ARMORY_PURCHASE_TIMEOUT_MS,
@@ -52,6 +56,36 @@ export {
   withArmoryPurchaseTimeout,
 } from "./armory-view-elements.js";
 export type { ArmoryRevealVariant } from "./armory-view-elements.js";
+
+function redemptionReceiptState(
+  current: ArmoryRedemptionProgressState,
+  receipt: OperationReceipt,
+): ArmoryRedemptionProgressState {
+  if (receipt.state === "awaiting_gc_confirmation")
+    return {
+      ...current,
+      state: "awaiting_gc_confirmation",
+      message: receipt.message,
+    };
+  if (receipt.state === "completed")
+    return {
+      ...current,
+      state: "completed",
+      message: receipt.message,
+      receivedItem: receipt.result?.openedItem,
+    };
+  if (receipt.state === "failed")
+    return { ...current, state: "failed", message: receipt.message };
+  return current;
+}
+
+function failedRedemptionState(
+  current: ArmoryRedemptionProgressState,
+  message: string,
+): ArmoryRedemptionProgressState {
+  return { ...current, state: "failed", message };
+}
+
 type ArmoryReveal = {
   result: RevealItem;
   ready: boolean;
@@ -78,6 +112,8 @@ export function ArmoryView(props: {
   const [confirming, setConfirming] = createSignal<string>();
   const [busy, setBusy] = createSignal(false);
   const [purchaseError, setPurchaseError] = createSignal<string>();
+  const [redemption, setRedemption] =
+    createSignal<ArmoryRedemptionProgressState>();
   const [reveal, setReveal] = createSignal<ArmoryReveal>();
   const awaitReveal = (next: Omit<ArmoryReveal, "ready" | "complete">) =>
     new Promise<void>((resolve) =>
@@ -176,6 +212,12 @@ export function ArmoryView(props: {
       setPurchaseError(armoryPurchaseTimeoutMessage);
     }, ARMORY_PURCHASE_TIMEOUT_MS);
     const purchaseQuantity = quantity(offer);
+    setRedemption({
+      offerName: offer.name || offer.itemName || "Armory reward",
+      quantity: purchaseQuantity,
+      totalCost: offer.expectedCost * purchaseQuantity,
+      state: "sending",
+    });
     const mode = isContainerOffer(offer)
       ? (props.settings?.animations?.container ?? "slot-machine")
       : (props.settings?.animations?.armory ?? "slot-machine");
@@ -210,6 +252,9 @@ export function ArmoryView(props: {
       "Armory purchase failed",
     ).match(
       async (receipt) => {
+        setRedemption((current) =>
+          current ? redemptionReceiptState(current, receipt) : current,
+        );
         if (usesReveal) {
           const openedItem = receipt.result?.openedItem;
           if (receipt.state === "completed" && openedItem) {
@@ -228,6 +273,10 @@ export function ArmoryView(props: {
         setConfirming(undefined);
       },
       (error) => {
+        const failureMessage = appErrorMessage(error, "Armory purchase failed");
+        setRedemption((current) =>
+          current ? failedRedemptionState(current, failureMessage) : current,
+        );
         setReveal(undefined);
         setConfirming(undefined);
         setPurchaseError(appErrorMessage(error, "Armory purchase failed"));
@@ -293,6 +342,7 @@ export function ArmoryView(props: {
           purchaseError={purchaseError()}
           diagnostics={diagnostics()}
         />
+        <ArmoryRedemptionProgress redemption={redemption()} />
         <ArmoryOfferList
           offers={offers()}
           armory={props.armory}

@@ -20,6 +20,34 @@ import {
   StorageToolbar,
 } from "./inventory-view-grid-parts.js";
 
+function selectItemsInRectangle(input: {
+  grid: HTMLDivElement;
+  items: InventoryItemDto[];
+  bounds: { left: number; right: number; top: number; bottom: number };
+  selected: boolean;
+  selectedIds: string[];
+  onSelect: InventoryGridProps["onSelectItem"];
+}) {
+  for (const candidate of input.items) {
+    const card = input.grid.querySelector<HTMLButtonElement>(
+      `[data-item-id="${CSS.escape(candidate.id)}"]`,
+    );
+    if (!card) continue;
+    const rect = card.getBoundingClientRect();
+    const inside =
+      rect.left < input.bounds.right &&
+      rect.right > input.bounds.left &&
+      rect.top < input.bounds.bottom &&
+      rect.bottom > input.bounds.top;
+    if (
+      inside &&
+      input.selectedIds.includes(candidate.id) !== input.selected
+    ) {
+      input.onSelect(candidate, { range: false, selected: input.selected });
+    }
+  }
+}
+
 export interface InventoryGridProps {
   inventory: InventorySnapshot | undefined;
   inventoryLoading: boolean;
@@ -60,30 +88,106 @@ export interface InventoryGridProps {
   onReviewTradeUp: () => void;
 }
 
+function InventoryItemsPane(props: {
+  grid: InventoryGridProps;
+  storageSelectionActive: boolean;
+  compactSummary: (item: InventoryItemDto) => JSX.Element;
+  onPointerUp: () => void;
+  onPointerLeave: () => void;
+  gridElement: (element: HTMLDivElement) => void;
+  onItemPointerDown: (item: InventoryItemDto, event: MouseEvent) => void;
+  onItemPointerEnter: (item: InventoryItemDto, event: PointerEvent) => void;
+}) {
+  return (
+    <Show
+      when={props.grid.filteredItems.length > 0}
+      fallback={
+        <InventoryEmptyState
+          inventory={props.grid.inventory}
+          inventoryLoading={props.grid.inventoryLoading}
+        />
+      }
+    >
+      <InventoryItemGrid
+        filteredItems={props.grid.filteredItems}
+        itemCardClass={(item) => createInventoryItemClass(item, props.grid)}
+        compactLayout={createInventoryCompactLayout(props.grid.compactMode)}
+        compactSummary={props.compactSummary}
+        onSelectItem={props.grid.onSelectItem}
+        storageSelectionActive={props.storageSelectionActive}
+        storageSelectedItemIds={props.grid.storageSelectedItemIds}
+        marketPrices={props.grid.marketPrices}
+        onPointerUp={props.onPointerUp}
+        onPointerLeave={props.onPointerLeave}
+        onItemPointerDown={props.onItemPointerDown}
+        onItemPointerEnter={props.onItemPointerEnter}
+        ref={props.gridElement}
+      />
+    </Show>
+  );
+}
+
 export function InventoryGrid(props: InventoryGridProps) {
   let dragSelecting = false;
   let dragSelectionValue = true;
+  let dragAnchorItemId: string | undefined;
+  let gridElement: HTMLDivElement | undefined;
   const storageSelectionActive = () =>
     !!props.movingIntoStorageUnit ||
     (!!props.browsingStorageUnit && props.removeFromStorageMode);
   const finishDragSelection = () => {
     dragSelecting = false;
+    dragAnchorItemId = undefined;
   };
   const beginDragSelection = (item: InventoryItemDto, event: MouseEvent) => {
     if (!storageSelectionActive() || event.button !== 0) return;
     event.preventDefault();
     dragSelecting = true;
+    dragAnchorItemId = item.id;
     dragSelectionValue = !props.storageSelectedItemIds.includes(item.id);
     props.onSelectItem(item, { range: false, selected: dragSelectionValue });
   };
-  const continueDragSelection = (item: InventoryItemDto) => {
+  const continueDragSelection = (item: InventoryItemDto, event: PointerEvent) => {
     if (!storageSelectionActive() || !dragSelecting) return;
-    if (props.storageSelectedItemIds.includes(item.id) === dragSelectionValue)
-      return;
-    props.onSelectItem(item, { range: false, selected: dragSelectionValue });
+    const grid = gridElement;
+    if (!grid) return;
+    const anchor = grid.querySelector<HTMLButtonElement>(
+      `[data-item-id="${CSS.escape(dragAnchorItemId ?? "")}"]`,
+    );
+    if (!anchor) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const currentTarget = event.currentTarget;
+    if (!(currentTarget instanceof HTMLElement)) return;
+    const currentRect = currentTarget.getBoundingClientRect();
+    const left = Math.min(anchorRect.left, currentRect.left);
+    const right = Math.max(anchorRect.right, currentRect.right);
+    const top = Math.min(anchorRect.top, currentRect.top);
+    const bottom = Math.max(anchorRect.bottom, currentRect.bottom);
+    selectItemsInRectangle({
+      grid,
+      items: props.filteredItems,
+      bounds: { left, right, top, bottom },
+      selected: dragSelectionValue,
+      selectedIds: props.storageSelectedItemIds,
+      onSelect: props.onSelectItem,
+    });
   };
   const compactSummary = (item: InventoryItemDto) =>
     createInventorySummary(item, props.compactMode);
+  const itemsPane = () => (
+    <InventoryItemsPane
+      grid={props}
+      storageSelectionActive={storageSelectionActive()}
+      compactSummary={compactSummary}
+      onPointerUp={finishDragSelection}
+      onPointerLeave={finishDragSelection}
+      gridElement={(element) => {
+        gridElement = element;
+      }}
+      onItemPointerDown={beginDragSelection}
+      onItemPointerEnter={continueDragSelection}
+    />
+  );
 
   return (
     <div
@@ -135,40 +239,19 @@ export function InventoryGrid(props: InventoryGridProps) {
           onRetrieveFromStorage={props.onRetrieveFromStorage}
           onRetrieveAllFromStorage={props.onRetrieveAllFromStorage}
         />
-        <PullToRefresh
-          class="relative min-h-0 flex-1 pb-24 lg:pb-0"
-          onRefresh={props.onRefresh}
+        <Show
+          when={props.storageRetrieval}
+          fallback={
+            <PullToRefresh
+              class="relative min-h-0 flex-1 pb-24 lg:pb-0"
+              onRefresh={props.onRefresh}
+            >
+              {itemsPane()}
+            </PullToRefresh>
+          }
         >
-          <Show
-            when={props.filteredItems.length > 0}
-            fallback={
-              <InventoryEmptyState
-                inventory={props.inventory}
-                inventoryLoading={props.inventoryLoading}
-              />
-            }
-          >
-            <InventoryItemGrid
-              filteredItems={props.filteredItems}
-              itemCardClass={(item) => createInventoryItemClass(item, props)}
-              compactLayout={createInventoryCompactLayout(props.compactMode)}
-              compactSummary={compactSummary}
-              onSelectItem={props.onSelectItem}
-              storageSelectionActive={storageSelectionActive()}
-              storageSelectedItemIds={props.storageSelectedItemIds}
-              marketPrices={props.marketPrices}
-              onPointerUp={finishDragSelection}
-              onPointerLeave={finishDragSelection}
-              onItemPointerDown={beginDragSelection}
-              onItemPointerEnter={continueDragSelection}
-            />
-          </Show>
-          <Show when={props.storageRetrieval}>
-            {(retrieval) => (
-              <InventoryRetrievalOverlay retrieval={retrieval()} />
-            )}
-          </Show>
-        </PullToRefresh>
+          {(retrieval) => <InventoryRetrievalOverlay retrieval={retrieval()} />}
+        </Show>
       </div>
       <Show when={!props.movingIntoStorageUnit && !props.tradeUpActive}>
         <InventoryDetailsPanel

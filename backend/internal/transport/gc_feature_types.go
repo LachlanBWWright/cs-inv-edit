@@ -1,5 +1,10 @@
 package transport
 
+// RawFeatureData is deliberately untyped data from a GC shared object whose
+// schema is not stable or fully known. Stable fields in the snapshots below
+// use concrete DTOs; this alias makes the remaining dynamic boundary explicit.
+type RawFeatureData = map[string]any
+
 type GCInventoryItem struct {
 	ID             uint64
 	OriginalID     uint64
@@ -65,7 +70,7 @@ type TF2ActivityEntry struct {
 	Kind      string         `json:"kind"`
 	ID        string         `json:"id,omitempty"`
 	Timestamp uint32         `json:"timestamp,omitempty"`
-	Data      map[string]any `json:"data"`
+	Data      RawFeatureData `json:"data"`
 }
 
 type TF2MarketEntry struct {
@@ -108,15 +113,15 @@ type TF2FeatureSnapshot struct {
 	RefreshedAt    string             `json:"refreshedAt"`
 	PresetItems    []TF2PresetItem    `json:"presetItems"`
 	ClassPresets   []TF2ClassPreset   `json:"classPresets"`
-	Matches        []map[string]any   `json:"matches"`
-	Ladder         []map[string]any   `json:"ladder"`
-	Ratings        []map[string]any   `json:"ratings"`
-	Quests         []map[string]any   `json:"quests"`
-	QuestNodes     []map[string]any   `json:"questNodes"`
-	QuestRewards   []map[string]any   `json:"questRewards"`
-	Matchmaking    map[string]any     `json:"matchmaking,omitempty"`
-	DataCenterPing map[string]any     `json:"dataCenterPing,omitempty"`
-	DailyStats     map[string]any     `json:"dailyStats,omitempty"`
+	Matches        []RawFeatureData   `json:"matches"`
+	Ladder         []RawFeatureData   `json:"ladder"`
+	Ratings        []RawFeatureData   `json:"ratings"`
+	Quests         []RawFeatureData   `json:"quests"`
+	QuestNodes     []RawFeatureData   `json:"questNodes"`
+	QuestRewards   []RawFeatureData   `json:"questRewards"`
+	Matchmaking    RawFeatureData     `json:"matchmaking,omitempty"`
+	DataCenterPing RawFeatureData     `json:"dataCenterPing,omitempty"`
+	DailyStats     RawFeatureData     `json:"dailyStats,omitempty"`
 	Activity       []TF2ActivityEntry `json:"activity"`
 	Market         []TF2MarketEntry   `json:"market"`
 	InspectedItem  *TF2InspectedItem  `json:"inspectedItem,omitempty"`
@@ -137,26 +142,26 @@ type CS2ActivityEntry struct {
 	Kind      string         `json:"kind"`
 	ID        string         `json:"id,omitempty"`
 	Timestamp uint32         `json:"timestamp,omitempty"`
-	Data      map[string]any `json:"data"`
+	Data      RawFeatureData `json:"data"`
 }
 
 type CS2FeatureSnapshot struct {
 	Status             string             `json:"status"`
 	RefreshedAt        string             `json:"refreshedAt,omitempty"`
 	EquipSlots         []CS2EquipSlot     `json:"equipSlots"`
-	Matches            []map[string]any   `json:"matches"`
-	Profile            map[string]any     `json:"profile,omitempty"`
-	Premier            map[string]any     `json:"premier,omitempty"`
-	DeepStats          map[string]any     `json:"deepStats,omitempty"`
-	SearchStats        map[string]any     `json:"searchStats,omitempty"`
-	InspectedItem      map[string]any     `json:"inspectedItem,omitempty"`
+	Matches            []RawFeatureData   `json:"matches"`
+	Profile            RawFeatureData     `json:"profile,omitempty"`
+	Premier            RawFeatureData     `json:"premier,omitempty"`
+	DeepStats          RawFeatureData     `json:"deepStats,omitempty"`
+	SearchStats        RawFeatureData     `json:"searchStats,omitempty"`
+	InspectedItem      RawFeatureData     `json:"inspectedItem,omitempty"`
 	InspectedAt        string             `json:"inspectedAt,omitempty"`
-	Rentals            []map[string]any   `json:"rentals"`
-	Quests             []map[string]any   `json:"quests"`
-	RecurringMissions  []map[string]any   `json:"recurringMissions"`
-	SeasonalOperations []map[string]any   `json:"seasonalOperations"`
-	XPShop             map[string]any     `json:"xpShop,omitempty"`
-	RecurringSchema    map[string]any     `json:"recurringSchema,omitempty"`
+	Rentals            []RawFeatureData   `json:"rentals"`
+	Quests             []RawFeatureData   `json:"quests"`
+	RecurringMissions  []RawFeatureData   `json:"recurringMissions"`
+	SeasonalOperations []RawFeatureData   `json:"seasonalOperations"`
+	XPShop             RawFeatureData     `json:"xpShop,omitempty"`
+	RecurringSchema    RawFeatureData     `json:"recurringSchema,omitempty"`
 	Activity           []CS2ActivityEntry `json:"activity"`
 	Diagnostics        []string           `json:"diagnostics"`
 }

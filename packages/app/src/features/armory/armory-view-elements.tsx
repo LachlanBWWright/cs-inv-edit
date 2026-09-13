@@ -241,13 +241,18 @@ function OfferConfirmation(props: {
 }) {
   return (
     <div
-      class={`mt-4 rounded-xl border p-4 ${props.quantity > 1 ? "border-red-400/40 bg-red-950" : "border-amber-400/30 bg-amber-950"}`}
+      class={`armory-confirmation mt-4 rounded-xl border p-4 ${props.quantity > 1 ? "border-red-400/40 bg-red-950" : "border-amber-400/30 bg-amber-950"}`}
+      role="alertdialog"
+      aria-label="Confirm Armory redemption"
     >
       <Show when={props.quantity > 1}>
         <p class="mb-2 font-semibold text-red-200">Bulk purchase warning</p>
       </Show>
       <p class="text-sm text-slate-200">
         Buy {props.quantity} for {props.expectedCost * props.quantity} stars?
+      </p>
+      <p class="mt-1 text-xs text-slate-400">
+        This redemption cannot be undone. Your stars will be spent immediately.
       </p>
       <div class="mt-3 flex gap-2">
         <Button disabled={props.busy} onClick={props.onRedeem}>

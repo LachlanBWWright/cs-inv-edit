@@ -14,6 +14,8 @@ import {
 import type { TF2ActivityFilter } from "../tf2/tf2-activity-utils.js";
 import type { CS2ActivityFilter } from "../cs2/CS2FeaturesPanel.js";
 import type { AppViewProps } from "./app-view-props.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
+import { uniqueSortedStrings } from "../../shared/lib/collections.js";
 
 export function createAppViewState(props: AppViewProps) {
   const [rarityFilter, setRarityFilter] = createSignal("all");
@@ -100,31 +102,15 @@ export function createAppViewState(props: AppViewProps) {
   });
 
   const rarityOptions = createMemo(() =>
-    [
-      ...new Set(
-        (props.inventory?.items ?? [])
-          .map((item) => item.rarity)
-          .filter((value): value is string => !!value),
-      ),
-    ].sort(),
+    uniqueSortedStrings((props.inventory?.items ?? []).map((item) => item.rarity)),
   );
   const weaponOptions = createMemo(() =>
-    [
-      ...new Set(
-        (props.inventory?.items ?? [])
-          .map(itemWeaponName)
-          .filter((value): value is string => !!value),
-      ),
-    ].sort(),
+    uniqueSortedStrings((props.inventory?.items ?? []).map(itemWeaponName)),
   );
   const collectionOptions = createMemo(() =>
-    [
-      ...new Set(
-        (props.inventory?.items ?? [])
-          .map((item) => item.collection)
-          .filter((value): value is string => !!value),
-      ),
-    ].sort(),
+    uniqueSortedStrings(
+      (props.inventory?.items ?? []).map((item) => item.collection),
+    ),
   );
   const economyGame = createMemo(() =>
     props.view === "steam-inventory"
@@ -154,9 +140,7 @@ export function createAppViewState(props: AppViewProps) {
         : props.view === "tf2-store"
           ? (props.tf2Store?.offers ?? []).map((offer) => offer.category)
           : (props.store?.offers ?? []).map((offer) => offer.category);
-    return [
-      ...new Set(values.filter((value): value is string => !!value)),
-    ].sort();
+    return uniqueSortedStrings(values);
   });
   let previousEconomyGame = economyGame();
   createEffect(() => {
@@ -166,18 +150,14 @@ export function createAppViewState(props: AppViewProps) {
   });
   let requestedPriceNames = "";
   createEffect(() => {
-    if (props.settings?.featureFlags.enablePriceAnalysis !== true) {
+    if (!priceFeaturesEnabled(props.settings)) {
       requestedPriceNames = "";
       setMarketPrices(new Map());
       return;
     }
-    const names = [
-      ...new Set(
-        (props.inventory?.items ?? [])
-          .map((item) => item.marketName)
-          .filter((value): value is string => !!value),
-      ),
-    ].sort();
+    const names = uniqueSortedStrings(
+      (props.inventory?.items ?? []).map((item) => item.marketName),
+    );
     const requestKey = names.join("\u0000");
     if (!requestKey || requestKey === requestedPriceNames) return;
     requestedPriceNames = requestKey;

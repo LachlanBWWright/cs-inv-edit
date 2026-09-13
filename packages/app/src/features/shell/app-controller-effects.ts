@@ -12,6 +12,8 @@ import type { createShellController } from "./controller.js";
 import { enabledModeOrDefault } from "./view.js";
 import { writeModeToUrl } from "./app-controller-url.js";
 import { logSteamDiagnostics } from "./app-market-preview.js";
+import { isRefreshFailureState } from "../../shared/lib/refresh-state.js";
+import { connectedSteamId } from "../../shared/lib/steam-connection.js";
 
 type ShellController = ReturnType<typeof createShellController>;
 type Game = import("../../shared/ui-types.js").EconomyGame;
@@ -85,10 +87,7 @@ export function installAutomaticGameInventoryRefresh(input: {
           : view === "dota2-inventory"
             ? "dota2"
             : undefined;
-    const steamId =
-      input.connection()?.state === "connected"
-        ? input.connection()?.steamId
-        : undefined;
+    const steamId = connectedSteamId(input.connection());
     if (!game || !steamId) {
       automaticRefresh = "";
       return;
@@ -106,9 +105,7 @@ export function installAutomaticGameInventoryRefresh(input: {
     void input.backend
       .refreshGameInventory(game)
       .andThen((receipt) =>
-        receipt.state === "failed" ||
-        receipt.state === "requires_connection" ||
-        receipt.state === "blocked_by_feature_flag"
+        isRefreshFailureState(receipt.state)
           ? errAsync({
               message: receipt.message ?? `${game} inventory refresh failed`,
             })

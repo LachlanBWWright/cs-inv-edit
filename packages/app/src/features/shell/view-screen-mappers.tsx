@@ -27,6 +27,8 @@ import {
 } from "./view.js";
 import type { AppViewProps } from "./app-view-props.js";
 import type { EconomyGame } from "../../shared/ui-types.js";
+import { connectedSteamId } from "../../shared/lib/steam-connection.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 
 interface ViewScreenMapperProps extends AppViewProps {
   rarityFilter: string | undefined;
@@ -52,6 +54,8 @@ function InventoryScreenView(props: ViewScreenMapperProps) {
       setSelectedItemId={props.setSelectedItemId}
       connection={props.connection}
       settings={props.settings}
+      pushToast={props.pushToast}
+      enqueueStorageRetrieval={props.enqueueStorageRetrieval}
       query={props.query}
       kindFilter={props.kindFilter}
       rarityFilter={props.rarityFilter ?? ""}
@@ -149,11 +153,7 @@ function EconomyScreenView(props: ViewScreenMapperProps) {
         connected={
           props.connection ? props.connection.state === "connected" : undefined
         }
-        steamId={
-          props.connection?.state === "connected"
-            ? props.connection.steamId
-            : undefined
-        }
+        steamId={connectedSteamId(props.connection)}
         settings={props.settings}
         snapshot={gameInventoryForView(props)}
         query={props.query}
@@ -195,11 +195,7 @@ function ScreenContent(props: ViewScreenMapperProps) {
         <CS2FeaturesPanel
           features={props.cs2Features}
           inventory={props.inventory}
-          steamId={
-            props.connection?.state === "connected"
-              ? props.connection.steamId
-              : undefined
-          }
+        steamId={connectedSteamId(props.connection)}
           query={props.query}
           activityFilter={props.cs2ActivityFilter}
         />
@@ -285,12 +281,12 @@ function ScreenContent(props: ViewScreenMapperProps) {
           accounts={props.tradeAccounts}
           activeSteamId={props.connection?.steamId}
           onRefresh={props.onTradesRefresh}
-          onReconnect={() => props.setView("account")}
+          onReconnect={() => void props.onAddAccount()}
         />
       </Match>
       <Match when={props.view === "price-analysis"}>
         <Show
-          when={props.settings?.featureFlags.enablePriceAnalysis === true}
+          when={priceFeaturesEnabled(props.settings)}
           fallback={
             <Alert variant="warning">
               Price analysis is disabled in this deployment.

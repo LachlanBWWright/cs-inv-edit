@@ -1,15 +1,22 @@
 import { AppView } from "./AppView.js";
+import { createEffect } from "solid-js";
 import { fromAppPromise } from "../../shared/lib/result.js";
 import { createOperationApi } from "../../shared/lib/api.js";
 import type { EconomyGame } from "../../shared/ui-types.js";
 import { createAppController } from "./app-controller.js";
 import type { AppProps } from "./app-props.js";
+import { documentTitleForScreen } from "./app-document-title.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
+import { failedPurchaseSession } from "../commerce/purchase-session-factories.js";
 export type { AppProps } from "./app-props.js";
 
 export function App(props: AppProps) {
   const controller = createAppController(props);
-  const priceFeaturesEnabled = () =>
-    controller.settings()?.featureFlags.enablePriceAnalysis === true;
+
+  createEffect(() => {
+    if (props.platform !== "web") return;
+    document.title = documentTitleForScreen(controller.view());
+  });
 
   const handleConnect = async (input: {
     username?: string;
@@ -35,7 +42,6 @@ export function App(props: AppProps) {
         }),
       );
   };
-
   const handleStartSteamQR = async () => {
     if (!props.backend.startSteamQR)
       return { ok: false as const, message: "Steam QR login unavailable" };
@@ -50,7 +56,6 @@ export function App(props: AppProps) {
       }),
     );
   };
-
   const handleSubmitSteamGuard = async (input: { code: string }) => {
     if (!props.backend.submitSteamGuard)
       return { ok: false as const, message: "Steam Guard is unavailable" };
@@ -72,7 +77,6 @@ export function App(props: AppProps) {
         }),
       );
   };
-
   const handleDisconnect = async () => {
     if (!props.backend.disconnectSteam)
       return { ok: false as const, message: "Steam disconnect unavailable" };
@@ -95,7 +99,6 @@ export function App(props: AppProps) {
         }),
       );
   };
-
   const handleInventoryRefresh = (suppressToast?: boolean) =>
     controller.refreshInventoryState({ suppressToast });
 
@@ -104,7 +107,6 @@ export function App(props: AppProps) {
     if (game === "tf2") return controller.refetchTF2Inventory();
     return controller.refetchDota2Inventory();
   };
-
   const handleGameInventoryRefresh = (
     game: EconomyGame,
     suppressToast?: boolean,
@@ -190,13 +192,13 @@ export function App(props: AppProps) {
       statusMessage=""
       health={controller.health()}
       connection={controller.connection()}
-      connectionLoading={controller.connection.loading}
+      connectionLoading={controller.connectionLoading()}
       accounts={controller.accounts()}
       accountUsername={controller.accountUsername()}
       accountLoginOnly={controller.accountLoginOnly()}
       inventory={controller.inventory()}
       inventoryLoading={
-        controller.inventoryRefreshActive() || controller.inventory.loading
+        controller.inventoryRefreshActive() || controller.inventoryLoading()
       }
       steamInventory={controller.steamInventory()}
       steamServiceInventory={controller.steamServiceInventory()}
@@ -234,6 +236,8 @@ export function App(props: AppProps) {
       onDeleteAccount={(account) => void controller.deleteAccount(account)}
       onRefreshInventory={() => void controller.refreshInventoryState()}
       onDismissToast={controller.dismissToast}
+      pushToast={controller.pushToast}
+      enqueueStorageRetrieval={controller.enqueueStorageRetrieval}
       onConnect={handleConnect}
       onStartSteamQR={handleStartSteamQR}
       onSubmitSteamGuard={handleSubmitSteamGuard}
@@ -244,12 +248,12 @@ export function App(props: AppProps) {
       onGameOperation={handleGameOperation}
       onArmoryRefresh={controller.refreshArmoryState}
       onMarketPreview={(marketName) =>
-        priceFeaturesEnabled()
+        priceFeaturesEnabled(controller.settings())
           ? controller.requestMarketPreview(marketName)
           : Promise.resolve(undefined)
       }
       onScanPrices={(marketNames, appId) =>
-        priceFeaturesEnabled()
+        priceFeaturesEnabled(controller.settings())
           ? props.data
               .queryPrices({ marketNames, currency: "USD", appId })
               .match(
@@ -266,7 +270,7 @@ export function App(props: AppProps) {
           : Promise.resolve(undefined)
       }
       onLoadPriceHistory={(marketName, currency, appId) =>
-        priceFeaturesEnabled()
+        priceFeaturesEnabled(controller.settings())
           ? props.data.priceHistory(marketName, currency, appId).match(
               (history) => history,
               (error) => {
@@ -281,7 +285,7 @@ export function App(props: AppProps) {
           : Promise.resolve(undefined)
       }
       onSearchPrices={(query, appId) =>
-        priceFeaturesEnabled()
+        priceFeaturesEnabled(controller.settings())
           ? props.data.searchPrices(query, appId).match(
               (result) => result,
               (error) => {
@@ -301,37 +305,27 @@ export function App(props: AppProps) {
       onStorePurchase={(input) =>
         props.backend.initializeStorePurchase(input).match(
           (session) => session,
-          (error) => ({
-            id: "failed",
-            status: "failed" as const,
-            offerId: input.offerId,
-            defIndex: 0,
-            name: "Store purchase",
-            quantity: input.quantity,
-            currency: "",
-            amountMinor: 0,
-            formattedAmount: "",
-            createdAt: new Date().toISOString(),
-            message: error.message ?? "Purchase initialization failed",
-          }),
+          (error) =>
+            failedPurchaseSession({
+              offerId: input.offerId,
+              quantity: input.quantity,
+              name: "Store purchase",
+              amountMinor: 0,
+              message: error.message ?? "Purchase initialization failed",
+            }),
         )
       }
       onTF2StorePurchase={(input) =>
         props.backend.initializeTF2StorePurchase(input).match(
           (session) => session,
-          (error) => ({
-            id: "failed",
-            status: "failed" as const,
-            offerId: input.offerId,
-            defIndex: 0,
-            name: input.offerId,
-            quantity: input.quantity,
-            currency: "",
-            amountMinor: input.expectedAmountMinor,
-            formattedAmount: "",
-            createdAt: new Date().toISOString(),
-            message: error.message,
-          }),
+          (error) =>
+            failedPurchaseSession({
+              offerId: input.offerId,
+              quantity: input.quantity,
+              name: input.offerId,
+              amountMinor: input.expectedAmountMinor,
+              message: error.message ?? "Purchase initialization failed",
+            }),
         )
       }
       onStoreReconcile={(id) =>
@@ -380,14 +374,10 @@ export function App(props: AppProps) {
         )
       }
       onMoveFromStorage={(input) =>
-        controller.settleOperation(
-          props.backend.submitOperation("storage.move-out", input),
-        )
+        controller.settleOperation(props.backend.submitOperation("storage.move-out", input), { skipInventoryRefresh: true })
       }
       onMoveIntoStorage={(input) =>
-        controller.settleOperation(
-          props.backend.submitOperation("storage.move-in", input),
-        )
+        controller.settleOperation(props.backend.submitOperation("storage.move-in", input), { skipInventoryRefresh: true })
       }
       onExecuteTradeUp={(input) =>
         controller.settleOperation(

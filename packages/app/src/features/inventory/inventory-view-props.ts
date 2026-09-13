@@ -13,6 +13,7 @@ import type {
 import type { CompactMode } from "../../shared/ui-types.js";
 import type { InventoryMode } from "../shell/view.js";
 import type { InventorySort } from "./inventory-view-utils.js";
+import type { StorageRetrievalJob } from "./storage-retrieval-queue.js";
 
 export interface InventoryMarketActions {
   preview: (marketName: string) => Promise<RelatedItemDto | undefined>;
@@ -66,6 +67,12 @@ export interface InventoryViewProps {
   setSelectedItemId: (id: string | undefined) => void;
   connection: ConnectionStatus | undefined;
   settings: SettingsData | undefined;
+  pushToast: (toast: {
+    title: string;
+    description?: string;
+    variant?: import("../../shared/ui-types.js").StatusTone;
+  }) => void;
+  enqueueStorageRetrieval: (job: StorageRetrievalJob) => void;
   query: string;
   kindFilter: "all" | InventoryItemDto["kind"];
   rarityFilter: string;

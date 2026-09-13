@@ -318,6 +318,7 @@ type Settings struct {
 	FeatureFlags                FeatureFlags      `json:"featureFlags"`
 	Animations                  AnimationSettings `json:"animations"`
 	ArmoryPurchasePacingSeconds uint32            `json:"armoryPurchasePacingSeconds"`
+	StorageRetrievalPacingSeconds uint32          `json:"storageRetrievalPacingSeconds"`
 }
 
 type AnimationSettings struct {

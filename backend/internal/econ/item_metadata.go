@@ -150,6 +150,7 @@ func (s *Schema) metadataResult(item itemDefinition, name string, marketName str
 		ImageSource:           imageSource(imageURL, "counter-strike-image-tracker"),
 		ImageKey:              imageKey,
 		ToolType:              item.ToolType,
+		CannotTrade:           item.CannotTrade,
 		RequiredKeyDefIndexes: append([]uint32(nil), item.RequiredKeyDefIndexes...),
 		IsNameTagTool:         strings.EqualFold(name, "Name Tag") || strings.Contains(strings.ToLower(item.Name), "name_tag"),
 		Collection:            s.collectionNameFor(item.Name, paintKit),
@@ -229,13 +230,14 @@ func validTrackedImageURL(imageURL string) bool {
 }
 
 func schemaTradable(item itemDefinition) *bool {
-	// items_game capabilities are authoritative for definitions that can never
-	// be traded. A positive capability does not override an instance trade lock.
-	if value := strings.TrimSpace(item.Capabilities["can_trade"]); value == "0" {
+	// CS2 marks definition-level exceptions with "cannot trade"; ordinary known
+	// definitions are transferable unless an instance carries a restriction.
+	if item.CannotTrade || strings.TrimSpace(item.Capabilities["can_trade"]) == "0" {
 		tradable := false
 		return &tradable
 	}
-	return nil
+	tradable := true
+	return &tradable
 }
 
 func (s *Schema) AppliedItems(defIndex uint32, attributes map[uint32]uint32) []AppliedItem {
@@ -344,6 +346,12 @@ func (m Metadata) WithInventoryDescription(desc InventoryDescription) Metadata {
 // both surfaces. Keep these fields converged even when only one Steam overlay
 // flag is available.
 func (m Metadata) NormalizeCS2TransferState() Metadata {
+	if m.CannotTrade {
+		value := false
+		m.Tradable, m.Marketable = &value, &value
+		m.TradableAfter = ""
+		return m
+	}
 	if m.Tradable != nil && !*m.Tradable || m.Marketable != nil && !*m.Marketable {
 		value := false
 		m.Tradable, m.Marketable = &value, &value

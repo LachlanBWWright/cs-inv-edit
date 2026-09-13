@@ -20,10 +20,10 @@ func (s *Service) TF2Store() domain.StoreSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.settings.FeatureFlags.EnableTF2Store {
-		return domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: "TF2 store reads are disabled in Settings."}
+		return storeError("TF2 store reads are disabled in Settings.")
 	}
 	store := cloneStore(s.tf2Store)
-	if s.connection.State == domain.ConnectionStateConnected && store.Status == domain.StoreStatusRequiresConnection {
+	if steamConnected(s.connection) && store.Status == domain.StoreStatusRequiresConnection {
 		store.Message = "Steam is connected. Refresh the Store to load the current TF2 GC price sheet."
 	}
 	return store
@@ -36,11 +36,12 @@ func (s *Service) RefreshTF2Store() operations.Receipt {
 		s.mu.Unlock()
 		return s.finishTF2StoreRefresh(receipt, "blocked_by_feature_flag", "TF2 store reads are disabled")
 	}
-	if s.connection.State != domain.ConnectionStateConnected {
-		s.tf2Store = emptyTF2Store()
+	if !steamConnected(s.connection) {
+		s.tf2Store = emptyStore("Connect Steam to load the TF2 Mann Co. Store.")
 		s.mu.Unlock()
 		return s.finishTF2StoreRefresh(receipt, "requires_connection", "connect Steam to load the TF2 Mann Co. Store")
 	}
+	steamID := s.connection.SteamID
 	version := s.tf2Store.PriceSheetVersion
 	s.tf2Store.Status, s.tf2Store.Message = "loading", "Waiting for the TF2 Game Coordinator price sheet"
 	s.mu.Unlock()
@@ -53,26 +54,34 @@ func (s *Service) RefreshTF2Store() operations.Receipt {
 		if err == nil {
 			if len(data.PriceSheet) == 0 && version != 0 {
 				s.mu.Lock()
-				s.tf2Store.Status, s.tf2Store.Message, s.tf2Store.RefreshedAt = "ready", "", now()
-				s.tf2StoreCountry, s.tf2StoreCurrencyID = data.Country, data.Currency
-				s.tf2Store.Diagnostics = append(s.tf2Store.Diagnostics, "TF2 GC reported the current price-sheet version unchanged; retained the existing catalogue.")
+				if steamAccountConnected(s.connection, steamID) {
+					s.tf2Store.Status, s.tf2Store.Message, s.tf2Store.RefreshedAt = "ready", "", now()
+					s.tf2StoreCountry, s.tf2StoreCurrencyID = data.Country, data.Currency
+					s.tf2Store.Diagnostics = append(s.tf2Store.Diagnostics, "TF2 GC reported the current price-sheet version unchanged; retained the existing catalogue.")
+				}
 				s.mu.Unlock()
 			} else {
-				err = s.buildTF2Store(ctx, data)
+				err = s.buildTF2Store(ctx, data, steamID)
 			}
 		}
 	}
 	cancel()
+	s.mu.Lock()
+	accountChanged := !steamAccountConnected(s.connection, steamID)
+	s.mu.Unlock()
+	if accountChanged {
+		return s.finishTF2StoreRefresh(receipt, "completed", "TF2 Store refresh superseded by an account change")
+	}
 	if err != nil {
 		s.mu.Lock()
-		s.tf2Store = domain.StoreSnapshot{Status: "error", Offers: []domain.StoreOffer{}, RefreshedAt: now(), Message: err.Error()}
+		s.tf2Store = storeError(err.Error())
 		s.mu.Unlock()
 		return s.finishTF2StoreRefresh(receipt, "failed", err.Error())
 	}
 	return s.finishTF2StoreRefresh(receipt, "completed", "TF2 Mann Co. Store catalogue refreshed")
 }
 
-func (s *Service) buildTF2Store(ctx context.Context, data transport.GCStoreData) error {
+func (s *Service) buildTF2Store(ctx context.Context, data transport.GCStoreData, steamID string) error {
 	catalog, err := econ.ParseStorePriceSheet(data.PriceSheet)
 	if err != nil {
 		return err
@@ -145,6 +154,10 @@ func (s *Service) buildTF2Store(ctx context.Context, data transport.GCStoreData)
 		return fmt.Errorf("the TF2 GC price sheet contained %d entries, but none matched live TF2 metadata and %s prices", len(catalog.Offers), currency)
 	}
 	s.mu.Lock()
+	if !steamAccountConnected(s.connection, steamID) {
+		s.mu.Unlock()
+		return nil
+	}
 	s.tf2Store = domain.StoreSnapshot{Status: "ready", PriceSheetVersion: data.PriceSheetVersion, Currency: currency, Offers: offers, RefreshedAt: now(), Diagnostics: diagnostics}
 	s.tf2StoreCountry, s.tf2StoreCurrencyID = data.Country, data.Currency
 	s.mu.Unlock()
@@ -184,7 +197,7 @@ func (s *Service) InitializeTF2StorePurchase(input map[string]any) domain.Purcha
 		s.mu.Unlock()
 		return failed("TF2 store purchases are disabled")
 	}
-	if s.connection.State != domain.ConnectionStateConnected {
+	if !steamConnected(s.connection) {
 		s.mu.Unlock()
 		return failed("connect a Steam account before purchasing")
 	}

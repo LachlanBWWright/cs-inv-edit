@@ -148,6 +148,7 @@ it("migrates older settings payloads with multi-game flags disabled", () => {
     validationMode: true,
     sacrificialAccountMode: false,
     armoryPurchasePacingSeconds: 5,
+    storageRetrievalPacingSeconds: 1,
     animations: {
       container: "none",
       tradeUp: "none",

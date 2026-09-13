@@ -5,6 +5,11 @@ import {
   type RelatedItemPreviewContext,
 } from "./RelatedItemPreview.js";
 import { containerItemOdds } from "./related-item-preview-utils.js";
+import {
+  decodeHexToFloat,
+  decodeLittleEndianHexToFloat,
+  decodeLittleEndianHexToUint32,
+} from "./hex-decoders.js";
 
 export interface DiagnosticsPanelProps {
   selected: InventoryItemDto;
@@ -116,43 +121,6 @@ function parseDiagnosticLine(line: string) {
     title,
     entries: entries.length > 0 ? entries : [{ label: "Details", value: rest }],
   };
-}
-
-function decodeHexToFloat(hex: string): number | undefined {
-  const cleanHex = hex.replace(/^0x/i, "");
-  if (cleanHex.length !== 8) return undefined;
-  const num = parseInt(cleanHex, 16);
-  if (isNaN(num)) return undefined;
-  const buf = new ArrayBuffer(4);
-  const view = new DataView(buf);
-  view.setUint32(0, num, false);
-  const f = view.getFloat32(0, false);
-  if (!isNaN(f) && isFinite(f)) return f;
-  return undefined;
-}
-
-function decodeLittleEndianHexToFloat(hex: string): number | undefined {
-  const cleanHex = hex.replace(/^0x/i, "");
-  if (cleanHex.length !== 8) return undefined;
-  const num = parseInt(cleanHex, 16);
-  if (isNaN(num)) return undefined;
-  const buf = new ArrayBuffer(4);
-  const view = new DataView(buf);
-  view.setUint32(0, num, true);
-  const f = view.getFloat32(0, true);
-  if (!isNaN(f) && isFinite(f)) return f;
-  return undefined;
-}
-
-function decodeLittleEndianHexToUint32(hex: string): number | undefined {
-  const cleanHex = hex.replace(/^0x/i, "");
-  if (cleanHex.length !== 8) return undefined;
-  const num = parseInt(cleanHex, 16);
-  if (isNaN(num)) return undefined;
-  const buf = new ArrayBuffer(4);
-  const view = new DataView(buf);
-  view.setUint32(0, num, true);
-  return view.getUint32(0, true);
 }
 
 const QUALITY_NAMES: Record<number, string> = {

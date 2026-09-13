@@ -1,4 +1,4 @@
-import { Sidebar } from "./Sidebar.js";
+import { Navbar } from "./Navbar.js";
 import { ViewScreenMapper } from "./view-screen-mappers.js";
 import type { AppViewProps } from "./app-view-props.js";
 import { createAppViewState } from "./app-view-state.js";
@@ -42,7 +42,7 @@ export function AppView(props: AppViewProps) {
 
   return (
     <main class="flex min-h-screen flex-col bg-slate-950 text-slate-50">
-      <Sidebar
+      <Navbar
         view={props.view}
         setView={props.setView}
         platform={props.platform}

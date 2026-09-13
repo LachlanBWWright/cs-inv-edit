@@ -5,8 +5,7 @@ import type {
   RemoveItemNameRequest,
   SetItemNameRequest,
 } from "@cs-inv-edit/contracts";
-import { formatState } from "../../shared/lib/format.js";
-import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import { runOperationAction } from "../../shared/lib/operation-actions.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Input } from "../../shared/ui/Input.js";
 import { PageHeader } from "../../shared/ui/PageHeader.js";
@@ -90,14 +89,12 @@ export function NameTagsView(props: NameTagsViewProps) {
   const [pending, setPending] = createSignal(false);
 
   const run = async (execute: () => Promise<OperationReceipt>) => {
-    setPending(true);
-    await fromAppPromise(execute(), "Name-tag request failed").match(
-      (receipt) => {
-        setStatus(`${receipt.type}: ${formatState(receipt.state)}`);
-      },
-      (error) => setStatus(appErrorMessage(error, "Request failed")),
-    );
-    setPending(false);
+    await runOperationAction({
+      execute,
+      setPending,
+      setStatus,
+      errorMessage: "Name-tag request failed",
+    });
   };
 
   const quickItems = () => props.inventory?.items ?? [];

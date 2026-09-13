@@ -8,6 +8,7 @@ import { fromAppPromise } from "../../shared/lib/result.js";
 import { Button } from "../../shared/ui/Button.js";
 import { Input } from "../../shared/ui/Input.js";
 import { VendorPricePreview } from "./VendorPricePreview.js";
+import { formatDateTime } from "../../shared/lib/format.js";
 
 export function PriceAnalysisView(props: {
   onSearchPrices: (
@@ -218,7 +219,7 @@ export function PriceAnalysisView(props: {
                           class="text-slate-500"
                           dateTime={quote.observedAt}
                         >
-                          {formatTimestamp(quote.observedAt)}
+                          {formatDateTime(quote.observedAt)}
                         </time>
                         <span class="text-slate-200">
                           {quote.source}:{" "}
@@ -235,13 +236,4 @@ export function PriceAnalysisView(props: {
       </Show>
     </div>
   );
-}
-
-function formatTimestamp(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }

@@ -21,6 +21,7 @@ import { GameInventoryDetails } from "./game-inventory-details-panel.js";
 import { GameInventoryTF2Activity } from "./GameInventoryTF2Activity.js";
 import { InventoryItemsGrid } from "./InventoryItemsGrid.js";
 import { InventoryTradeUpToolbar } from "./InventoryTradeUpToolbar.js";
+import { priceFeaturesEnabled } from "../../shared/lib/feature-flags.js";
 import { createTF2TradeUp } from "./tf2-trade-up.js";
 import { TF2TradeUpConfirmationDialog } from "./TF2TradeUpConfirmationDialog.js";
 import { createTF2Crafting } from "./tf2-crafting-controller.js";
@@ -233,7 +234,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
         connected={props.connected === true}
         enabled={props.settings?.featureFlags.enableTf2Tradeups ?? false}
         priceAnalysisEnabled={
-          props.settings?.featureFlags.enablePriceAnalysis === true
+        priceFeaturesEnabled(props.settings)
         }
         protocolWarning=""
         marketPrices={marketPrices()}
@@ -317,7 +318,7 @@ export function GameInventoryView(props: GameInventoryViewProps) {
             : (props.settings?.featureFlags.enableTf2Crafting ?? false)
         }
         priceAnalysisEnabled={
-          props.settings?.featureFlags.enablePriceAnalysis === true
+          priceFeaturesEnabled(props.settings)
         }
         protocolWarning=""
         marketPrices={marketPrices()}

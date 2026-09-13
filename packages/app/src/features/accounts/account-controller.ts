@@ -30,6 +30,16 @@ type ResourceRefetch<T> = (
   info?: unknown,
 ) => T | Promise<T | undefined> | null | undefined;
 
+export function selectAccountForSignIn(
+  shell: ReturnType<typeof createShellController>,
+  account: SteamAccountProfile,
+) {
+  shell.setSelectedItemId(undefined);
+  shell.setAccountUsername(account.accountName);
+  shell.setAccountLoginOnly(true);
+  shell.setView("account");
+}
+
 export function createAccountController(context: AccountControllerContext) {
   const {
     props,
@@ -135,9 +145,7 @@ export function createAccountController(context: AccountControllerContext) {
   };
 
   const signInAccount = async (account: SteamAccountProfile) => {
-    shell.setSelectedItemId(undefined);
-    shell.setAccountUsername(account.accountName);
-    shell.setView("account");
+    selectAccountForSignIn(shell, account);
   };
 
   const signOutAccount = async (account: SteamAccountProfile) => {

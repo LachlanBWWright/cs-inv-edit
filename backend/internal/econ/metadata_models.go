@@ -17,6 +17,7 @@ type Metadata struct {
 	ImageKey              string
 	MarketPrice           MarketPrice
 	ToolType              string
+	CannotTrade           bool
 	RequiredKeyDefIndexes []uint32
 	IsNameTagTool         bool
 	Collection            string

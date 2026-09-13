@@ -159,6 +159,20 @@ export function ArmoryPacingSection(props: {
   );
 }
 
+export function StorageRetrievalPacingSection(props: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <SettingsSectionFrame
+      title="Storage retrieval pacing"
+      description="Wait this many seconds between retrieving items from a storage unit."
+    >
+      <NumberInputField value={props.value} onChange={props.onChange} />
+    </SettingsSectionFrame>
+  );
+}
+
 function ToggleField(props: {
   label: string;
   checked: boolean;

@@ -1,13 +1,10 @@
 import type { JSX } from "solid-js";
+import { cn } from "./class-names.js";
 
 export interface CardProps {
   children?: JSX.Element;
   class?: string;
   onClick?: (event: MouseEvent) => void;
-}
-
-function cn(...values: Array<string | false | undefined>) {
-  return values.filter(Boolean).join(" ");
 }
 
 export function Card(props: CardProps) {

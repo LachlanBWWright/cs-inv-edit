@@ -28,6 +28,7 @@ import {
   RevealSettingsPanel,
   SettingsHeader,
   SettingsStatusAlert,
+  StorageRetrievalPacingSection,
 } from "./settings-view-sections.js";
 export {
   settingsEqual,
@@ -130,6 +131,18 @@ export function SettingsView(props: SettingsViewProps) {
             armoryPurchasePacingSeconds: Math.min(
               60,
               Math.max(1, value || 5),
+            ),
+          }
+        : current,
+    );
+  const updateStorageRetrievalPacing = (value: number) =>
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            storageRetrievalPacingSeconds: Math.min(
+              60,
+              Math.max(1, value || 1),
             ),
           }
         : current,
@@ -244,6 +257,7 @@ export function SettingsView(props: SettingsViewProps) {
         selectedDebugCandidates={selectedDebugCandidates}
         playDebugAnimation={playDebugAnimation}
         onArmoryPacingChange={updateArmoryPacing}
+        onStorageRetrievalPacingChange={updateStorageRetrievalPacing}
         onUpdateDraft={setDraft}
         compactMode={props.compactMode}
         onCompactModeChange={props.onCompactModeChange}
@@ -279,6 +293,7 @@ function SettingsSections(props: {
   selectedDebugCandidates: () => RevealItem[];
   playDebugAnimation: (mode: Exclude<RevealAnimationMode, "none">) => void;
   onArmoryPacingChange: (value: number) => void;
+  onStorageRetrievalPacingChange: (value: number) => void;
   onUpdateDraft: (
     updater: (current: SettingsData | undefined) => SettingsData | undefined,
   ) => void;
@@ -305,6 +320,10 @@ function SettingsSections(props: {
       <ArmoryPacingSection
         value={props.draft?.armoryPurchasePacingSeconds ?? 5}
         onChange={props.onArmoryPacingChange}
+      />
+      <StorageRetrievalPacingSection
+        value={props.draft?.storageRetrievalPacingSeconds ?? 1}
+        onChange={props.onStorageRetrievalPacingChange}
       />
 
       <BackendSettingsSection

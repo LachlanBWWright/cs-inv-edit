@@ -6,8 +6,7 @@ import type {
   UseItemRequest,
   UseMultipleItemsRequest,
 } from "@cs-inv-edit/contracts";
-import { formatState } from "../../shared/lib/format.js";
-import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import { runOperationAction } from "../../shared/lib/operation-actions.js";
 import { Button, type ButtonProps } from "../../shared/ui/Button.js";
 
 export interface ItemManagementViewProps {
@@ -37,14 +36,12 @@ export function ItemManagementView(props: ItemManagementViewProps) {
   const [pending, setPending] = createSignal(false);
 
   const run = async (execute: () => Promise<OperationReceipt>) => {
-    setPending(true);
-    await fromAppPromise(execute(), "Item request failed").match(
-      (receipt) => {
-        setStatus(`${receipt.type}: ${formatState(receipt.state)}`);
-      },
-      (error) => setStatus(appErrorMessage(error, "Request failed")),
-    );
-    setPending(false);
+    await runOperationAction({
+      execute,
+      setPending,
+      setStatus,
+      errorMessage: "Item request failed",
+    });
   };
 
   const parseMultipleIds = (): string[] =>

@@ -10,15 +10,11 @@ import { Button } from "../../shared/ui/Button.js";
 import { SegmentedControl } from "../../shared/ui/SegmentedControl.js";
 import { Card } from "../../shared/ui/Card.js";
 import { TradeItemTile } from "./trade-item-tile.js";
+import { formatDateTime, formatStateLabel } from "../../shared/lib/format.js";
 
-const stateLabel = (state: string) =>
-  state.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const dateLabel = (value?: string) =>
   value
-    ? new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(value))
+    ? formatDateTime(value)
     : "Unknown date";
 
 function TradeSide(props: {
@@ -55,7 +51,6 @@ function TradeSide(props: {
     </div>
   );
 }
-
 function AccountBadge(props: { name: string }) {
   return (
     <span class="rounded-full bg-violet-950 px-2.5 py-1 text-xs font-semibold text-violet-200">
@@ -63,7 +58,6 @@ function AccountBadge(props: { name: string }) {
     </span>
   );
 }
-
 function TradePartner(props: {
   trade: SteamTradeDto;
   accountName?: string;
@@ -109,7 +103,7 @@ function TradePartner(props: {
           <span
             class={`rounded-full px-2.5 py-1 text-xs font-semibold ${props.active ? "bg-cyan-950 text-cyan-200" : props.trade.state === "accepted" ? "bg-emerald-950 text-emerald-200" : "bg-slate-800 text-slate-300"}`}
           >
-            {stateLabel(props.trade.state || "unknown")}
+            {formatStateLabel(props.trade.state || "unknown")}
           </span>
           <span class="font-mono text-xs text-slate-500">
             Trade #{props.trade.id}
@@ -119,7 +113,6 @@ function TradePartner(props: {
     </div>
   );
 }
-
 function TradeCard(props: {
   trade: SteamTradeDto;
   historical?: boolean;
@@ -181,7 +174,6 @@ function TradeCard(props: {
     </Card>
   );
 }
-
 function TradesList(props: {
   trades: Array<{ trade: SteamTradeDto; accountName?: string }>;
   tab: "received" | "sent" | "history";
@@ -218,7 +210,6 @@ function TradesList(props: {
     </Show>
   );
 }
-
 function TradesStatusAlerts(props: {
   snapshot?: SteamTradesSnapshot;
   onReconnect: () => void;
@@ -249,7 +240,6 @@ function TradesStatusAlerts(props: {
     </>
   );
 }
-
 function TradeAccountOption(props: {
   account: SteamAccountTradesCollection["accounts"][number];
 }) {
@@ -319,6 +309,12 @@ export function TradesView(props: {
   );
   const [accountScope, setAccountScope] = createSignal("all");
   const [busy, setBusy] = createSignal(false);
+  const snapshot = createMemo(() => {
+    const activeAccount = props.accounts?.accounts.find(
+      (account) => account.steamId === props.activeSteamId,
+    );
+    return activeAccount?.snapshot ?? props.snapshot;
+  });
   const history = createMemo(() =>
     (props.accounts?.accounts ?? [])
       .filter(
@@ -335,10 +331,10 @@ export function TradesView(props: {
   const trades = createMemo(() =>
     tab() === "history"
       ? history()
-      : (props.snapshot?.[tab()] ?? []).map((trade) => ({
-          trade,
-          accountName: undefined,
-        })),
+      : (snapshot()?.[tab()] ?? []).map((trade) => ({
+        trade,
+        accountName: undefined,
+      })),
   );
   const refresh = async () => {
     setBusy(true);
@@ -374,7 +370,7 @@ export function TradesView(props: {
         onRefresh={() => void refresh()}
       />
       <TradesStatusAlerts
-        snapshot={props.snapshot}
+        snapshot={snapshot()}
         onReconnect={props.onReconnect}
       />
       <SegmentedControl

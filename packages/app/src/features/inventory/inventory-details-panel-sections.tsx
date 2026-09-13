@@ -8,10 +8,7 @@ import { ItemInstanceDecorations } from "./ItemInstanceDecorations.js";
 import type { RelatedItemPreviewContext } from "./RelatedItemPreview.js";
 import { ItemPreviewMedia } from "./ItemPreviewMedia.js";
 import type { ReturnEstimate } from "../commerce/roi-utils.js";
-
-function steamMarketUrl(marketName: string) {
-  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketName)}`;
-}
+import { steamMarketUrl } from "../../shared/lib/steam-urls.js";
 
 export interface ItemHeaderProps {
   selected: import("@cs-inv-edit/contracts").InventoryItemDto;

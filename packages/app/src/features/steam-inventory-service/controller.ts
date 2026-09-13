@@ -9,6 +9,8 @@ import type { ConnectionStatus, SettingsData } from "@cs-inv-edit/contracts";
 import type { AppScreen } from "../shell/view.js";
 import type { LocalAgentClient } from "../../shared/lib/backend.js";
 import { appErrorMessage, fromAppPromise } from "../../shared/lib/result.js";
+import { isRefreshFailureState } from "../../shared/lib/refresh-state.js";
+import { connectedSteamId } from "../../shared/lib/steam-connection.js";
 
 interface SteamInventoryServiceControllerOptions {
   backend: LocalAgentClient;
@@ -20,14 +22,6 @@ interface SteamInventoryServiceControllerOptions {
     description?: string;
     variant?: import("../../shared/ui-types.js").StatusTone;
   }) => void;
-}
-
-function refreshFailed(state: string) {
-  return (
-    state === "failed" ||
-    state === "requires_connection" ||
-    state === "blocked_by_feature_flag"
-  );
 }
 
 function refreshFailureMessage(message: string | undefined) {
@@ -42,9 +36,7 @@ export function createSteamInventoryServiceController(
     () =>
       options.view() === "steam-service-inventory" &&
       options.settings()?.featureFlags.enableSteamInventory &&
-      options.connection()?.state === "connected"
-        ? (options.connection()?.steamId ?? false)
-        : false,
+      (connectedSteamId(options.connection()) ?? false),
     (steamId) =>
       steamId
         ? options.backend.steamInventoryServiceGames().match(
@@ -86,10 +78,7 @@ export function createSteamInventoryServiceController(
   );
   let automaticRefresh = "";
   createEffect(() => {
-    const steamId =
-      options.connection()?.state === "connected"
-        ? options.connection()?.steamId
-        : undefined;
+    const steamId = connectedSteamId(options.connection());
     const requestedAppId = appId();
     if (
       options.view() !== "steam-service-inventory" ||
@@ -106,7 +95,7 @@ export function createSteamInventoryServiceController(
     void options.backend
       .refreshSteamInventoryService(requestedAppId)
       .andThen((receipt) =>
-        refreshFailed(receipt.state)
+        isRefreshFailureState(receipt.state)
           ? errAsync({ message: refreshFailureMessage(receipt.message) })
           : fromAppPromise(
               Promise.resolve(refetch()),

@@ -16,6 +16,8 @@ export interface AccountViewProps {
     password?: string;
   }) => Promise<UIActionOutcome>;
   onStartSteamQR: () => Promise<UIActionOutcome>;
+  onRetrySteamQR?: () => void;
+  onRefreshSteamQR?: () => void;
   onSubmitSteamGuard: (input: { code: string }) => Promise<UIActionOutcome>;
   onDisconnect: () => Promise<UIActionOutcome>;
 }
@@ -23,10 +25,11 @@ export interface AccountViewProps {
 export function shouldStartSteamQR(
   connection: ConnectionStatus | undefined,
   connectionLoading: boolean,
+  loginOnly = false,
 ): boolean {
   if (connectionLoading) return false;
+  if (connection?.state === "connected") return loginOnly;
   return ![
-    "connected",
     "session_conflict",
     "needs_steam_guard",
     "awaiting_qr",
@@ -42,11 +45,13 @@ export function steamQrLoadingText(
   if (connection?.qrChallengeUrl) return "Rendering secure QR code…";
   if (connection?.state === "connecting")
     return connection.detail ?? "Finishing Steam sign-in…";
+  if (connection?.state === "awaiting_qr")
+    return connection.detail ?? "Waiting for Steam to create a sign-in session…";
+  if (connection?.state === "error")
+    return connection.detail ?? "Steam could not create a QR sign-in session.";
   if (requestSlow) return "Still waiting for Steam to create a sign-in session…";
   if (requestPending)
     return "Connecting to Steam and requesting a sign-in session…";
-  if (connection?.state === "error")
-    return connection.detail ?? "Steam could not create a QR sign-in session.";
   return "Preparing QR sign-in…";
 }
 
@@ -64,9 +69,12 @@ export function AccountView(props: AccountViewProps) {
   const [qrImage, setQRImage] = createSignal("");
   const [qrRequestPending, setQRRequestPending] = createSignal(false);
   const [qrRequestSlow, setQRRequestSlow] = createSignal(false);
+  let qrRequestGeneration = 0;
+  let qrAutoStartConsumed = false;
 
-  const startQR = () => {
-    if (qrRequestPending()) return;
+  const startQR = (force = false) => {
+    if (qrRequestPending() && !force) return;
+    const generation = ++qrRequestGeneration;
     setStatus("");
     setQRImage("");
     setQRRequestPending(true);
@@ -75,10 +83,12 @@ export function AccountView(props: AccountViewProps) {
       "Failed to start Steam QR sign-in",
     ).match(
       (outcome) => {
+        if (generation !== qrRequestGeneration) return;
         setQRRequestPending(false);
         if (!outcome.ok) setStatus(outcome.message);
       },
       (error) => {
+        if (generation !== qrRequestGeneration) return;
         setQRRequestPending(false);
         setStatus(appErrorMessage(error, "Failed to start Steam QR sign-in."));
       },
@@ -113,20 +123,27 @@ export function AccountView(props: AccountViewProps) {
   });
 
   createEffect(() => {
+    if (qrAutoStartConsumed) return;
     // Wait for the authoritative initial status before requesting a QR
     // session. Otherwise the first render can race status restoration and
     // leave the UI waiting for a challenge that the watcher never observes.
-    if (!shouldStartSteamQR(props.connection, props.connectionLoading)) return;
+    if (
+      !shouldStartSteamQR(
+        props.connection,
+        props.connectionLoading,
+        props.loginOnly,
+      )
+    )
+      return;
 
     // Use the actual connection state here. `connectionState()` intentionally
     // hides connected state in login-only mode for presentation purposes, but
     // that must not trigger a new QR login.
     const state = props.connection?.state;
     if (state === "error") {
-      const retryTimer = window.setTimeout(startQR, 1_500);
-      onCleanup(() => window.clearTimeout(retryTimer));
       return;
     }
+    qrAutoStartConsumed = true;
     startQR();
   });
 
@@ -217,6 +234,8 @@ export function AccountView(props: AccountViewProps) {
       onConnect={handleConnect}
       onSteamGuard={handleSteamGuard}
       onDisconnect={() => void handleDisconnect()}
+      onRetrySteamQR={startQR}
+      onRefreshSteamQR={() => startQR(true)}
     />
   );
 }
